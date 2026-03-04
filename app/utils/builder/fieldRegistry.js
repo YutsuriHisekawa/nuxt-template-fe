@@ -49,24 +49,53 @@ const PANEL = {
   labelFalse: {
     key: 'labelFalse', label: 'Label False', type: 'text', placeholder: 'Tidak Aktif',
   },
+  sourceType: {
+    key: 'sourceType', label: 'Data Source', type: 'buttongroup',
+    options: [
+      { value: 'api', label: 'API' },
+      { value: 'static', label: 'Static / Hardcode' },
+    ],
+  },
   apiUrl: {
     key: 'apiUrl', label: 'API Endpoint', type: 'text', placeholder: '/api/dynamic/m_supplier',
     hint: 'Endpoint API untuk fetch data options',
+    hideWhen: (f) => f.sourceType === 'static',
+  },
+  apiParams: {
+    key: 'apiParams', label: 'API Params', type: 'paramsList',
+    hideWhen: (f) => f.sourceType === 'static',
   },
   displayField: {
     key: 'displayField', label: 'Display Field', type: 'text', placeholder: 'name',
-    hint: 'Field yang ditampilkan di dropdown (misal: name, label)',
+    hint: 'Field dari API yang ditampilkan sebagai label',
+    hideWhen: (f) => f.sourceType === 'static',
   },
   valueField: {
     key: 'valueField', label: 'Value Field', type: 'text', placeholder: 'id',
-    hint: 'Field yang disimpan sebagai value (misal: id, code)',
+    hint: 'Field dari API yang dipakai sebagai value',
+    hideWhen: (f) => f.sourceType === 'static',
+  },
+  staticOptions: {
+    key: 'staticOptions', label: 'Options', type: 'optionsList',
+    hideWhen: (f) => f.sourceType !== 'static',
   },
 }
 
 // ── Common panel sets ──────────────────────────────────────────────────────
 const COMMON_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.defaultValue, PANEL.required, PANEL.readonly]
-const SELECT_PANELS = [...COMMON_PANELS, PANEL.apiUrl, PANEL.displayField, PANEL.valueField]
+const SELECT_PANELS = [...COMMON_PANELS, PANEL.sourceType, PANEL.apiUrl, PANEL.apiParams, PANEL.displayField, PANEL.valueField, PANEL.staticOptions]
 const SWITCH_PANELS = [PANEL.fieldName, PANEL.label, PANEL.defaultValue, PANEL.labelTrue, PANEL.labelFalse]
+
+// ── Static options helpers ────────────────────────────────────────────────
+// Returns a JS array literal string for code generation (from array of {value, label})
+function parseStaticOptionsLiteral(items) {
+  if (!Array.isArray(items) || !items.length) return '[]'
+  return '[' + items.map(it => {
+    const v = String(it.value || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    const l = String(it.label || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    return `{ value: '${v}', label: '${l}' }`
+  }).join(', ') + ']'
+}
 
 // ── Generate helpers ───────────────────────────────────────────────────────
 function genFieldX(f) {
@@ -134,6 +163,18 @@ function genSwitch(f) {
 
 function genSelect(f, component = 'FieldSelect') {
   const readonlyAttr = f.readonly ? ':readonly="true"' : ':readonly="isReadOnly"'
+  const isStatic = f.sourceType === 'static'
+  const vf = isStatic ? 'value' : (f.valueField || 'id')
+  const df = isStatic ? 'label' : (f.displayField || 'name')
+  let sourceAttr
+  if (isStatic) {
+    sourceAttr = `:options="${parseStaticOptionsLiteral(f.staticOptions || [])}"`
+  } else {
+    const paramsArr = Array.isArray(f.apiParams) ? f.apiParams.filter(p => p.key) : []
+    const qs = paramsArr.map(p => `${p.key}=${p.value || ''}`).join('&')
+    const params = qs ? `?${qs}` : ''
+    sourceAttr = `apiUrl="${f.apiUrl || ''}${params}"`
+  }
   return `            <${component}
               id="${f.field}"
               label="${f.label}"
@@ -144,16 +185,16 @@ function genSelect(f, component = 'FieldSelect') {
               :required="${f.required ? '!isReadOnly' : 'false'}"
               :disabled="loading || isReadOnly"
               ${readonlyAttr}
-              apiUrl="${f.apiUrl || ''}"
-              displayField="${f.displayField || 'name'}"
-              valueField="${f.valueField || 'id'}"
+              ${sourceAttr}
+              displayField="${df}"
+              valueField="${vf}"
               placeholder="${f.placeholder || f.label}"
               :clearable="true"
               class="w-full"
             />`
 }
 
-// ── The Registry ───────────────────────────────────────────────────────────
+// ── The Registry ───────────────────────────────────────────────────────────────────────────────────────────────────────────
 export const FIELD_REGISTRY = [
   // ── FieldX variants ────────────────────────────────────────
   {
@@ -251,13 +292,16 @@ export const FIELD_REGISTRY = [
   {
     value: 'select', label: 'FieldSelect', component: 'FieldSelect', category: 'selection',
     searchable: false, showInMobile: false, hasError: true,
-    defaultMeta: { apiUrl: '', displayField: 'name', valueField: 'id' },
+    defaultMeta: { sourceType: 'api', apiUrl: '', apiParams: [], displayField: 'name', valueField: 'id', staticOptions: [] },
     panelFields: SELECT_PANELS,
-    previewProps: (f) => ({
-      label: f.label || 'Label', value: '', apiUrl: f.apiUrl || '',
-      displayField: f.displayField || 'name', valueField: f.valueField || 'id',
-      placeholder: f.placeholder || f.label, required: f.required,
-    }),
+    previewProps: (f) => {
+      const isStatic = f.sourceType === 'static'
+      const vf = isStatic ? 'value' : (f.valueField || 'id')
+      const df = isStatic ? 'label' : (f.displayField || 'name')
+      const base = { label: f.label || 'Label', value: '', displayField: df, valueField: vf, placeholder: f.placeholder || f.label, required: f.required }
+      if (isStatic) return { ...base, options: f.staticOptions || [] }
+      return { ...base, apiUrl: f.apiUrl || '' }
+    },
     generateTemplate: (f) => genSelect(f, 'FieldSelect'),
   },
 
@@ -265,13 +309,16 @@ export const FIELD_REGISTRY = [
   {
     value: 'select_creatable', label: 'FieldSelect Creatable', component: 'FieldSelectCreatable', category: 'selection',
     searchable: false, showInMobile: false, hasError: true,
-    defaultMeta: { apiUrl: '', displayField: 'name', valueField: 'id' },
+    defaultMeta: { sourceType: 'api', apiUrl: '', apiParams: [], displayField: 'name', valueField: 'id', staticOptions: [] },
     panelFields: SELECT_PANELS,
-    previewProps: (f) => ({
-      label: f.label || 'Label', value: '', apiUrl: f.apiUrl || '',
-      displayField: f.displayField || 'name', valueField: f.valueField || 'id',
-      placeholder: f.placeholder || f.label, required: f.required,
-    }),
+    previewProps: (f) => {
+      const isStatic = f.sourceType === 'static'
+      const vf = isStatic ? 'value' : (f.valueField || 'id')
+      const df = isStatic ? 'label' : (f.displayField || 'name')
+      const base = { label: f.label || 'Label', value: '', displayField: df, valueField: vf, placeholder: f.placeholder || f.label, required: f.required }
+      if (isStatic) return { ...base, options: f.staticOptions || [] }
+      return { ...base, apiUrl: f.apiUrl || '' }
+    },
     generateTemplate: (f) => genSelect(f, 'FieldSelectCreatable'),
   },
 ]
@@ -298,9 +345,12 @@ export function createBlankField() {
     defaultValue: '',
     labelTrue: 'Aktif',
     labelFalse: 'Tidak Aktif',
+    sourceType: 'api',
     apiUrl: '',
+    apiParams: [],
     displayField: 'name',
     valueField: 'id',
+    staticOptions: [],
     ...allMetaKeys,
   }
 }

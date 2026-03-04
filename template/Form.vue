@@ -1,5 +1,7 @@
 <script setup lang="js">
+import { nextTick } from "vue";
 import { toast } from "vue-sonner";
+import { ArrowLeft, Loader2, Save } from "lucide-vue-next";
 
 // ============================================================================
 // COMPOSABLES & STORES
@@ -76,22 +78,25 @@ __RESET_VALUES__
 };
 
 // ============================================================================
-// LIFECYCLE HOOKS - LOAD DATA BEFORE MOUNT
+// LOAD DATA (watch route param — works on both navigation & refresh)
 // ============================================================================
-onBeforeMount(async () => {
-  onReset();
-
-  if (isCreateMode.value) return;
-
-  const sourceId = recordId.value;
-  if (!sourceId) return;
+const loadData = async (id) => {
+  if (!id) return;
 
   loading.value = true;
   try {
-    const res = await getById(sourceId);
-    if (res.status !== "success") throw new Error("Gagal memuat data");
+    const res = await getById(id);
 
-    const data = res.data;
+    const sourceData =
+      res?.status === "success"
+        ? res?.data
+        : (res?.data?.data ?? res?.data ?? null);
+
+    if (!sourceData || typeof sourceData !== "object" || Array.isArray(sourceData)) {
+      throw new Error("Format data tidak valid");
+    }
+
+    const data = { ...sourceData };
 
     // Ensure boolean for switch fields
     for (const key of Object.keys(values)) {
@@ -115,6 +120,9 @@ onBeforeMount(async () => {
       }
     }
 
+    // Force Vue to flush DOM updates
+    await nextTick();
+
     if (isCopyMode.value) {
       toast.success("Data berhasil disalin", {
         description: "Silakan edit dan simpan sebagai data baru",
@@ -131,7 +139,23 @@ onBeforeMount(async () => {
   } finally {
     loading.value = false;
   }
-});
+};
+
+watch(
+  () => route.params.id,
+  (id) => {
+    const normalizedId = Array.isArray(id) ? id[0] : id;
+
+    if (!normalizedId) {
+      onReset();
+      return;
+    }
+
+    onReset();
+    loadData(normalizedId);
+  },
+  { immediate: true },
+);
 
 // ============================================================================
 // SAVE HANDLER
@@ -197,7 +221,7 @@ const handleCancel = () => {
     <!-- ================================================================ -->
     <div class="flex items-center gap-4">
       <Button variant="ghost" size="icon" @click="handleCancel">
-        <Icon name="lucide:arrow-left" class="h-5 w-5" />
+        <ArrowLeft class="h-5 w-5" />
       </Button>
       <div>
         <h1 class="text-2xl font-bold text-foreground">
@@ -213,7 +237,7 @@ const handleCancel = () => {
     <!-- FORM SECTION -->
     <!-- ================================================================ -->
     <form class="space-y-6" @submit.prevent>
-      <Card>
+      <Card :key="recordId || 'new'">
         <CardHeader>
           <CardTitle>Informasi __READABLE_NAME__</CardTitle>
           <CardDescription>
@@ -249,12 +273,11 @@ __FORM_FIELDS__
           :disabled="loading"
           class="gap-2 w-full sm:w-auto"
         >
-          <Icon
+          <Loader2
             v-if="loading"
-            name="lucide:loader-2"
             class="h-4 w-4 animate-spin"
           />
-          <Icon v-else name="lucide:save" class="h-4 w-4" />
+          <Save v-else class="h-4 w-4" />
           {{ isEditMode ? "Perbarui" : "Simpan" }}
         </Button>
       </div>

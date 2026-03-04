@@ -48,7 +48,16 @@ export function useApi() {
   }
 
   function get(endpoint, options = {}) {
-    return request(endpoint, { ...options, method: 'GET' })
+    return request(endpoint, {
+      ...options,
+      method: 'GET',
+      cache: options.cache ?? 'no-store',
+      headers: {
+        'Cache-Control': 'no-cache',
+        Pragma: 'no-cache',
+        ...options.headers,
+      },
+    })
   }
 
   function post(endpoint, body, options = {}) {

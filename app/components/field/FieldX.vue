@@ -185,7 +185,8 @@ const isTextarea = computed(() => props.type === 'textarea')
         :rows="rows"
         :class="[
           'flex min-h-20 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
-          { 'border-destructive': hasError }
+          { 'border-destructive': hasError },
+          { 'bg-muted/50 text-foreground cursor-default font-medium opacity-90': readonly }
         ]"
       />
       <!-- Input -->
@@ -196,15 +197,20 @@ const isTextarea = computed(() => props.type === 'textarea')
         :inputmode="type === 'tel' ? 'tel' : undefined"
         :model-value="currentValue"
         :placeholder="placeholder"
-        :disabled="disabled"
+        :disabled="disabled && !readonly"
         :readonly="readonly"
         :class="[
           { 'border-destructive': hasError },
-          type === 'password' && 'pr-10'
+          type === 'password' && 'pr-10',
+          readonly && 'bg-muted/50 !text-foreground cursor-default font-medium !opacity-100'
         ]"
         class="h-10"
         @input="handleInput"
         @keydown="handleKeyDown"
+        @update:model-value="(val) => {
+          emit('input', String(val))
+          emit('update:modelValue', String(val))
+        }"
       />
       <!-- Password toggle -->
       <button

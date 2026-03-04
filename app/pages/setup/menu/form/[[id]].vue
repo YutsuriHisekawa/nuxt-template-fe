@@ -1,5 +1,6 @@
 <script setup lang="js">
 import { toast } from "vue-sonner";
+import { ArrowLeft, Loader2, Save } from "lucide-vue-next";
 
 // ============================================================================
 // COMPOSABLES & STORES
@@ -96,19 +97,14 @@ const onReset = () => {
 };
 
 // ============================================================================
-// LIFECYCLE HOOKS - LOAD DATA BEFORE MOUNT
+// LOAD DATA (watch route param — works on both navigation & refresh)
 // ============================================================================
-onBeforeMount(async () => {
-  onReset();
-
-  if (isCreateMode.value) return;
-
-  const sourceId = menuId.value;
-  if (!sourceId) return;
+const loadData = async (id) => {
+  if (!id) return;
 
   loading.value = true;
   try {
-    const res = await getMenuById(sourceId);
+    const res = await getMenuById(id);
     if (res.status !== "success") throw new Error("Gagal memuat data");
 
     const data = res.data;
@@ -158,7 +154,16 @@ onBeforeMount(async () => {
   } finally {
     loading.value = false;
   }
-});
+};
+
+watch(
+  () => route.params.id,
+  (id) => {
+    onReset();
+    if (id) loadData(id);
+  },
+  { immediate: true },
+);
 
 // ============================================================================
 // SAVE HANDLER
@@ -246,7 +251,7 @@ const handleCancel = () => {
     <!-- ================================================================ -->
     <div class="flex items-center gap-4">
       <Button variant="ghost" size="icon" @click="handleCancel">
-        <Icon name="lucide:arrow-left" class="h-5 w-5" />
+        <ArrowLeft class="h-5 w-5" />
       </Button>
       <div>
         <h1 class="text-2xl font-bold text-foreground">
@@ -580,12 +585,11 @@ const handleCancel = () => {
           :disabled="loading"
           class="gap-2 w-full sm:w-auto"
         >
-          <Icon
+          <Loader2
             v-if="loading"
-            name="lucide:loader-2"
             class="h-4 w-4 animate-spin"
           />
-          <Icon v-else name="lucide:save" class="h-4 w-4" />
+          <Save v-else class="h-4 w-4" />
           {{ isEditMode ? "Perbarui" : "Simpan" }}
         </Button>
       </div>

@@ -6,6 +6,16 @@
  *   app/utils/builder/fieldRegistry.js  (client-side: preview, panel, etc.)
  */
 
+// ── Static options helpers ────────────────────────────────────────────────
+function parseStaticOptionsLiteral(items) {
+  if (!Array.isArray(items) || !items.length) return '[]'
+  return '[' + items.map(it => {
+    const v = String(it.value || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    const l = String(it.label || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    return `{ value: '${v}', label: '${l}' }`
+  }).join(', ') + ']'
+}
+
 // ── Generate helpers ───────────────────────────────────────────────────────
 function genFieldX(f) {
   const typeAttr = f.type !== 'text' ? `\n              type="${f.type}"` : ''
@@ -72,6 +82,18 @@ function genSwitch(f) {
 
 function genSelect(f, component = 'FieldSelect') {
   const readonlyAttr = f.readonly ? ':readonly="true"' : ':readonly="isReadOnly"'
+  const isStatic = f.sourceType === 'static'
+  const vf = isStatic ? 'value' : (f.valueField || 'id')
+  const df = isStatic ? 'label' : (f.displayField || 'name')
+  let sourceAttr
+  if (isStatic) {
+    sourceAttr = `:options="${parseStaticOptionsLiteral(f.staticOptions || [])}"`
+  } else {
+    const paramsArr = Array.isArray(f.apiParams) ? f.apiParams.filter(p => p.key) : []
+    const qs = paramsArr.map(p => `${p.key}=${p.value || ''}`).join('&')
+    const params = qs ? `?${qs}` : ''
+    sourceAttr = `apiUrl="${f.apiUrl || ''}${params}"`
+  }
   return `            <${component}
               id="${f.field}"
               label="${f.label}"
@@ -82,9 +104,9 @@ function genSelect(f, component = 'FieldSelect') {
               :required="${f.required ? '!isReadOnly' : 'false'}"
               :disabled="loading || isReadOnly"
               ${readonlyAttr}
-              apiUrl="${f.apiUrl || ''}"
-              displayField="${f.displayField || 'name'}"
-              valueField="${f.valueField || 'id'}"
+              ${sourceAttr}
+              displayField="${df}"
+              valueField="${vf}"
               placeholder="${f.placeholder || f.label}"
               :clearable="true"
               class="w-full"

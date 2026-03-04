@@ -191,6 +191,12 @@ async function generate() {
       <span class="bg-muted text-muted-foreground px-2.5 py-1 rounded-md text-xs font-medium">{{ config?.routePath }}</span>
       <span class="bg-muted text-muted-foreground px-2.5 py-1 rounded-md text-xs font-medium">Endpoint: {{ config?.apiEndpoint }}</span>
       <span class="bg-primary text-primary-foreground px-2.5 py-1 rounded-md text-xs font-semibold">{{ config?.readableName }}</span>
+
+      <!-- Theme toggles (matches default layout) -->
+      <div class="ml-auto flex items-center gap-2">
+        <ThemeColorToggle />
+        <ThemeToggle />
+      </div>
     </div>
 
     <div class="max-w-[860px] mx-auto p-6 space-y-6">
@@ -224,11 +230,11 @@ async function generate() {
             <div
               v-for="(f, idx) in fields"
               :key="idx"
-              class="relative group rounded-lg p-1 transition-all"
+              class="relative group rounded-lg pt-4 pb-2 px-2 transition-all"
               :class="
                 panelIndex === idx
-                  ? 'ring-2 ring-ring bg-accent/50'
-                  : 'hover:ring-2 hover:ring-ring/40 hover:bg-accent/30'
+                  ? 'ring-2 ring-ring ring-offset-2 ring-offset-background bg-accent/50'
+                  : 'hover:ring-2 hover:ring-ring/40 hover:ring-offset-2 hover:ring-offset-background hover:bg-accent/30'
               "
             >
               <!-- Action buttons (show on hover) -->
@@ -312,7 +318,7 @@ async function generate() {
       <Transition name="slide">
         <div
           v-if="panelOpen && panelIndex >= 0 && panelIndex < fields.length"
-          class="fixed top-0 right-0 z-[101] h-full w-[380px] max-w-[90vw] bg-card border-l border-border shadow-xl overflow-y-auto"
+          class="fixed top-0 right-0 z-[101] h-full w-[480px] bg-card border-l border-border shadow-xl overflow-y-auto"
         >
           <div
             class="flex items-center justify-between px-5 py-4 border-b border-border"

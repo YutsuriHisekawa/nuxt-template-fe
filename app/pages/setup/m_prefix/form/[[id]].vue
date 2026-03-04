@@ -1,5 +1,4 @@
 <script setup lang="js">
-import { nextTick } from "vue";
 import { toast } from "vue-sonner";
 import { ArrowLeft, Loader2, Save } from "lucide-vue-next";
 
@@ -14,7 +13,6 @@ const route = useRoute();
 // STATE
 // ============================================================================
 const loading = ref(false);
-const lastLoadRequestId = ref(0);
 
 const recordId = computed(() => route.params.id);
 const action = computed(() => route.query.action);
@@ -28,57 +26,49 @@ const isCreateMode = computed(() => !recordId.value);
 const isReadOnly = computed(() => isViewMode.value);
 
 const pageTitle = computed(() => {
-  if (isViewMode.value) return "Detail General";
-  if (isCopyMode.value) return "Salin General";
-  if (isEditMode.value) return "Edit General";
-  return "Tambah General Baru";
+  if (isViewMode.value) return "Detail Master Prefix";
+  if (isCopyMode.value) return "Salin Master Prefix";
+  if (isEditMode.value) return "Edit Master Prefix";
+  return "Tambah Master Prefix Baru";
 });
 
 const pageDescription = computed(() => {
-  if (isViewMode.value) return "Lihat detail data general";
+  if (isViewMode.value) return "Lihat detail data master prefix";
   if (isCopyMode.value) return "Buat data baru dari data yang disalin";
-  if (isEditMode.value) return "Perbarui data general";
-  return "Buat data general baru";
+  if (isEditMode.value) return "Perbarui data master prefix";
+  return "Buat data master prefix baru";
 });
 
 // Reactive form values with defaults
 const values = reactive({
-  group: "",
-  key1: "",
-  code: "",
-  value1: "",
-  value2: "",
-  value3: "",
-  value4: "",
-  value5: "",
+  m_unit_bisnis_id: "",
+  nama_prefx: "",
+  value: "",
+  tipe_prefix: "",
   is_active: true,
 });
 
 // Errors object (manual validation)
 const errors = reactive({
-  group: "",
-  key1: "",
-  code: "",
-  value1: "",
-  value2: "",
-  value3: "",
-  value4: "",
-  value5: "",
+  m_unit_bisnis_id: "",
+  nama_prefx: "",
+  value: "",
+  tipe_prefix: "",
 });
 
 // ============================================================================
 // API FUNCTIONS
 // ============================================================================
 const getById = async (id) => {
-  return await api.get(`/api/dynamic/m_general/${id}`);
+  return await api.get(`/api/dynamic/m_prefix/${id}`);
 };
 
 const createData = async (payload) => {
-  return await api.post("/api/dynamic/m_general", payload);
+  return await api.post("/api/dynamic/m_prefix", payload);
 };
 
 const updateData = async (id, payload) => {
-  return await api.put(`/api/dynamic/m_general/${id}`, payload);
+  return await api.put(`/api/dynamic/m_prefix/${id}`, payload);
 };
 
 // ============================================================================
@@ -86,14 +76,10 @@ const updateData = async (id, payload) => {
 // ============================================================================
 const onReset = () => {
   Object.assign(values, {
-    group: "",
-    key1: "",
-    code: "",
-    value1: "",
-    value2: "",
-    value3: "",
-    value4: "",
-    value5: "",
+    m_unit_bisnis_id: "",
+    nama_prefx: "",
+    value: "",
+    tipe_prefix: "",
     is_active: true,
   });
   Object.keys(errors).forEach((key) => {
@@ -107,38 +93,19 @@ const onReset = () => {
 const loadData = async (id) => {
   if (!id) return;
 
-  const requestId = ++lastLoadRequestId.value;
-
   loading.value = true;
   try {
     const res = await getById(id);
-    const normalizedStatus =
-      res?.status === "success" ? res.status : res?.data?.status;
-    if (normalizedStatus && normalizedStatus !== "success") {
-      throw new Error("Gagal memuat data");
-    }
+    if (res.status !== "success") throw new Error("Gagal memuat data");
 
-    const sourceData =
-      res?.status === "success"
-        ? res?.data
-        : (res?.data?.data ?? res?.data ?? null);
+    const data = res.data;
 
-    if (!sourceData || typeof sourceData !== "object" || Array.isArray(sourceData)) {
-      throw new Error("Format data tidak valid");
-    }
-
-    if (requestId !== lastLoadRequestId.value) {
-      return;
-    }
-
-    const data = { ...sourceData };
-
-    // Ensure boolean
-    if (data.is_active !== undefined) {
-      const v = data.is_active;
-      data.is_active = v === true || v === 1 || v === "1";
-    } else {
-      data.is_active = true;
+    // Ensure boolean for switch fields
+    for (const key of Object.keys(values)) {
+      if (typeof values[key] === "boolean" && data[key] !== undefined) {
+        const v = data[key];
+        data[key] = v === true || v === 1 || v === "1";
+      }
     }
 
     // Mode copy: hapus id agar jadi create baru
@@ -155,9 +122,6 @@ const loadData = async (id) => {
       }
     }
 
-    // Force Vue to flush DOM updates setelah semua values di-set
-    await nextTick();
-
     if (isCopyMode.value) {
       toast.success("Data berhasil disalin", {
         description: "Silakan edit dan simpan sebagai data baru",
@@ -170,7 +134,7 @@ const loadData = async (id) => {
     toast.error("Gagal memuat data", {
       description: error?.message || "Terjadi kesalahan",
     });
-    setTimeout(() => router.push("/setup/m_general"), 2000);
+    setTimeout(() => router.push("/setup/m_prefix"), 2000);
   } finally {
     loading.value = false;
   }
@@ -179,15 +143,8 @@ const loadData = async (id) => {
 watch(
   () => route.params.id,
   (id) => {
-    const normalizedId = Array.isArray(id) ? id[0] : id;
-
-    if (!normalizedId) {
-      onReset();
-      return;
-    }
-
     onReset();
-    loadData(normalizedId);
+    if (id) loadData(id);
   },
   { immediate: true },
 );
@@ -203,12 +160,20 @@ const onSave = async () => {
 
   // Validasi required
   let invalid = false;
-  if (!values.group?.trim()) {
-    errors.group = "Group wajib diisi";
+  if (!values.m_unit_bisnis_id?.toString().trim()) {
+    errors.m_unit_bisnis_id = "Unit Bisnis wajib diisi";
     invalid = true;
   }
-  if (!values.key1?.trim()) {
-    errors.key1 = "Key wajib diisi";
+  if (!values.nama_prefx?.toString().trim()) {
+    errors.nama_prefx = "Nama Prefix wajib diisi";
+    invalid = true;
+  }
+  if (!values.value?.toString().trim()) {
+    errors.value = "Value wajib diisi";
+    invalid = true;
+  }
+  if (!values.tipe_prefix?.toString().trim()) {
+    errors.tipe_prefix = "Tipe Prefix wajib diisi";
     invalid = true;
   }
 
@@ -221,33 +186,25 @@ const onSave = async () => {
 
   loading.value = true;
   try {
-    // Clean payload: convert empty strings to null
+    // Clean payload
     const payload = {
-      group: values.group?.trim() || null,
-      key1: values.key1?.trim() || null,
-      code: values.code?.trim() || null,
-      value1: values.value1?.trim() || null,
-      value2: values.value2?.trim() || null,
-      value3: values.value3?.trim() || null,
-      value4: values.value4?.trim() || null,
-      value5: values.value5?.trim() || null,
-      is_active: values.is_active,
+    m_unit_bisnis_id: values.m_unit_bisnis_id?.toString().trim() || null,
+    nama_prefx: values.nama_prefx?.toString().trim() || null,
+    value: values.value?.toString().trim() || null,
+    tipe_prefix: values.tipe_prefix?.toString().trim() || null,
+    is_active: values.is_active,
     };
 
     if (isEditMode.value) {
       await updateData(recordId.value, payload);
-      toast.success("Data berhasil diperbarui", {
-        description: `General "${values.group} - ${values.key1}" telah diperbarui`,
-      });
+      toast.success("Data berhasil diperbarui");
     } else {
       await createData(payload);
-      toast.success("Data berhasil dibuat", {
-        description: `General "${values.group} - ${values.key1}" telah ditambahkan`,
-      });
+      toast.success("Data berhasil dibuat");
     }
 
     // Navigate back to list
-    router.replace("/setup/m_general");
+    router.replace("/setup/m_prefix");
   } catch (error) {
     toast.error(
       isEditMode.value ? "Gagal memperbarui data" : "Gagal membuat data",
@@ -264,7 +221,7 @@ const onSave = async () => {
 // CANCEL HANDLER
 // ============================================================================
 const handleCancel = () => {
-  router.push("/setup/m_general");
+  router.push("/setup/m_prefix");
 };
 </script>
 
@@ -291,140 +248,89 @@ const handleCancel = () => {
     <!-- FORM SECTION -->
     <!-- ================================================================ -->
     <form class="space-y-6" @submit.prevent>
-      <Card :key="recordId || 'new'">
+      <Card>
         <CardHeader>
-          <CardTitle>Informasi General</CardTitle>
+          <CardTitle>Informasi Master Prefix</CardTitle>
           <CardDescription>
-            Isi data general dengan lengkap dan benar
+            Isi data master prefix dengan lengkap dan benar
           </CardDescription>
         </CardHeader>
         <CardContent class="space-y-6">
-          <!-- Row 1: Group, Key, Code -->
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <FieldX
-              id="group"
-              label="Group"
-              v-model="values.group"
-              :errorname="errors.group ? 'failed' : ''"
-              :hints="errors.group"
+            <FieldSelect
+              id="m_unit_bisnis_id"
+              label="Unit Bisnis"
+              :value="values.m_unit_bisnis_id"
+              :errorname="errors.m_unit_bisnis_id ? 'failed' : ''"
+              @input="(v) => (values.m_unit_bisnis_id = v)"
+              :hints="errors.m_unit_bisnis_id"
               :required="!isReadOnly"
-              :disabled="loading"
-              :readonly="isReadOnly"
-              placeholder="Contoh: SYSTEM"
-              class="w-full"
-            />
-
-            <FieldX
-              id="key1"
-              label="Key"
-              v-model="values.key1"
-              :errorname="errors.key1 ? 'failed' : ''"
-              :hints="errors.key1"
-              :required="!isReadOnly"
-              :disabled="loading"
-              :readonly="isReadOnly"
-              placeholder="Contoh: APP_NAME"
-              class="w-full"
-            />
-
-            <FieldX
-              id="code"
-              label="Code"
-              v-model="values.code"
-              :errorname="errors.code ? 'failed' : ''"
-              :hints="errors.code"
-              :required="false"
-              :disabled="loading"
-              :readonly="isReadOnly"
-              placeholder="Kode (opsional)"
-              class="w-full"
-            />
-
-
-          <!-- Row 2: Value 1 - 3 -->
-          
-            <FieldX
-              id="value1"
-              label="Value 1"
-              v-model="values.value1"
-              :errorname="errors.value1 ? 'failed' : ''"
-              :hints="errors.value1"
-              :required="false"
-              :disabled="loading"
-              :readonly="isReadOnly"
-              placeholder="Value 1"
-              class="w-full"
-            />
-
-            <FieldX
-              id="value2"
-              label="Value 2"
-              v-model="values.value2"
-              :errorname="errors.value2 ? 'failed' : ''"
-              :hints="errors.value2"
-              :required="false"
-              :disabled="loading"
-              :readonly="isReadOnly"
-              placeholder="Value 2"
-              class="w-full"
-            />
-
-            <FieldX
-              id="value3"
-              label="Value 3"
-              v-model="values.value3"
-              :errorname="errors.value3 ? 'failed' : ''"
-              :hints="errors.value3"
-              :required="false"
-              :disabled="loading"
-              :readonly="isReadOnly"
-              placeholder="Value 3"
-              class="w-full"
-            />
-
-
-          <!-- Row 3: Value 4 - 5 -->
-
-            <FieldX
-              id="value4"
-              label="Value 4"
-              v-model="values.value4"
-              :errorname="errors.value4 ? 'failed' : ''"
-              :hints="errors.value4"
-              :required="false"
-              :disabled="loading"
-              :readonly="isReadOnly"
-              placeholder="Value 4"
-              class="w-full"
-            />
-
-            <FieldX
-              id="value5"
-              label="Value 5"
-              v-model="values.value5"
-              :errorname="errors.value5 ? 'failed' : ''"
-              :hints="errors.value5"
-              :required="false"
-              :disabled="loading"
-              :readonly="isReadOnly"
-              placeholder="Value 5"
-              class="w-full"
-            />
-
-            <div></div>
-
-
-          <!-- Status -->
-          <div class="flex items-center gap-3">
-            <Switch
-              id="is_active"
-              v-model="values.is_active"
               :disabled="loading || isReadOnly"
+              :readonly="isReadOnly"
+              apiUrl="/api/dynamic/m_unit_bisnis?where=is_active:true"
+              displayField="nama_comp"
+              valueField="id"
+              placeholder="Pilih Unit Bisnis"
+              :clearable="true"
+              class="w-full"
             />
-            <Label for="is_active" class="cursor-pointer">
-              {{ values.is_active ? "Aktif" : "Tidak Aktif" }}
-            </Label>
-          </div>
+
+            <FieldX
+              id="nama_prefx"
+              label="Nama Prefix"
+              :value="values.nama_prefx"
+              :errorname="errors.nama_prefx ? 'failed' : ''"
+              @input="(v) => (values.nama_prefx = v)"
+              :hints="errors.nama_prefx"
+              :required="!isReadOnly"
+              :disabled="loading || isReadOnly"
+              :readonly="isReadOnly"
+              placeholder="Tulis Nama Prefix"
+              class="w-full"
+            />
+
+            <FieldX
+              id="value"
+              label="Value"
+              :value="values.value"
+              :errorname="errors.value ? 'failed' : ''"
+              @input="(v) => (values.value = v)"
+              :hints="errors.value"
+              :required="!isReadOnly"
+              :disabled="loading || isReadOnly"
+              :readonly="isReadOnly"
+              placeholder="Prefix 1"
+              class="w-full"
+            />
+
+            <FieldSelect
+              id="tipe_prefix"
+              label="Tipe Prefix"
+              :value="values.tipe_prefix"
+              :errorname="errors.tipe_prefix ? 'failed' : ''"
+              @input="(v) => (values.tipe_prefix = v)"
+              :hints="errors.tipe_prefix"
+              :required="!isReadOnly"
+              :disabled="loading || isReadOnly"
+              :readonly="isReadOnly"
+              :options="[{ value: 'TEXT', label: 'TEXT' }, { value: 'DAY', label: 'DAY' }, { value: 'MONTH', label: 'MONTH' }, { value: 'YEAR', label: 'YEAR' }, { value: 'SEQ(XXXX)', label: 'SEQ (XXXX)' }]"
+              displayField="label"
+              valueField="value"
+              placeholder="Pilih Tipe Prefix"
+              :clearable="true"
+              class="w-full"
+            />
+
+            <div class="flex items-center gap-3">
+              <Switch
+                id="is_active"
+                v-model="values.is_active"
+                :disabled="loading || isReadOnly"
+              />
+              <Label for="is_active" class="cursor-pointer">
+                {{ values.is_active ? "Aktif" : "Tidak Aktif" }}
+              </Label>
+            </div>
           </div>
         </CardContent>
       </Card>
