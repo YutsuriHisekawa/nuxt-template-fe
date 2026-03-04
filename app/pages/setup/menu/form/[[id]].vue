@@ -1,4 +1,5 @@
 <script setup lang="js">
+import { nextTick } from "vue";
 import { toast } from "vue-sonner";
 import { ArrowLeft, Loader2, Save } from "lucide-vue-next";
 
@@ -13,6 +14,7 @@ const route = useRoute();
 // STATE
 // ============================================================================
 const loading = ref(false);
+const lastLoadRequestId = ref(0);
 
 const menuId = computed(() => route.params.id);
 const action = computed(() => route.query.action);
@@ -102,12 +104,31 @@ const onReset = () => {
 const loadData = async (id) => {
   if (!id) return;
 
+  const requestId = ++lastLoadRequestId.value;
+
   loading.value = true;
   try {
     const res = await getMenuById(id);
-    if (res.status !== "success") throw new Error("Gagal memuat data");
+    const normalizedStatus =
+      res?.status === "success" ? res.status : res?.data?.status;
+    if (normalizedStatus && normalizedStatus !== "success") {
+      throw new Error("Gagal memuat data");
+    }
 
-    const data = res.data;
+    const sourceData =
+      res?.status === "success"
+        ? res?.data
+        : (res?.data?.data ?? res?.data ?? null);
+
+    if (!sourceData || typeof sourceData !== "object" || Array.isArray(sourceData)) {
+      throw new Error("Format data tidak valid");
+    }
+
+    if (requestId !== lastLoadRequestId.value) {
+      return;
+    }
+
+    const data = { ...sourceData };
 
     // Normalize seq to string
     if (data.seq !== undefined && data.seq !== null) {
@@ -138,6 +159,9 @@ const loadData = async (id) => {
       }
     }
 
+    // Force Vue to flush DOM updates
+    await nextTick();
+
     if (isCopyMode.value) {
       toast.success("Data berhasil disalin", {
         description: "Silakan edit dan simpan sebagai menu baru",
@@ -159,8 +183,15 @@ const loadData = async (id) => {
 watch(
   () => route.params.id,
   (id) => {
+    const normalizedId = Array.isArray(id) ? id[0] : id;
+
+    if (!normalizedId) {
+      onReset();
+      return;
+    }
+
     onReset();
-    if (id) loadData(id);
+    loadData(normalizedId);
   },
   { immediate: true },
 );
@@ -426,13 +457,11 @@ const handleCancel = () => {
     <!-- FORM SECTION -->
     <!-- ================================================================ -->
     <form class="space-y-6" @submit.prevent>
-      <Card>
-        <CardHeader>
-          <CardTitle>Informasi Menu</CardTitle>
+      <Card :key="menuId || 'new'">
           <CardDescription>
             Isi data menu dengan lengkap dan benar
           </CardDescription>
-        </CardHeader>
+
         <CardContent class="space-y-6">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <!-- Name Field -->
@@ -444,7 +473,7 @@ const handleCancel = () => {
               @input="(v) => (values.name = v)"
               :hints="errors.name"
               :required="!isReadOnly"
-              :disabled="loading || isReadOnly"
+              :disabled="loading"
               :readonly="isReadOnly"
               placeholder="Contoh: Dashboard"
               class="w-full"
@@ -459,7 +488,7 @@ const handleCancel = () => {
               @input="(v) => (values.modul = v)"
               :hints="errors.modul"
               :required="!isReadOnly"
-              :disabled="loading || isReadOnly"
+              :disabled="loading"
               :readonly="isReadOnly"
               placeholder="Contoh: Main"
               class="w-full"
@@ -474,7 +503,7 @@ const handleCancel = () => {
               @input="(v) => (values.sub_modul = v)"
               :hints="errors.sub_modul || 'Boleh dikosongkan'"
               :required="false"
-              :disabled="loading || isReadOnly"
+              :disabled="loading"
               :readonly="isReadOnly"
               placeholder="Contoh: Overview"
               class="w-full"
@@ -489,7 +518,7 @@ const handleCancel = () => {
               @input="(v) => (values.path = v)"
               :hints="errors.path"
               :required="!isReadOnly"
-              :disabled="loading || isReadOnly"
+              :disabled="loading"
               :readonly="isReadOnly"
               placeholder="Contoh: /dashboard"
               class="w-full"
@@ -504,7 +533,7 @@ const handleCancel = () => {
                 :errorname="errors.icon ? 'failed' : ''"
                 :hints="errors.icon || 'Pilih icon lucide (opsional)'"
                 :required="false"
-                :disabled="loading || isReadOnly"
+                :disabled="loading"
                 :readonly="isReadOnly"
                 placeholder="Cari icon..."
                 class="w-full"
@@ -523,7 +552,7 @@ const handleCancel = () => {
                 'Urutan tampilan menu (opsional, contoh: 1.1, 2.3)'
               "
               :required="false"
-              :disabled="loading || isReadOnly"
+              :disabled="loading"
               :readonly="isReadOnly"
               placeholder="Contoh: 1.1"
               :min="0"
@@ -541,7 +570,7 @@ const handleCancel = () => {
                 @input="(v) => (values.desc = v)"
                 :hints="errors.desc || 'Penjelasan singkat tentang menu ini'"
                 :required="false"
-                :disabled="loading || isReadOnly"
+                :disabled="loading"
                 :readonly="isReadOnly"
                 placeholder="Deskripsi menu (opsional)"
                 :rows="3"

@@ -36,6 +36,7 @@ const categoryLabels = {
   number: 'Number Fields',
   selection: 'Selection',
   toggle: 'Toggle',
+  layout: 'Layout',
 }
 
 function updateField(key, value) {

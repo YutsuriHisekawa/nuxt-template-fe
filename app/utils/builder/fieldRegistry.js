@@ -79,12 +79,16 @@ const PANEL = {
     key: 'staticOptions', label: 'Options', type: 'optionsList',
     hideWhen: (f) => f.sourceType !== 'static',
   },
+  fullWidth: {
+    key: 'fullWidth', label: 'Full Width (2 kolom)', type: 'checkbox',
+  },
 }
 
 // ── Common panel sets ──────────────────────────────────────────────────────
-const COMMON_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.defaultValue, PANEL.required, PANEL.readonly]
+const COMMON_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.defaultValue, PANEL.required, PANEL.readonly, PANEL.fullWidth]
 const SELECT_PANELS = [...COMMON_PANELS, PANEL.sourceType, PANEL.apiUrl, PANEL.apiParams, PANEL.displayField, PANEL.valueField, PANEL.staticOptions]
-const SWITCH_PANELS = [PANEL.fieldName, PANEL.label, PANEL.defaultValue, PANEL.labelTrue, PANEL.labelFalse]
+const SWITCH_PANELS = [PANEL.fieldName, PANEL.label, PANEL.defaultValue, PANEL.labelTrue, PANEL.labelFalse, PANEL.fullWidth]
+const BOX_PANELS = [PANEL.fieldName, PANEL.label, PANEL.defaultValue, PANEL.labelTrue, PANEL.labelFalse, PANEL.fullWidth]
 
 // ── Static options helpers ────────────────────────────────────────────────
 // Returns a JS array literal string for code generation (from array of {value, label})
@@ -159,6 +163,20 @@ function genSwitch(f) {
                 {{ values.${f.field} ? "${f.labelTrue || 'Aktif'}" : "${f.labelFalse || 'Tidak Aktif'}" }}
               </Label>
             </div>`
+}
+
+function genFieldBox(f) {
+  return `            <FieldBox
+              id="${f.field}"
+              label="${f.label}"
+              :value="values.${f.field}"
+              @input="(v) => (values.${f.field} = v)"
+              :disabled="loading || isReadOnly"
+              :readonly="isReadOnly"
+              labelTrue="${f.labelTrue || 'Ya'}"
+              labelFalse="${f.labelFalse || 'Tidak'}"
+              class="w-full"
+            />`
 }
 
 function genSelect(f, component = 'FieldSelect') {
@@ -288,6 +306,34 @@ export const FIELD_REGISTRY = [
     generatePayload: (f) => `    ${f.field}: values.${f.field},`,
   },
 
+  // ── FieldBox (Checkbox) ────────────────────────────────────
+  {
+    value: 'fieldbox', label: 'FieldBox (Checkbox)', component: 'FieldBox', category: 'toggle',
+    searchable: false, showInMobile: false, hasError: false,
+    isFieldBox: true,
+    defaultMeta: { defaultValue: 'true', labelTrue: 'Ya', labelFalse: 'Tidak' },
+    panelFields: BOX_PANELS,
+    previewProps: (f) => ({ label: f.label || 'Label', value: f.defaultValue !== 'false', labelTrue: f.labelTrue || 'Ya', labelFalse: f.labelFalse || 'Tidak' }),
+    generateTemplate: genFieldBox,
+    generateDefault: (f) => `  ${f.field}: ${f.defaultValue || 'true'},`,
+    generateReset: (f) => `    ${f.field}: ${f.defaultValue || 'true'},`,
+    generatePayload: (f) => `    ${f.field}: values.${f.field},`,
+  },
+
+  // ── Space (layout spacer) ─────────────────────────────────
+  {
+    value: 'space', label: 'Space', component: null, category: 'layout',
+    searchable: false, showInMobile: false, hasError: false,
+    isSpace: true,
+    defaultMeta: {},
+    panelFields: [],
+    previewProps: () => ({}),
+    generateTemplate: () => `            <div></div>`,
+    generateDefault: () => null,
+    generateReset: () => null,
+    generatePayload: () => null,
+  },
+
   // ── FieldSelect ────────────────────────────────────────────
   {
     value: 'select', label: 'FieldSelect', component: 'FieldSelect', category: 'selection',
@@ -351,11 +397,71 @@ export function createBlankField() {
     displayField: 'name',
     valueField: 'id',
     staticOptions: [],
+    fullWidth: false,
     ...allMetaKeys,
+    defaultValue: '', // always blank for new fields; boolean fields get their default when type is selected
   }
 }
 
 /** Get component display name from type */
 export function getComponentBadge(type) {
-  return getRegistryEntry(type)?.component || 'FieldX'
+  const entry = getRegistryEntry(type)
+  if (entry?.isSpace) return 'Space'
+  return entry?.component || 'FieldX'
+}
+
+// ── Detail field types for detail rows ─────────────────────────────────────
+// Subset of field types available for detail row fields
+export const DETAIL_FIELD_TYPES = [
+  { value: 'checkbox', label: 'FieldBox (Checkbox)', component: 'FieldBox', defaultValue: true },
+  { value: 'text', label: 'FieldX (Text)', component: 'FieldX', defaultValue: '' },
+  { value: 'number', label: 'FieldX (Number)', component: 'FieldX', defaultValue: 0 },
+  { value: 'fieldnumber', label: 'FieldNumber (Integer)', component: 'FieldNumber', defaultValue: 0 },
+  { value: 'fieldnumber_decimal', label: 'FieldNumber (Decimal)', component: 'FieldNumber', defaultValue: 0 },
+  { value: 'textarea', label: 'FieldTextarea', component: 'FieldTextarea', defaultValue: '' },
+  { value: 'select', label: 'FieldSelect', component: 'FieldSelect', defaultValue: '' },
+]
+
+// ── Detail Tab helpers ─────────────────────────────────────────────────────
+/** Create a blank detail tab config */
+export function createBlankDetail() {
+  return {
+    tabLabel: 'Detail',
+    buttonLabel: 'Pilih Item',    // label for the ButtonMultiSelect / Tambah button
+    mode: 'button_multi_select',  // 'button_multi_select' | 'add_to_list'
+    responseKey: '',       // e.g. m_role_ds (key from GET response)
+    payloadKey: '',        // e.g. m_role_d  (key sent in POST/PUT)
+    // ── ButtonMultiSelect mode fields ──
+    foreignKey: '',        // e.g. m_menu_id
+    foreignDisplay: '',    // e.g. m_menu    (nested object key with display info)
+    apiUrl: '',            // e.g. /api/dynamic/m_menu
+    searchKey: 'name',
+    displayKey: 'name',
+    uniqueKey: 'id',
+    columns: [             // columns for ButtonMultiSelect popup table
+      { key: '', label: '', width: '' },
+    ],
+    displayColumns: [      // which fields to show in the detail table from the master record
+      { key: 'name', label: 'Nama' },
+    ],
+    // ── Shared: detail fields per row ──
+    detailFields: [        // editable fields per detail row
+      { key: 'is_read', label: 'Read', type: 'checkbox', default: true, labelTrue: 'Ya', labelFalse: 'Tidak' },
+    ],
+  }
+}
+
+/** Create a blank column entry */
+export function createBlankColumn() {
+  return { key: '', label: '', width: '' }
+}
+
+/** Create a blank display column entry */
+export function createBlankDisplayColumn() {
+  return { key: '', label: '' }
+}
+
+/** Create a blank detail field entry */
+export function createBlankDetailField() {
+  return { key: '', label: '', type: 'checkbox', default: true, labelTrue: 'Ya', labelFalse: 'Tidak' }
 }

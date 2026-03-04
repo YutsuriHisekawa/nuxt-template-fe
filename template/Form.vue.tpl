@@ -1,7 +1,9 @@
 <script setup lang="js">
+// @ts-nocheck — This is a generator template with placeholders, not runtime code
 import { nextTick } from "vue";
 import { toast } from "vue-sonner";
 import { ArrowLeft, Loader2, Save } from "lucide-vue-next";
+__DETAIL_IMPORTS__
 
 // ============================================================================
 // COMPOSABLES & STORES
@@ -14,6 +16,7 @@ const route = useRoute();
 // STATE
 // ============================================================================
 const loading = ref(false);
+const lastLoadRequestId = ref(0);
 
 const recordId = computed(() => route.params.id);
 const action = computed(() => route.query.action);
@@ -49,20 +52,34 @@ __VALUES_DEFAULTS__
 const errors = reactive({
 __ERRORS_DEFAULTS__
 });
+__DETAIL_STATE__
+__DETAIL_SELECTED_IDS__
+__DETAIL_METHODS__
+
+// ============================================================================
+// API CONFIG — sesuaikan param di sini jika ada perubahan
+// ============================================================================
+const API_BASE = "/api/dynamic/__API_ENDPOINT__";
+__API_DETAIL_ENDPOINT__
+
+const getByIdParams = {
+  join: true,
+};
 
 // ============================================================================
 // API FUNCTIONS
 // ============================================================================
 const getById = async (id) => {
-  return await api.get(`/api/dynamic/__API_ENDPOINT__/${id}`);
+  const qs = new URLSearchParams(getByIdParams).toString();
+  return await api.get(`${API_BASE}/${id}${qs ? `?${qs}` : ''}`);
 };
 
 const createData = async (payload) => {
-  return await api.post("/api/dynamic/__API_ENDPOINT__", payload);
+  return await api.post(API_SAVE, payload);
 };
 
 const updateData = async (id, payload) => {
-  return await api.put(`/api/dynamic/__API_ENDPOINT__/${id}`, payload);
+  return await api.put(`${API_SAVE}/${id}`, payload);
 };
 
 // ============================================================================
@@ -75,6 +92,7 @@ __RESET_VALUES__
   Object.keys(errors).forEach((key) => {
     errors[key] = "";
   });
+__DETAIL_RESET__
 };
 
 // ============================================================================
@@ -83,9 +101,17 @@ __RESET_VALUES__
 const loadData = async (id) => {
   if (!id) return;
 
+  const requestId = ++lastLoadRequestId.value;
+
   loading.value = true;
   try {
     const res = await getById(id);
+
+    const normalizedStatus =
+      res?.status === "success" ? res.status : res?.data?.status;
+    if (normalizedStatus && normalizedStatus !== "success") {
+      throw new Error("Gagal memuat data");
+    }
 
     const sourceData =
       res?.status === "success"
@@ -94,6 +120,10 @@ const loadData = async (id) => {
 
     if (!sourceData || typeof sourceData !== "object" || Array.isArray(sourceData)) {
       throw new Error("Format data tidak valid");
+    }
+
+    if (requestId !== lastLoadRequestId.value) {
+      return;
     }
 
     const data = { ...sourceData };
@@ -119,6 +149,7 @@ const loadData = async (id) => {
         values[key] = data[key] ?? "";
       }
     }
+__DETAIL_LOAD_DATA__
 
     // Force Vue to flush DOM updates
     await nextTick();
@@ -182,6 +213,7 @@ __VALIDATION__
     // Clean payload
     const payload = {
 __PAYLOAD__
+__DETAIL_PAYLOAD__
     };
 
     if (isEditMode.value) {
@@ -250,6 +282,7 @@ __FORM_FIELDS__
           </div>
         </CardContent>
       </Card>
+__DETAIL_TEMPLATE__
 
       <!-- ================================================================ -->
       <!-- ACTION BUTTONS -->

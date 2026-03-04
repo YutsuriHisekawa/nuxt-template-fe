@@ -80,6 +80,20 @@ function genSwitch(f) {
             </div>`
 }
 
+function genFieldBox(f) {
+  return `            <FieldBox
+              id="${f.field}"
+              label="${f.label}"
+              :value="values.${f.field}"
+              @input="(v) => (values.${f.field} = v)"
+              :disabled="loading || isReadOnly"
+              :readonly="isReadOnly"
+              labelTrue="${f.labelTrue || 'Ya'}"
+              labelFalse="${f.labelFalse || 'Tidak'}"
+              class="w-full"
+            />`
+}
+
 function genSelect(f, component = 'FieldSelect') {
   const readonlyAttr = f.readonly ? ':readonly="true"' : ':readonly="isReadOnly"'
   const isStatic = f.sourceType === 'static'
@@ -131,8 +145,22 @@ export const FIELD_REGISTRY = [
     generateReset:   (f) => `    ${f.field}: ${f.defaultValue || 'true'},`,
     generatePayload: (f) => `    ${f.field}: values.${f.field},`,
   },
+  {
+    value: 'fieldbox', searchable: false, showInMobile: false, hasError: false, isFieldBox: true,
+    generateTemplate: genFieldBox,
+    generateDefault: (f) => `  ${f.field}: ${f.defaultValue || 'true'},`,
+    generateReset:   (f) => `    ${f.field}: ${f.defaultValue || 'true'},`,
+    generatePayload: (f) => `    ${f.field}: values.${f.field},`,
+  },
   { value: 'select',             searchable: false, showInMobile: false, hasError: true,  isSwitch: false, generateTemplate: (f) => genSelect(f, 'FieldSelect') },
   { value: 'select_creatable',   searchable: false, showInMobile: false, hasError: true,  isSwitch: false, generateTemplate: (f) => genSelect(f, 'FieldSelectCreatable') },
+  {
+    value: 'space', searchable: false, showInMobile: false, hasError: false, isSpace: true,
+    generateTemplate: () => `            <div></div>`,
+    generateDefault: () => null,
+    generateReset: () => null,
+    generatePayload: () => null,
+  },
 ]
 
 // ── Lookup helper ──────────────────────────────────────────────────────────

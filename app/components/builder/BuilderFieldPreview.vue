@@ -10,6 +10,7 @@ import FieldNumber from '~/components/field/FieldNumber.vue'
 import FieldTextarea from '~/components/field/FieldTextarea.vue'
 import FieldSelect from '~/components/field/FieldSelect.vue'
 import FieldSelectCreatable from '~/components/field/FieldSelectCreatable.vue'
+import FieldBox from '~/components/field/FieldBox.vue'
 
 const COMPONENT_MAP = {
   FieldX,
@@ -17,6 +18,7 @@ const COMPONENT_MAP = {
   FieldTextarea,
   FieldSelect,
   FieldSelectCreatable,
+  FieldBox,
 }
 
 const props = defineProps({
@@ -39,12 +41,19 @@ const previewProps = computed(() => {
 })
 
 const isSwitch = computed(() => entry.value?.isSwitch === true)
+const isFieldBox = computed(() => entry.value?.isFieldBox === true)
+const isSpace = computed(() => entry.value?.isSpace === true)
 
 // Interactive switch state
 const switchValue = ref(props.field.defaultValue !== 'false')
 </script>
 
 <template>
+  <!-- Space: empty placeholder -->
+  <div v-if="isSpace" class="w-full h-10 rounded border border-dashed border-muted-foreground/30 flex items-center justify-center">
+    <span class="text-xs text-muted-foreground/50 select-none">Space</span>
+  </div>
+
   <!-- Switch memerlukan layout khusus -->
   <div v-if="isSwitch" class="flex items-center gap-3 pt-2">
     <Switch :id="field.field || 'switch-preview'" v-model="switchValue" />
@@ -52,6 +61,14 @@ const switchValue = ref(props.field.defaultValue !== 'false')
       {{ switchValue ? (field.labelTrue || 'Aktif') : (field.labelFalse || 'Tidak Aktif') }}
     </Label>
   </div>
+
+  <!-- FieldBox uses its own component -->
+  <component
+    v-else-if="isFieldBox"
+    :is="resolvedComponent"
+    v-bind="previewProps"
+    class="w-full"
+  />
 
   <!-- Semua field lain: interactive preview -->
   <component

@@ -1,4 +1,5 @@
 <script setup lang="js">
+import { nextTick } from "vue";
 import { toast } from "vue-sonner";
 import { ArrowLeft, Loader2, Save } from "lucide-vue-next";
 
@@ -13,6 +14,7 @@ const route = useRoute();
 // STATE
 // ============================================================================
 const loading = ref(false);
+const lastLoadRequestId = ref(0);
 
 const recordId = computed(() => route.params.id);
 const action = computed(() => route.query.action);
@@ -93,12 +95,31 @@ const onReset = () => {
 const loadData = async (id) => {
   if (!id) return;
 
+  const requestId = ++lastLoadRequestId.value;
+
   loading.value = true;
   try {
     const res = await getById(id);
-    if (res.status !== "success") throw new Error("Gagal memuat data");
+    const normalizedStatus =
+      res?.status === "success" ? res.status : res?.data?.status;
+    if (normalizedStatus && normalizedStatus !== "success") {
+      throw new Error("Gagal memuat data");
+    }
 
-    const data = res.data;
+    const sourceData =
+      res?.status === "success"
+        ? res?.data
+        : (res?.data?.data ?? res?.data ?? null);
+
+    if (!sourceData || typeof sourceData !== "object" || Array.isArray(sourceData)) {
+      throw new Error("Format data tidak valid");
+    }
+
+    if (requestId !== lastLoadRequestId.value) {
+      return;
+    }
+
+    const data = { ...sourceData };
 
     // Ensure boolean for switch fields
     for (const key of Object.keys(values)) {
@@ -122,6 +143,9 @@ const loadData = async (id) => {
       }
     }
 
+    // Force Vue to flush DOM updates
+    await nextTick();
+
     if (isCopyMode.value) {
       toast.success("Data berhasil disalin", {
         description: "Silakan edit dan simpan sebagai data baru",
@@ -143,8 +167,15 @@ const loadData = async (id) => {
 watch(
   () => route.params.id,
   (id) => {
+    const normalizedId = Array.isArray(id) ? id[0] : id;
+
+    if (!normalizedId) {
+      onReset();
+      return;
+    }
+
     onReset();
-    if (id) loadData(id);
+    loadData(normalizedId);
   },
   { immediate: true },
 );
@@ -248,7 +279,7 @@ const handleCancel = () => {
     <!-- FORM SECTION -->
     <!-- ================================================================ -->
     <form class="space-y-6" @submit.prevent>
-      <Card>
+      <Card :key="recordId || 'new'">
         <CardHeader>
           <CardTitle>Informasi Master Prefix</CardTitle>
           <CardDescription>
@@ -265,7 +296,7 @@ const handleCancel = () => {
               @input="(v) => (values.m_unit_bisnis_id = v)"
               :hints="errors.m_unit_bisnis_id"
               :required="!isReadOnly"
-              :disabled="loading || isReadOnly"
+              :disabled="loading"
               :readonly="isReadOnly"
               apiUrl="/api/dynamic/m_unit_bisnis?where=is_active:true"
               displayField="nama_comp"
@@ -283,7 +314,7 @@ const handleCancel = () => {
               @input="(v) => (values.nama_prefx = v)"
               :hints="errors.nama_prefx"
               :required="!isReadOnly"
-              :disabled="loading || isReadOnly"
+              :disabled="loading"
               :readonly="isReadOnly"
               placeholder="Tulis Nama Prefix"
               class="w-full"
@@ -297,7 +328,7 @@ const handleCancel = () => {
               @input="(v) => (values.value = v)"
               :hints="errors.value"
               :required="!isReadOnly"
-              :disabled="loading || isReadOnly"
+              :disabled="loading"
               :readonly="isReadOnly"
               placeholder="Prefix 1"
               class="w-full"
@@ -311,7 +342,7 @@ const handleCancel = () => {
               @input="(v) => (values.tipe_prefix = v)"
               :hints="errors.tipe_prefix"
               :required="!isReadOnly"
-              :disabled="loading || isReadOnly"
+              :disabled="loading"
               :readonly="isReadOnly"
               :options="[{ value: 'TEXT', label: 'TEXT' }, { value: 'DAY', label: 'DAY' }, { value: 'MONTH', label: 'MONTH' }, { value: 'YEAR', label: 'YEAR' }, { value: 'SEQ(XXXX)', label: 'SEQ (XXXX)' }]"
               displayField="label"
