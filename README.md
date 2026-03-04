@@ -13,7 +13,7 @@
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-4.1-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
 [![AG Grid](https://img.shields.io/badge/AG_Grid-32.3-0084C7?style=for-the-badge)](https://www.ag-grid.com)
 
-<img src="https://media1.tenor.com/m/nIXUxsD5xN4AAAAC/angelina-gilberta.gif" alt="Let's Go!" width="300" />
+<img src="https://media.tenor.com/nIXUxsD5xN4AAAAC/angelina-gilberta.gif" alt="Let's Go!" width="300" />
 
 </div>
 
@@ -37,7 +37,7 @@
 | **Custom Field Types** | Text, Number, Textarea, Select, Switch, Checkbox, Space, dan extendable |
 
 <div align="center">
-<img src="https://media1.tenor.com/m/xVmg3tvcW0QAAAAC/endmin-endministrator.gif" alt="Endfield Admin" width="280" />
+<img src="https://media.tenor.com/xVmg3tvcW0QAAAAC/endmin-endministrator.gif" alt="Endfield Admin" width="280" />
 </div>
 
 ## Tech Stack
@@ -196,7 +196,7 @@ const updateData = async (id, payload) => {
 | `space` | — | Layout spacer (grid gap) |
 
 <div align="center">
-<img src="https://media1.tenor.com/m/TcbIDOJY9CcAAAAC/absolute-cinema-absolute-cinema-meme.gif" alt="Absolute Cinema" width="300" />
+<img src="https://media.tenor.com/TcbIDOJY9CcAAAAC/absolute-cinema-absolute-cinema-meme.gif" alt="Absolute Cinema" width="300" />
 
 *When your CRUD page generates perfectly on the first try*
 </div>
@@ -216,7 +216,7 @@ const updateData = async (id, payload) => {
 
 **Built with caffeine and determination.**
 
-<img src="https://media1.tenor.com/m/nIXUxsD5xN4AAAAC/angelina-gilberta.gif" alt="Endfield" width="200" />
+<img src="https://media.tenor.com/nIXUxsD5xN4AAAAC/angelina-gilberta.gif" alt="Endfield" width="200" />
 
 *Endfield — FAHRIZAL*
 
