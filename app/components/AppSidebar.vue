@@ -1,0 +1,373 @@
+<script setup lang="ts">
+import {
+  Command,
+  Bell,
+  LayoutDashboard,
+  Logs,
+} from "lucide-vue-next"
+import * as LucideIcons from "lucide-vue-next"
+
+const props = withDefaults(defineProps<{
+  variant?: "inset" | "sidebar" | "floating"
+  side?: "left" | "right"
+  collapsible?: "none" | "icon" | "offcanvas"
+}>(), {
+  variant: "inset",
+  side: "left",
+  collapsible: "offcanvas",
+})
+
+const authStore = useAuthStore()
+const route = useRoute()
+const searchQuery = ref("")
+type MenuCache = { items: any[]; loaded: boolean; loading: boolean }
+const menuCache = useState<MenuCache>("menu-cache", () => ({ items: [], loaded: false, loading: false }))
+const loading = computed(() => !menuCache.value.loaded)
+
+type NavItem = {
+  title: string
+  url: string
+  icon: any
+  isActive?: boolean
+  items?: NavItem[]
+}
+
+// Helper function to get icon component from string name
+const getIconComponent = (iconName: string) => {
+  if (!iconName) return LucideIcons.FileText
+  const icon = (LucideIcons as any)[iconName]
+  return icon || LucideIcons.FileText
+}
+
+// Helper function to get module icon
+const getModuleIcon = (moduleName: string): any => {
+  const iconMap: Record<string, any> = {
+    'SETUP': LucideIcons.Settings,
+    'PURCHASING': LucideIcons.ShoppingCart,
+    'MARKETING': LucideIcons.Megaphone,
+    'INVENTORY': LucideIcons.Package,
+    'DEV': LucideIcons.Code2,
+    'PRODUCTION': LucideIcons.Factory,
+    'SALES': LucideIcons.TrendingUp,
+    'FINANCE': LucideIcons.DollarSign,
+    'HR': LucideIcons.Users,
+    'LOGISTICS': LucideIcons.Truck,
+  }
+  
+  return iconMap[moduleName.toUpperCase()] || LucideIcons.Box
+}
+
+// Load menus from API (shared cache)
+const loadMenus = async () => {
+  if (menuCache.value.loaded || menuCache.value.loading) return
+  menuCache.value.loading = true
+  try {
+    const api = useApi()
+    const response = await api.get('/api/dynamic/m_menu?no_pagination=true')
+
+    if (response.status === 'success' && Array.isArray(response.data)) {
+      menuCache.value.items = response.data
+    }
+  } catch (error) {
+    console.error('Failed to load menus:', error)
+  } finally {
+    menuCache.value.loaded = true
+    menuCache.value.loading = false
+  }
+}
+
+const dynamicMenus = computed(() => {
+  return menuCache.value.items
+    .filter((m: any) => m.is_active)
+    .sort((a: any, b: any) => {
+      const seqA = a.seq.split('.').map((n: string) => parseInt(n) || 0)
+      const seqB = b.seq.split('.').map((n: string) => parseInt(n) || 0)
+      for (let i = 0; i < Math.max(seqA.length, seqB.length); i++) {
+        const partA = seqA[i] || 0
+        const partB = seqB[i] || 0
+        if (partA !== partB) {
+          return partA - partB
+        }
+      }
+      return 0
+    })
+})
+
+const normalizePath = (value: string) => {
+  const trimmed = (value || '').trim()
+  if (!trimmed) return ''
+  const withSlash = trimmed.startsWith('/') ? trimmed : `/${trimmed}`
+  return withSlash.replace(/\/+$/, '')
+}
+
+// Check if a menu item should be active
+const isMenuItemActive = (itemPath: string): boolean => {
+  const current = normalizePath(route.path)
+  const target = normalizePath(itemPath)
+  if (!current || !target) return false
+  return current === target || current.startsWith(target + '/')
+}
+
+// Build hierarchical menu structure from flat dynamic menus
+const buildMenuStructure = computed(() => {
+  // Group by modul
+  const modulesMap = new Map<string, any[]>()
+  
+  dynamicMenus.value.forEach((menu: any) => {
+    const modul = menu.modul || 'OTHER'
+    if (!modulesMap.has(modul)) {
+      modulesMap.set(modul, [])
+    }
+    modulesMap.get(modul)!.push(menu)
+  })
+
+  const result: NavItem[] = []
+
+  // Build menu items per module
+  modulesMap.forEach((menus, modulName) => {
+    // Group by sub_modul within each modul
+    const subModulMap = new Map<string, any[]>()
+    
+    menus.forEach(menu => {
+      const subModul = menu.sub_modul?.trim() || '_root'
+      if (!subModulMap.has(subModul)) {
+        subModulMap.set(subModul, [])
+      }
+      subModulMap.get(subModul)!.push(menu)
+    })
+
+    const moduleItems: NavItem[] = []
+
+    subModulMap.forEach((items, subModul) => {
+      if (subModul === '_root' || subModul === '') {
+        // No sub-modul, add directly
+        items.forEach(item => {
+          moduleItems.push({
+            title: item.name,
+            url: item.path,
+            icon: getIconComponent(item.icon?.trim()),
+            isActive: isMenuItemActive(item.path),
+          })
+        })
+      } else {
+        // Has sub-modul, create nested structure
+        moduleItems.push({
+          title: subModul,
+          url: '#',
+          icon: LucideIcons.Folder,
+          isActive: items.some((i: any) => isMenuItemActive(i.path)),
+          items: items.map(item => ({
+            title: item.name,
+            url: item.path,
+            icon: getIconComponent(item.icon?.trim()),
+            isActive: isMenuItemActive(item.path),
+          }))
+        })
+      }
+    })
+
+    if (modulName === 'SETUP') {
+      moduleItems.unshift({
+        title: 'Menu',
+        url: '/setup/menu',
+        icon: Logs,
+        isActive: isMenuItemActive('/setup/menu'),
+      })
+    }
+
+    result.push({
+      title: modulName,
+      url: '#',
+      icon: getModuleIcon(modulName),
+      isActive: moduleItems.some(i => i.isActive || (i.items && i.items.some(sub => sub.isActive))),
+      items: moduleItems,
+    })
+  })
+
+  return result
+})
+
+// All menu items for search (flattened)
+const allMenuItems = computed(() => {
+  const items: any[] = []
+  const hasSetupModule = dynamicMenus.value.some(menu => menu.modul === 'SETUP')
+  if (hasSetupModule) {
+    items.push({
+      title: 'Master Menu',
+      url: '/setup/menu',
+      icon: Logs,
+      parent: 'SETUP'
+    })
+  }
+  
+  dynamicMenus.value.forEach(menu => {
+    items.push({
+      title: menu.name,
+      url: menu.path,
+      icon: getIconComponent(menu.icon?.trim()),
+      parent: menu.sub_modul ? `${menu.modul} > ${menu.sub_modul}` : menu.modul
+    })
+  })
+
+  return items
+})
+
+const filteredMenuItems = computed(() => {
+  if (!searchQuery.value.trim()) {
+    return allMenuItems.value
+  }
+
+  const query = searchQuery.value.toLowerCase()
+  return allMenuItems.value.filter((item: any) =>
+    item.title.toLowerCase().includes(query) ||
+    (item.parent && item.parent.toLowerCase().includes(query))
+  )
+})
+
+const data = computed(() => {
+  return {
+    user: {
+      name: authStore.user?.username ?? "User",
+      email: authStore.user?.email ?? "",
+      avatar: "",
+    },
+    navMain: searchQuery.value.trim()
+      ? (() => {
+          // Group filtered items by their parent (Module > SubModule)
+          const grouped: Record<string, any[]> = {}
+          
+          const query = searchQuery.value.toLowerCase()
+          const matchedItems = filteredMenuItems.value.filter((item: any) => 
+            item.title.toLowerCase().includes(query)
+          )
+          
+          matchedItems.forEach((item: any) => {
+            const parentKey = item.parent || 'OTHER'
+            if (!grouped[parentKey]) {
+              grouped[parentKey] = []
+            }
+            grouped[parentKey].push({
+              title: item.title,
+              url: item.url,
+              icon: item.icon,
+              isActive: isMenuItemActive(item.url),
+            })
+          })
+          
+          // Convert grouped to menu structure
+          const moduleMap: Record<string, NavItem> = {}
+          
+          Object.entries(grouped).forEach(([parent, items]) => {
+            const parts = parent.split(' > ')
+            const moduleName = parts[0] || 'OTHER'
+            const subModuleName = parts[1]
+            
+            if (!moduleMap[moduleName]) {
+              moduleMap[moduleName] = {
+                title: moduleName,
+                url: '#',
+                icon: getModuleIcon(moduleName),
+                isActive: false,
+                items: []
+              }
+            }
+            
+            if (subModuleName) {
+              // Check if submodule already exists
+              let subModule = moduleMap[moduleName].items!.find((s: NavItem) => s.title === subModuleName)
+              if (!subModule) {
+                subModule = {
+                  title: subModuleName,
+                  url: '#',
+                  icon: LucideIcons.FolderOpen,
+                  isActive: false,
+                  items: []
+                } as NavItem
+                moduleMap[moduleName].items!.push(subModule)
+              }
+              subModule.items!.push(...items)
+              subModule.isActive = subModule.items!.some((i: NavItem) => i.isActive)
+            } else {
+              moduleMap[moduleName].items!.push(...items)
+            }
+            
+            moduleMap[moduleName].isActive = moduleMap[moduleName].items!.some((i: NavItem) => i.isActive)
+          })
+          
+          return Object.values(moduleMap)
+        })()
+      : buildMenuStructure.value,
+    navSecondary: [],
+  }
+})
+
+// Load menus on mount
+onMounted(loadMenus)
+</script>
+
+<template>
+  <Sidebar v-bind="props">
+    <SidebarHeader>
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton size="lg" as-child>
+            <NuxtLink to="/">
+              <div class="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary dark:bg-sidebar-primary/20">
+                <img src="/logo.webp" alt="Endfield" class="h-5 w-5" />
+              </div>
+              <div class="grid flex-1 text-left text-sm leading-tight">
+                <span class="truncate font-semibold">Endfield</span>
+              </div>
+            </NuxtLink>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
+      <div class="px-2 pt-2">
+        <SidebarInput v-model="searchQuery" placeholder="Search menu..." />
+      </div>
+    </SidebarHeader>
+    <SidebarContent>
+      <!-- Loading State -->
+      <div v-if="loading" class="px-3 space-y-2">
+        <div class="space-y-1">
+          <div class="h-4 w-16 bg-gray-200 rounded animate-pulse mb-2"></div>
+          <div class="h-9 w-full bg-gray-200 rounded animate-pulse"></div>
+          <div class="h-9 w-full bg-gray-200 rounded animate-pulse"></div>
+          <div class="h-9 w-full bg-gray-200 rounded animate-pulse"></div>
+        </div>
+      </div>
+      
+      <!-- Actual Menu -->
+      <template v-else>
+        <!-- Static Menu Items (No Label) -->
+        <SidebarGroup>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton :tooltip="'Notifikasi'" :is-active="route.path === '/notifikasi'" as-child>
+                <NuxtLink to="/notifikasi" class="flex items-center gap-2">
+                  <Bell class="h-4 w-4 shrink-0" />
+                  <span>Notifikasi</span>
+                </NuxtLink>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton :tooltip="'Dashboard'" :is-active="route.path === '/dashboard' || route.path === '/'" as-child>
+                <NuxtLink to="/dashboard" class="flex items-center gap-2">
+                  <LayoutDashboard class="h-4 w-4 shrink-0" />
+                  <span>Dashboard</span>
+                </NuxtLink>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroup>
+        
+        <!-- Dynamic Menu -->
+        <NavMain class="-mt-3" :items="data.navMain" />
+        <NavSecondary :items="data.navSecondary" class="mt-auto" />
+      </template>
+    </SidebarContent>
+    <SidebarFooter>
+      <NavUser :user="data.user" />
+    </SidebarFooter>
+  </Sidebar>
+</template>
