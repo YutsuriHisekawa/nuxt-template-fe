@@ -36,6 +36,10 @@
 | **50+ UI Components** | shadcn-vue based — accordion, dialog, drawer, tabs, dan lainnya |
 | **Custom Field Types** | Text, Number, Textarea, Select, Switch, Checkbox, Space, dan extendable |
 
+<div align="center">
+<img src="https://media1.tenor.com/m/xVmg3tvcW0QAAAAC/endmin-endministrator.gif" alt="Endfield Admin" width="280" />
+</div>
+
 ## Tech Stack
 
 ```
@@ -190,6 +194,12 @@ const updateData = async (id, payload) => {
 | `switch` | `Switch` | Boolean toggle |
 | `checkbox` | `FieldBox` | Checkbox |
 | `space` | — | Layout spacer (grid gap) |
+
+<div align="center">
+<img src="https://media1.tenor.com/m/TcbIDOJY9CcAAAAC/absolute-cinema-absolute-cinema-meme.gif" alt="Absolute Cinema" width="300" />
+
+*When your CRUD page generates perfectly on the first try*
+</div>
 
 ## Scripts
 
