@@ -75,13 +75,13 @@ const handleInput = (event) => {
     </Label>
     <Textarea
       :id="id"
-      :value="currentValue"
+      :modelValue="currentValue"
       :placeholder="placeholder"
       :disabled="disabled"
       :readonly="readonly"
       :rows="rows"
       :class="{ 'border-destructive': hasError }"
-      @input="handleInput"
+      @update:modelValue="(v) => { emit('input', v); emit('update:modelValue', v) }"
     />
     <p v-if="hints" :class="hasError ? 'text-destructive' : 'text-muted-foreground'" class="text-sm mt-1">
       {{ hints }}

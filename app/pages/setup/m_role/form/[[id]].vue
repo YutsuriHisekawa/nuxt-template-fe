@@ -352,7 +352,7 @@ const handleCancel = () => {
               :hints="errors.kode_role"
               :required="false"
               :disabled="loading || isReadOnly"
-              :readonly="isReadOnly"
+              :readonly="!isReadOnly"
               placeholder="Auto Generated System"
               class="w-full"
             />
