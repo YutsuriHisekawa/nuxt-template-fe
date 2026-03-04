@@ -1,7 +1,7 @@
 <script setup>
 import { computed } from 'vue'
-import { Textarea } from '~/app/components/ui/textarea'
-import { Label } from '~/app/components/ui/label'
+import { Textarea } from '~/components/ui/textarea'
+import { Label } from '~/components/ui/label'
 
 const props = defineProps({
   /** Field label */

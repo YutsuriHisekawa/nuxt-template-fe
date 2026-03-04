@@ -32,7 +32,7 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     public: {
-      baseUrl: process.env.NUXT_PUBLIC_BASE_URL || 'https://server.qqltech.com:7129'
+      baseUrl: process.env.NUXT_PUBLIC_BASE_URL || 'https://server.qqltech.com:8002'
     }
   },
 
