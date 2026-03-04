@@ -90,7 +90,7 @@ Output:
 
 ```
 ---------------------------------------
-  MVG Route Builder
+  Endfield Route Builder
 ---------------------------------------
   Module : setup/m_supplier
   API    : m_supplier
@@ -117,7 +117,7 @@ app/pages/setup/m_supplier/form/[[id]].vue ← Form page (CRUD)
 ## Project Structure
 
 ```
-fe-mvg-nuxt/
+endfield/
 ├── app/
 │   ├── components/
 │   │   ├── builder/          # Visual page builder components
@@ -208,6 +208,6 @@ const updateData = async (id, payload) => {
 
 <img src="https://media1.tenor.com/m/nIXUxsD5xN4AAAAC/angelina-gilberta.gif" alt="Endfield" width="200" />
 
-*Endfield — QQL Tech*
+*Endfield — FAHRIZAL*
 
 </div>
