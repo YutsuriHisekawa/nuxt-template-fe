@@ -7,7 +7,10 @@ export default defineNuxtRouteMiddleware(async (to) => {
 
   // Saat page refresh (session belum di-verify), cek httpOnly cookie via backend
   if (!authStore.sessionVerified && !isPublicPage) {
-    const isValid = await authStore.verifySession()
+    // Saat SSR, browser cookie tidak otomatis dikirim oleh $fetch
+    // Kita harus forward cookie dari incoming request secara manual
+    const ssrHeaders = import.meta.server ? useRequestHeaders(['cookie']) : {}
+    const isValid = await authStore.verifySession(ssrHeaders)
     if (!isValid) {
       return navigateTo('/login', { replace: true })
     }

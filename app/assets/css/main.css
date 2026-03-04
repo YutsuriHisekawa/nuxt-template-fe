@@ -404,3 +404,19 @@ html::-webkit-scrollbar-thumb:hover {
 .app-scroll::-webkit-scrollbar-thumb:hover {
   background-color: hsl(var(--primary) / 0.45);
 }
+
+/* ===== Page Transition (motion-enhanced via @vueuse/motion) ===== */
+.page-enter-active,
+.page-leave-active {
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.page-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.page-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+}

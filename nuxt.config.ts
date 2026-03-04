@@ -18,11 +18,14 @@ export default defineNuxtConfig({
           href: '/logo.webp'
         }
       ]
-    }
+    },
+    pageTransition: { name: 'page', mode: 'out-in' },
+    layoutTransition: false
   },
 
   modules: [
-    '@pinia/nuxt'
+    '@pinia/nuxt',
+    '@vueuse/motion/nuxt'
   ],
 
   css: ['~/assets/css/main.css'],

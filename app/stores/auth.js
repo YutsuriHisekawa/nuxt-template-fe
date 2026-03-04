@@ -35,9 +35,9 @@ export const useAuthStore = defineStore('auth', () => {
    * Dipanggil saat page refresh untuk cek apakah httpOnly cookie masih valid
    * Backend juga return fresh token untuk disimpan di memory
    */
-  async function verifySession() {
+  async function verifySession(extraHeaders = {}) {
     try {
-      const headers = {}
+      const headers = { ...extraHeaders }
       // Kirim token dari memory sebagai fallback (kalau httpOnly cookie tidak ada)
       if (token.value) {
         headers['Authorization'] = `Bearer ${token.value}`
@@ -46,7 +46,7 @@ export const useAuthStore = defineStore('auth', () => {
       const data = await $fetch(`${baseUrl}/api/auth/verify`, {
         method: 'GET',
         headers,
-        credentials: 'include', // kirim httpOnly cookie
+        credentials: 'include', // kirim httpOnly cookie (client-side)
       })
 
       if (data.status === 'success') {
