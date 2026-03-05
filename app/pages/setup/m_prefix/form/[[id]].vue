@@ -1,20 +1,18 @@
 <script setup lang="js">
-import { nextTick } from "vue";
 import { toast } from "vue-sonner";
 import { ArrowLeft, Loader2, Save } from "lucide-vue-next";
 
 // ============================================================================
-// COMPOSABLES & STORES
+// COMPOSABLES & ROUTE
 // ============================================================================
-const api = useApi();
-const router = useRouter();
-const route = useRoute();
+const api = useApi();       // Helper untuk panggil API (GET, POST, PUT)
+const router = useRouter();  // Untuk navigasi antar halaman
+const route = useRoute();    // Untuk baca parameter URL (misalnya :id)
 
 // ============================================================================
-// STATE
+// STATE — variabel reaktif yang dipakai di form
 // ============================================================================
-const loading = ref(false);
-const lastLoadRequestId = ref(0);
+const loading = ref(false);  // Menampilkan spinner saat sedang request
 
 const recordId = computed(() => route.params.id);
 const action = computed(() => route.query.action);
@@ -59,22 +57,58 @@ const errors = reactive({
 });
 
 // ============================================================================
-// API FUNCTIONS
+// API ENDPOINT — sesuaikan jika endpoint berubah
 // ============================================================================
-const getById = async (id) => {
-  return await api.get(`/api/dynamic/m_prefix/${id}`);
-};
-
-const createData = async (payload) => {
-  return await api.post("/api/dynamic/m_prefix", payload);
-};
-
-const updateData = async (id, payload) => {
-  return await api.put(`/api/dynamic/m_prefix/${id}`, payload);
-};
+const API_BASE = "/api/dynamic/m_prefix";
+const API_SAVE = API_BASE;
 
 // ============================================================================
-// RESET FORM HANDLER
+// LOAD DATA — Dipanggil saat halaman pertama kali dibuka (onBeforeMount)
+// ============================================================================
+const isRead = !!recordId.value;
+
+onBeforeMount(async () => {
+  if (!isRead) return;
+
+  loading.value = true;
+  try {
+    const res = await api.get(`${API_BASE}/${recordId.value}`);
+    const data = res?.data ?? res;
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+      throw new Error("Data tidak ditemukan");
+    }
+
+    // Konversi boolean untuk field switch
+    for (const key of Object.keys(values)) {
+      if (typeof values[key] === "boolean" && data[key] !== undefined) {
+        data[key] = data[key] === true || data[key] === 1 || data[key] === "1";
+      }
+    }
+
+    // Mode Copy: hapus id supaya tersimpan sebagai data baru
+    if (isCopyMode.value) {
+      delete data.id;
+      delete data.createdAt;
+      delete data.updatedAt;
+    }
+
+    // Masukkan data ke form
+    for (const key in data) {
+      if (Object.prototype.hasOwnProperty.call(values, key)) {
+        values[key] = data[key] ?? "";
+      }
+    }
+  } catch (err) {
+    toast.error("Gagal memuat data", {
+      description: err?.message || "Terjadi kesalahan",
+    });
+    setTimeout(() => router.push("/setup/m_prefix"), 2000);
+  }
+  loading.value = false;
+});
+
+// ============================================================================
+// RESET FORM — Kembalikan semua field ke nilai default
 // ============================================================================
 const onReset = () => {
   Object.assign(values, {
@@ -90,106 +124,15 @@ const onReset = () => {
 };
 
 // ============================================================================
-// LOAD DATA (watch route param — works on both navigation & refresh)
-// ============================================================================
-const loadData = async (id) => {
-  if (!id) return;
-
-  const requestId = ++lastLoadRequestId.value;
-
-  loading.value = true;
-  try {
-    const res = await getById(id);
-    const normalizedStatus =
-      res?.status === "success" ? res.status : res?.data?.status;
-    if (normalizedStatus && normalizedStatus !== "success") {
-      throw new Error("Gagal memuat data");
-    }
-
-    const sourceData =
-      res?.status === "success"
-        ? res?.data
-        : (res?.data?.data ?? res?.data ?? null);
-
-    if (!sourceData || typeof sourceData !== "object" || Array.isArray(sourceData)) {
-      throw new Error("Format data tidak valid");
-    }
-
-    if (requestId !== lastLoadRequestId.value) {
-      return;
-    }
-
-    const data = { ...sourceData };
-
-    // Ensure boolean for switch fields
-    for (const key of Object.keys(values)) {
-      if (typeof values[key] === "boolean" && data[key] !== undefined) {
-        const v = data[key];
-        data[key] = v === true || v === 1 || v === "1";
-      }
-    }
-
-    // Mode copy: hapus id agar jadi create baru
-    if (isCopyMode.value) {
-      delete data.id;
-      delete data.createdAt;
-      delete data.updatedAt;
-    }
-
-    // Assign hanya key yang sudah ada di state reactive values
-    for (const key in data) {
-      if (Object.prototype.hasOwnProperty.call(values, key)) {
-        values[key] = data[key] ?? "";
-      }
-    }
-
-    // Force Vue to flush DOM updates
-    await nextTick();
-
-    if (isCopyMode.value) {
-      toast.success("Data berhasil disalin", {
-        description: "Silakan edit dan simpan sebagai data baru",
-      });
-    } else {
-      toast.success("Data berhasil dimuat");
-    }
-  } catch (error) {
-    console.error("Error loading data:", error);
-    toast.error("Gagal memuat data", {
-      description: error?.message || "Terjadi kesalahan",
-    });
-    setTimeout(() => router.push("/setup/m_prefix"), 2000);
-  } finally {
-    loading.value = false;
-  }
-};
-
-watch(
-  () => route.params.id,
-  (id) => {
-    const normalizedId = Array.isArray(id) ? id[0] : id;
-
-    if (!normalizedId) {
-      onReset();
-      return;
-    }
-
-    onReset();
-    loadData(normalizedId);
-  },
-  { immediate: true },
-);
-
-// ============================================================================
-// SAVE HANDLER
+// SAVE — Simpan data ke server (POST untuk create, PUT untuk update)
 // ============================================================================
 const onSave = async () => {
-  // Clear errors
+  // 1. Bersihkan error sebelumnya
   Object.keys(errors).forEach((key) => {
     errors[key] = "";
   });
 
-  // Validasi required
+  // 2. Validasi field wajib
   let invalid = false;
   if (!values.m_unit_bisnis_id?.toString().trim()) {
     errors.m_unit_bisnis_id = "Unit Bisnis wajib diisi";
@@ -215,41 +158,40 @@ const onSave = async () => {
     return;
   }
 
+  // 3. Konfirmasi sebelum menyimpan
+  if (!window.confirm("Simpan data?")) return;
+
+  // 4. Kirim data ke server
   loading.value = true;
   try {
-    // Clean payload
     const payload = {
-    m_unit_bisnis_id: values.m_unit_bisnis_id?.toString().trim() || null,
-    nama_prefx: values.nama_prefx?.toString().trim() || null,
-    value: values.value?.toString().trim() || null,
-    tipe_prefix: values.tipe_prefix?.toString().trim() || null,
-    is_active: values.is_active,
+      m_unit_bisnis_id: values.m_unit_bisnis_id?.toString().trim() || null,
+      nama_prefx: values.nama_prefx?.toString().trim() || null,
+      value: values.value?.toString().trim() || null,
+      tipe_prefix: values.tipe_prefix?.toString().trim() || null,
+      is_active: values.is_active,
     };
 
     if (isEditMode.value) {
-      await updateData(recordId.value, payload);
+      await api.put(`${API_SAVE}/${recordId.value}`, payload);
       toast.success("Data berhasil diperbarui");
     } else {
-      await createData(payload);
+      await api.post(API_SAVE, payload);
       toast.success("Data berhasil dibuat");
     }
 
-    // Navigate back to list
     router.replace("/setup/m_prefix");
   } catch (error) {
     toast.error(
       isEditMode.value ? "Gagal memperbarui data" : "Gagal membuat data",
-      {
-        description: error?.message || "Terjadi kesalahan",
-      },
+      { description: error?.message || "Terjadi kesalahan" },
     );
-  } finally {
-    loading.value = false;
   }
+  loading.value = false;
 };
 
 // ============================================================================
-// CANCEL HANDLER
+// CANCEL — Kembali ke halaman list tanpa menyimpan
 // ============================================================================
 const handleCancel = () => {
   router.push("/setup/m_prefix");
