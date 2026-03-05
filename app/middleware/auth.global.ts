@@ -3,7 +3,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
 
   // Halaman yang boleh diakses tanpa login
   const publicPages = ['/login']
-  const isPublicPage = publicPages.includes(to.path)
+  const isPublicPage = publicPages.includes(to.path) || to.path.startsWith('/builder_file')
 
   // Kalau user baru saja logout, langsung redirect ke login (jangan re-verify)
   if (authStore.loggedOut && !isPublicPage) {
