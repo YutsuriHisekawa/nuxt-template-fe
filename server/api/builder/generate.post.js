@@ -58,7 +58,7 @@ function buildFormFields(fields) {
     const entry = getRegistryEntry(f.type)
     let tpl
     if (entry?.generateTemplate) {
-      tpl = entry.generateTemplate(f)
+      tpl = entry.generateTemplate(f, fields)
     } else {
       // Fallback: plain FieldX
       tpl = `            <FieldX

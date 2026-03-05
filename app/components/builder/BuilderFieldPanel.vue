@@ -59,6 +59,15 @@ function updateField(key, value) {
   if (key === 'sourceType' && value === 'api' && !Array.isArray(updated.apiParams)) {
     updated.apiParams = []
   }
+  // Clear dependsOn chain config when switching to static
+  if (key === 'sourceType' && value === 'static') {
+    updated.dependsOn = ''
+    updated.dependsOnParam = ''
+  }
+  // Clear dependsOnParam when dependsOn is cleared
+  if (key === 'dependsOn' && !value) {
+    updated.dependsOnParam = ''
+  }
   emit('update:field', updated)
 }
 
@@ -259,8 +268,7 @@ function addParamItem(key) {
       </div>
 
       <!-- Params List (for API query params) -->
-      <div v-else-if="pf.type === 'paramsList'">
-        <label class="block mb-1 font-medium text-muted-foreground">{{ pf.label }}</label>
+      <div v-else-if="pf.type === 'paramsList'">        <label class="block mb-1 font-medium text-muted-foreground">{{ pf.label }}</label>
         <div class="flex flex-col gap-2">
           <div v-for="(param, i) in (Array.isArray(field[pf.key]) ? field[pf.key] : [])" :key="i" class="flex gap-2 items-center">
             <input
@@ -293,6 +301,29 @@ function addParamItem(key) {
             Tambah Param
           </button>
         </div>
+      </div>
+
+      <!-- Select Field (pick another field as parent for cascading) -->
+      <div v-else-if="pf.type === 'selectField'">
+        <label :for="'panel-' + pf.key" class="block mb-1 font-medium text-muted-foreground">
+          {{ pf.label }}
+        </label>
+        <select
+          :id="'panel-' + pf.key"
+          :value="field[pf.key] || ''"
+          class="w-full rounded bg-muted border border-border text-foreground px-3 py-1.5 focus:border-primary focus:ring-1 focus:ring-primary text-sm"
+          @change="updateField(pf.key, $event.target.value)"
+        >
+          <option value="">-- Tidak ada (standalone) --</option>
+          <option
+            v-for="f in allFields.filter(af => af.field && af.field !== field.field && (!pf.filterTypes || pf.filterTypes.includes(af.type)))"
+            :key="f.field"
+            :value="f.field"
+          >
+            {{ f.label || f.field }}
+          </option>
+        </select>
+        <p v-if="pf.hint" class="text-xs text-muted-foreground/70 mt-0.5">{{ pf.hint }}</p>
       </div>
 
       <!-- Text input (default) -->

@@ -175,9 +175,20 @@ const handleClickOutside = (event) => {
   }
 }
 
+/** Normalize response: handle plain string arrays → [{valueField, displayField}] */
+const normalizeOptions = (items) => {
+  if (!Array.isArray(items)) return []
+  return items.map(item => {
+    if (typeof item === 'string' || typeof item === 'number') {
+      return { [props.valueField]: String(item), [props.displayField]: String(item) }
+    }
+    return item
+  })
+}
+
 const fetchOptions = async () => {
   if (!props.apiUrl) {
-    if (props.options?.length) selectOptions.value = props.options
+    if (props.options?.length) selectOptions.value = normalizeOptions(props.options)
     return
   }
   loading.value = true
@@ -190,12 +201,21 @@ const fetchOptions = async () => {
     }
     const sep = props.apiUrl.includes('?') ? '&' : '?'
     const url = `${props.apiUrl}${sep}${params.toString()}`
-    const response = await api.get(url)
+
+    // Support full external URL (https://...) or relative via useApi
+    const isFullUrl = /^https?:\/\//i.test(props.apiUrl)
+    let response
+    if (isFullUrl) {
+      const res = await fetch(url)
+      response = await res.json()
+    } else {
+      response = await api.get(url)
+    }
 
     if (response?.status === 'success' && Array.isArray(response.data)) {
-      selectOptions.value = response.data
+      selectOptions.value = normalizeOptions(response.data)
     } else if (Array.isArray(response)) {
-      selectOptions.value = response
+      selectOptions.value = normalizeOptions(response)
     } else {
       selectOptions.value = []
     }
@@ -209,12 +229,12 @@ const fetchOptions = async () => {
 
 watch(() => props.options, (newOptions) => {
   if (newOptions && !props.apiUrl) {
-    selectOptions.value = newOptions
+    selectOptions.value = normalizeOptions(newOptions)
   }
 }, { deep: true })
 
 onMounted(() => {
-  if (props.options?.length) selectOptions.value = props.options
+  if (props.options?.length) selectOptions.value = normalizeOptions(props.options)
   if (currentValue.value?.trim() && props.apiUrl) fetchOptions()
   document.addEventListener('click', handleClickOutside)
 })
@@ -233,6 +253,19 @@ watch(() => currentValue.value, (newVal, oldVal) => {
 
 watch(() => props.apiUrl, () => {
   if (open.value) fetchOptions()
+}, { deep: true })
+
+// Re-fetch when apiParams change (e.g. cascading select: parent value changed)
+watch(() => props.apiParams, (newParams, oldParams) => {
+  if (!props.apiUrl) return
+  // Check if params actually changed
+  const newStr = JSON.stringify(newParams || {})
+  const oldStr = JSON.stringify(oldParams || {})
+  if (newStr !== oldStr) {
+    selectOptions.value = []
+    // If dropdown is open, re-fetch immediately
+    if (open.value) fetchOptions()
+  }
 }, { deep: true })
 </script>
 

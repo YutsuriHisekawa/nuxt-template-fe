@@ -58,7 +58,7 @@ const PANEL = {
   },
   apiUrl: {
     key: 'apiUrl', label: 'API Endpoint', type: 'text', placeholder: '/api/dynamic/m_supplier',
-    hint: 'Endpoint API untuk fetch data options',
+    hint: 'Relative (/api/dynamic/...) atau full URL (https://...)',
     hideWhen: (f) => f.sourceType === 'static',
   },
   apiParams: {
@@ -85,6 +85,16 @@ const PANEL = {
   fullWidth: {
     key: 'fullWidth', label: 'Full Width (2 kolom)', type: 'checkbox',
   },
+  dependsOn: {
+    key: 'dependsOn', label: 'Depends On (Parent)', type: 'selectField',
+    hint: 'Pilih field lain sebagai parent (field ini disabled sampai parent terisi)',
+  },
+  dependsOnParam: {
+    key: 'dependsOnParam', label: 'Param Name', type: 'text',
+    placeholder: 'provinsi',
+    hint: 'Nama query param yang dikirim ke API (value parent)',
+    hideWhen: (f) => f.sourceType === 'static' || !f.dependsOn,
+  },
   dateDefaultValue: {
     key: 'defaultValue', label: 'Default Value', type: 'buttongroup',
     options: [
@@ -95,12 +105,12 @@ const PANEL = {
 }
 
 // ── Common panel sets ──────────────────────────────────────────────────────
-const COMMON_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.defaultValue, PANEL.required, PANEL.readonly, PANEL.fullWidth]
-const SELECT_PANELS = [...COMMON_PANELS, PANEL.sourceType, PANEL.apiUrl, PANEL.apiParams, PANEL.displayField, PANEL.valueField, PANEL.staticOptions]
-const SWITCH_PANELS = [PANEL.fieldName, PANEL.label, PANEL.defaultValue, PANEL.labelTrue, PANEL.labelFalse, PANEL.fullWidth]
-const BOX_PANELS = [PANEL.fieldName, PANEL.label, PANEL.defaultValue, PANEL.labelTrue, PANEL.labelFalse, PANEL.fullWidth]
-const DATE_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.dateDefaultValue, PANEL.required, PANEL.readonly, PANEL.fullWidth]
-const RADIO_PANELS = [PANEL.fieldName, PANEL.label, PANEL.required, PANEL.readonly, PANEL.fullWidth, PANEL.radioOptions]
+const COMMON_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.defaultValue, PANEL.required, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn]
+const SELECT_PANELS = [...COMMON_PANELS, PANEL.sourceType, PANEL.apiUrl, PANEL.apiParams, PANEL.dependsOnParam, PANEL.displayField, PANEL.valueField, PANEL.staticOptions]
+const SWITCH_PANELS = [PANEL.fieldName, PANEL.label, PANEL.defaultValue, PANEL.labelTrue, PANEL.labelFalse, PANEL.fullWidth, PANEL.dependsOn]
+const BOX_PANELS = [PANEL.fieldName, PANEL.label, PANEL.defaultValue, PANEL.labelTrue, PANEL.labelFalse, PANEL.fullWidth, PANEL.dependsOn]
+const DATE_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.dateDefaultValue, PANEL.required, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn]
+const RADIO_PANELS = [PANEL.fieldName, PANEL.label, PANEL.required, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn, PANEL.radioOptions]
 
 // ── Static options helpers ────────────────────────────────────────────────
 // Returns a JS array literal string for code generation (from array of {value, label})
@@ -114,6 +124,11 @@ function parseStaticOptionsLiteral(items) {
 }
 
 // ── Generate helpers ───────────────────────────────────────────────────────
+function getDisabledAttr(f) {
+  if (f.dependsOn) return `:disabled="!values.${f.dependsOn} || loading || isReadOnly"`
+  return ':disabled="loading || isReadOnly"'
+}
+
 function genFieldX(f) {
   const typeAttr = f.type !== 'text' ? `\n              type="${f.type}"` : ''
   const readonlyAttr = f.readonly ? ':readonly="true"' : ':readonly="isReadOnly"'
@@ -125,7 +140,7 @@ function genFieldX(f) {
               @input="(v) => (values.${f.field} = v)"
               :hints="errors.${f.field}"
               :required="${f.required ? '!isReadOnly' : 'false'}"
-              :disabled="loading || isReadOnly"
+              ${getDisabledAttr(f)}
               ${readonlyAttr}
               placeholder="${f.placeholder || f.label}"
               class="w-full"
@@ -142,7 +157,7 @@ function genTextarea(f) {
               @input="(v) => (values.${f.field} = v)"
               :hints="errors.${f.field}"
               :required="${f.required ? '!isReadOnly' : 'false'}"
-              :disabled="loading || isReadOnly"
+              ${getDisabledAttr(f)}
               ${readonlyAttr}
               placeholder="${f.placeholder || f.label}"
               class="w-full"
@@ -158,7 +173,7 @@ function genFieldNumber(f) {
               type="${fnType}"
               :value="values.${f.field}"
               @input="(v) => (values.${f.field} = v)"
-              :disabled="loading || isReadOnly"
+              ${getDisabledAttr(f)}
               ${readonlyAttr}
               class="w-full"
             />`
@@ -169,7 +184,7 @@ function genSwitch(f) {
               <Switch
                 id="${f.field}"
                 v-model="values.${f.field}"
-                :disabled="loading || isReadOnly"
+                ${getDisabledAttr(f)}
               />
               <Label for="${f.field}" class="cursor-pointer">
                 {{ values.${f.field} ? "${f.labelTrue || 'Aktif'}" : "${f.labelFalse || 'Tidak Aktif'}" }}
@@ -183,7 +198,7 @@ function genFieldBox(f) {
               label="${f.label}"
               :value="values.${f.field}"
               @input="(v) => (values.${f.field} = v)"
-              :disabled="loading || isReadOnly"
+              ${getDisabledAttr(f)}
               :readonly="isReadOnly"
               labelTrue="${f.labelTrue || 'Ya'}"
               labelFalse="${f.labelFalse || 'Tidak'}"
@@ -191,31 +206,78 @@ function genFieldBox(f) {
             />`
 }
 
-function genSelect(f, component = 'FieldSelect') {
+function genSelect(f, component = 'FieldSelect', allFields = []) {
   const readonlyAttr = f.readonly ? ':readonly="true"' : ':readonly="isReadOnly"'
   const isStatic = f.sourceType === 'static'
   const vf = isStatic ? 'value' : (f.valueField || 'id')
   const df = isStatic ? 'label' : (f.displayField || 'name')
+
+  // ── Chain / cascading logic ──
+  const hasDependsOn = !isStatic && f.dependsOn && f.dependsOnParam
+  const hasSimpleDependsOn = !!f.dependsOn // dependsOn without param (just disable)
+
+  // ── Source attribute (static options or API) ──
   let sourceAttr
   if (isStatic) {
     sourceAttr = `:options="${parseStaticOptionsLiteral(f.staticOptions || [])}"`
   } else {
-    const paramsArr = Array.isArray(f.apiParams) ? f.apiParams.filter(p => p.key) : []
+    // Filter out params that match dependsOnParam (those are handled by :apiParams binding)
+    const paramsArr = Array.isArray(f.apiParams)
+      ? f.apiParams.filter(p => p.key && !(hasDependsOn && p.key === f.dependsOnParam))
+      : []
     const qs = paramsArr.map(p => `${p.key}=${p.value || ''}`).join('&')
     const params = qs ? `?${qs}` : ''
     sourceAttr = `apiUrl="${f.apiUrl || ''}${params}"`
   }
+  // Find all fields that depend on THIS field (children)
+  const childFields = allFields.filter(c => c.dependsOn === f.field && c.field)
+  // Build recursive list of all descendants (children, grandchildren, etc.)
+  function getDescendants(fieldName) {
+    const direct = allFields.filter(c => c.dependsOn === fieldName && c.field)
+    let result = []
+    for (const child of direct) {
+      result.push(child.field)
+      result = result.concat(getDescendants(child.field))
+    }
+    return result
+  }
+  const descendantFields = getDescendants(f.field)
+
+  // ── @input handler ──
+  let inputHandler
+  if (descendantFields.length > 0) {
+    // When this field changes, clear all descendants
+    const clears = descendantFields.map(cf => `values.${cf} = ''`).join('; ')
+    inputHandler = `@input="(v) => { values.${f.field} = v; ${clears} }"`
+  } else {
+    inputHandler = `@input="(v) => (values.${f.field} = v)"`
+  }
+
+  // ── :disabled binding ──
+  let disabledAttr
+  if (hasDependsOn || hasSimpleDependsOn) {
+    disabledAttr = `:disabled="!values.${f.dependsOn} || loading || isReadOnly"`
+  } else {
+    disabledAttr = ':disabled="loading || isReadOnly"'
+  }
+
+  // ── :apiParams binding (for cascading) ──
+  let apiParamsAttr = ''
+  if (hasDependsOn) {
+    apiParamsAttr = `\n              :apiParams="{ ${f.dependsOnParam}: values.${f.dependsOn} }"`
+  }
+
   return `            <${component}
               id="${f.field}"
               label="${f.label}"
               :value="values.${f.field}"
               :errorname="errors.${f.field} ? 'failed' : ''"
-              @input="(v) => (values.${f.field} = v)"
+              ${inputHandler}
               :hints="errors.${f.field}"
               :required="${f.required ? '!isReadOnly' : 'false'}"
-              :disabled="loading || isReadOnly"
+              ${disabledAttr}
               ${readonlyAttr}
-              ${sourceAttr}
+              ${sourceAttr}${apiParamsAttr}
               displayField="${df}"
               valueField="${vf}"
               placeholder="${f.placeholder || f.label}"
@@ -234,7 +296,7 @@ function genFieldDate(f) {
               @input="(v) => (values.${f.field} = v)"
               :hints="errors.${f.field}"
               :required="${f.required ? '!isReadOnly' : 'false'}"
-              :disabled="loading || isReadOnly"
+              ${getDisabledAttr(f)}
               ${readonlyAttr}
               placeholder="${f.placeholder || f.label}"
               :clearable="true"
@@ -252,7 +314,7 @@ function genFieldDateTime(f) {
               @input="(v) => (values.${f.field} = v)"
               :hints="errors.${f.field}"
               :required="${f.required ? '!isReadOnly' : 'false'}"
-              :disabled="loading || isReadOnly"
+              ${getDisabledAttr(f)}
               ${readonlyAttr}
               placeholder="${f.placeholder || f.label}"
               :clearable="true"
@@ -271,7 +333,7 @@ function genFieldRadio(f) {
               @input="(v) => (values.${f.field} = v)"
               :hints="errors.${f.field}"
               :required="${f.required ? '!isReadOnly' : 'false'}"
-              :disabled="loading || isReadOnly"
+              ${getDisabledAttr(f)}
               ${readonlyAttr}
               :options="${optionsLiteral}"
               class="w-full"
@@ -458,34 +520,47 @@ export const FIELD_REGISTRY = [
   {
     value: 'select', label: 'FieldSelect', component: 'FieldSelect', category: 'selection',
     searchable: false, showInMobile: false, hasError: true,
-    defaultMeta: { sourceType: 'api', apiUrl: '', apiParams: [], displayField: 'name', valueField: 'id', staticOptions: [] },
+    defaultMeta: { sourceType: 'api', apiUrl: '', apiParams: [], displayField: 'name', valueField: 'id', staticOptions: [], dependsOn: '', dependsOnParam: '' },
     panelFields: SELECT_PANELS,
-    previewProps: (f) => {
+    previewProps: (f, previewValues) => {
       const isStatic = f.sourceType === 'static'
       const vf = isStatic ? 'value' : (f.valueField || 'id')
       const df = isStatic ? 'label' : (f.displayField || 'name')
-      const base = { label: f.label || 'Label', value: '', displayField: df, valueField: vf, placeholder: f.placeholder || f.label, required: f.required }
+      const base = { label: f.label || 'Label', value: '', displayField: df, valueField: vf, placeholder: f.placeholder || f.label, required: f.required, clearable: true }
       if (isStatic) return { ...base, options: f.staticOptions || [] }
-      return { ...base, apiUrl: f.apiUrl || '' }
+      // Cascading: if dependsOn is set, pass parent value as apiParams and disable if parent empty
+      const result = { ...base, apiUrl: f.apiUrl || '' }
+      if (f.dependsOn && f.dependsOnParam && previewValues) {
+        const parentVal = previewValues[f.dependsOn] || ''
+        result.apiParams = { [f.dependsOnParam]: parentVal }
+        if (!parentVal) result.disabled = true
+      }
+      return result
     },
-    generateTemplate: (f) => genSelect(f, 'FieldSelect'),
+    generateTemplate: (f, allFields) => genSelect(f, 'FieldSelect', allFields),
   },
 
   // ── FieldSelectCreatable ───────────────────────────────────
   {
     value: 'select_creatable', label: 'FieldSelect Creatable', component: 'FieldSelectCreatable', category: 'selection',
     searchable: false, showInMobile: false, hasError: true,
-    defaultMeta: { sourceType: 'api', apiUrl: '', apiParams: [], displayField: 'name', valueField: 'id', staticOptions: [] },
+    defaultMeta: { sourceType: 'api', apiUrl: '', apiParams: [], displayField: 'name', valueField: 'id', staticOptions: [], dependsOn: '', dependsOnParam: '' },
     panelFields: SELECT_PANELS,
-    previewProps: (f) => {
+    previewProps: (f, previewValues) => {
       const isStatic = f.sourceType === 'static'
       const vf = isStatic ? 'value' : (f.valueField || 'id')
       const df = isStatic ? 'label' : (f.displayField || 'name')
-      const base = { label: f.label || 'Label', value: '', displayField: df, valueField: vf, placeholder: f.placeholder || f.label, required: f.required }
+      const base = { label: f.label || 'Label', value: '', displayField: df, valueField: vf, placeholder: f.placeholder || f.label, required: f.required, clearable: true }
       if (isStatic) return { ...base, options: f.staticOptions || [] }
-      return { ...base, apiUrl: f.apiUrl || '' }
+      const result = { ...base, apiUrl: f.apiUrl || '' }
+      if (f.dependsOn && f.dependsOnParam && previewValues) {
+        const parentVal = previewValues[f.dependsOn] || ''
+        result.apiParams = { [f.dependsOnParam]: parentVal }
+        if (!parentVal) result.disabled = true
+      }
+      return result
     },
-    generateTemplate: (f) => genSelect(f, 'FieldSelectCreatable'),
+    generateTemplate: (f, allFields) => genSelect(f, 'FieldSelectCreatable', allFields),
   },
 ]
 
@@ -518,6 +593,8 @@ export function createBlankField() {
     valueField: 'id',
     staticOptions: [],
     fullWidth: false,
+    dependsOn: '',
+    dependsOnParam: '',
     ...allMetaKeys,
     defaultValue: '', // always blank for new fields; boolean fields get their default when type is selected
   }

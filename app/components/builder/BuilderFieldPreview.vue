@@ -29,7 +29,10 @@ const COMPONENT_MAP = {
 
 const props = defineProps({
   field: { type: Object, required: true },
+  previewValues: { type: Object, default: () => ({}) },
 })
+
+const emit = defineEmits(['previewChange'])
 
 const entry = computed(() => getRegistryEntry(props.field.type))
 
@@ -66,17 +69,36 @@ watch(
   { immediate: true }
 )
 
+// Sync from parent's previewValues (e.g. when parent clears this child via cascade)
+watch(
+  () => props.field.field ? props.previewValues[props.field.field] : undefined,
+  (newVal) => {
+    if (newVal !== undefined && newVal !== previewValue.value) {
+      previewValue.value = newVal
+    }
+  }
+)
+
 const handlePreviewInput = (v) => {
   previewValue.value = v
+  // Emit so parent can track this field's preview value (for cascading)
+  if (props.field.field) {
+    emit('previewChange', props.field.field, v)
+  }
 }
 
 const previewProps = computed(() => {
-  const base = entry.value?.previewProps ? entry.value.previewProps(props.field) : {}
-  return {
+  const base = entry.value?.previewProps ? entry.value.previewProps(props.field, props.previewValues) : {}
+  const result = {
     ...base,
     value: previewValue.value,
     readonly: !!props.field.readonly,
   }
+  // Centralized dependsOn: disable field if parent has no value
+  if (props.field.dependsOn && props.previewValues && !props.previewValues[props.field.dependsOn]) {
+    result.disabled = true
+  }
+  return result
 })
 
 const isSwitch = computed(() => entry.value?.isSwitch === true)
@@ -85,6 +107,9 @@ const isSpace = computed(() => entry.value?.isSpace === true)
 
 // Interactive switch state
 const switchValue = ref(props.field.defaultValue !== 'false')
+const switchDisabled = computed(() => {
+  return props.field.dependsOn && props.previewValues && !props.previewValues[props.field.dependsOn]
+})
 </script>
 
 <template>
@@ -95,8 +120,8 @@ const switchValue = ref(props.field.defaultValue !== 'false')
 
   <!-- Switch memerlukan layout khusus -->
   <div v-if="isSwitch" class="flex items-center gap-3 pt-2">
-    <Switch :id="field.field || 'switch-preview'" v-model="switchValue" />
-    <Label :for="field.field || 'switch-preview'" class="cursor-pointer">
+    <Switch :id="field.field || 'switch-preview'" v-model="switchValue" :disabled="switchDisabled" />
+    <Label :for="field.field || 'switch-preview'" class="cursor-pointer" :class="{ 'opacity-50': switchDisabled }">
       {{ switchValue ? (field.labelTrue || 'Aktif') : (field.labelFalse || 'Tidak Aktif') }}
     </Label>
   </div>

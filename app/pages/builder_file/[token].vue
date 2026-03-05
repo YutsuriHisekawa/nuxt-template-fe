@@ -38,6 +38,22 @@ const generatedMessage = ref("");
 const panelOpen = ref(false);
 const panelIndex = ref(-1);
 
+// Shared preview values for cascading selects in builder preview
+const previewValues = reactive({});
+function onPreviewChange(fieldName, value) {
+  previewValues[fieldName] = value;
+  // Cascading clear: find all descendants and clear their preview values
+  function clearDescendants(parentField) {
+    fields.value.forEach(f => {
+      if (f.dependsOn === parentField && f.field) {
+        previewValues[f.field] = '';
+        clearDescendants(f.field);
+      }
+    });
+  }
+  clearDescendants(fieldName);
+}
+
 // Detail tabs state
 const detailPanelOpen = ref(false);
 const detailPanelIndex = ref(-1);
@@ -512,7 +528,11 @@ async function generate() {
               </span>
 
               <!-- Dynamic preview from registry -->
-              <BuilderFieldPreview :field="f" />
+              <BuilderFieldPreview
+                :field="f"
+                :previewValues="previewValues"
+                @previewChange="(fieldName, val) => onPreviewChange(fieldName, val)"
+              />
             </div>
 
             <!-- Add field zone -->
