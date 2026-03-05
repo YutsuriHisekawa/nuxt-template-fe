@@ -296,7 +296,7 @@ function genSelect(f, component = 'FieldSelect', allFields = []) {
   // ── :apiParams binding (for cascading) ──
   let apiParamsAttr = ''
   if (hasDependsOn) {
-    apiParamsAttr = `\n              :apiParams="{ ${f.dependsOnParam}: values.${f.dependsOn} }"`
+    apiParamsAttr = `\n              :apiParams="{ '${f.dependsOnParam}': values.${f.dependsOn} }"`
   }
 
   return `            <${component}
@@ -676,11 +676,16 @@ export const FIELD_REGISTRY = [
         }
         return { ...base, options: opts }
       }
+      // Build apiParams from user-configured params
+      const extraParams = {}
+      if (Array.isArray(f.apiParams)) {
+        f.apiParams.forEach(p => { if (p.key) extraParams[p.key] = p.value || '' })
+      }
       // Cascading: if dependsOn is set, pass parent value as apiParams and disable if parent empty
-      const result = { ...base, apiUrl: f.apiUrl || '' }
+      const result = { ...base, apiUrl: f.apiUrl || '', apiParams: { ...extraParams } }
       if (f.dependsOn && f.dependsOnParam && previewValues) {
         const parentVal = previewValues[f.dependsOn] || ''
-        result.apiParams = { [f.dependsOnParam]: parentVal }
+        result.apiParams[f.dependsOnParam] = parentVal
         if (!parentVal) result.disabled = true
       }
       return result
@@ -708,10 +713,14 @@ export const FIELD_REGISTRY = [
         }
         return { ...base, options: opts }
       }
-      const result = { ...base, apiUrl: f.apiUrl || '' }
+      const extraParams = {}
+      if (Array.isArray(f.apiParams)) {
+        f.apiParams.forEach(p => { if (p.key) extraParams[p.key] = p.value || '' })
+      }
+      const result = { ...base, apiUrl: f.apiUrl || '', apiParams: { ...extraParams } }
       if (f.dependsOn && f.dependsOnParam && previewValues) {
         const parentVal = previewValues[f.dependsOn] || ''
-        result.apiParams = { [f.dependsOnParam]: parentVal }
+        result.apiParams[f.dependsOnParam] = parentVal
         if (!parentVal) result.disabled = true
       }
       return result
