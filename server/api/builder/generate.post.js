@@ -31,7 +31,8 @@ function buildValidation(fields) {
     const entry = getRegistryEntry(f.type)
     return entry?.isSwitch !== true && !entry?.isSpace
   }).map(f => {
-    return `  if (!values.${f.field}?.toString().trim()) {\n    errors.${f.field} = "${f.label} wajib diisi";\n    invalid = true;\n  }`
+    const msg = f.errorMessage?.trim() || `${f.label} Wajib Di isi`
+    return `  if (!values.${f.field}?.toString().trim()) {\n    errors.${f.field} = "${msg}";\n    invalid = true;\n  }`
   }).join('\n')
 }
 

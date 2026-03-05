@@ -7,16 +7,25 @@
  */
 
 // ── Static options helpers ────────────────────────────────────────────────
-function parseStaticOptionsLiteral(items) {
+function parseStaticOptionsLiteral(items, includeParentValue = false) {
   if (!Array.isArray(items) || !items.length) return '[]'
   return '[' + items.map(it => {
     const v = String(it.value || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'")
     const l = String(it.label || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    if (includeParentValue && it.parentValue) {
+      const pv = String(it.parentValue).replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+      return `{ value: '${v}', label: '${l}', parentValue: '${pv}' }`
+    }
     return `{ value: '${v}', label: '${l}' }`
   }).join(', ') + ']'
 }
 
 // ── Generate helpers ───────────────────────────────────────────────────────
+function getDisabledAttr(f) {
+  if (f.dependsOn) return `:disabled="!values.${f.dependsOn} || loading || isReadOnly"`
+  return ':disabled="loading || isReadOnly"'
+}
+
 function genFieldX(f) {
   const typeAttr = f.type !== 'text' ? `\n              type="${f.type}"` : ''
   const readonlyAttr = f.readonly ? ':readonly="true"' : ':readonly="isReadOnly"'
@@ -28,7 +37,7 @@ function genFieldX(f) {
               @input="(v) => (values.${f.field} = v)"
               :hints="errors.${f.field}"
               :required="${f.required ? '!isReadOnly' : 'false'}"
-              :disabled="loading || isReadOnly"
+              ${getDisabledAttr(f)}
               ${readonlyAttr}
               placeholder="${f.placeholder || f.label}"
               class="w-full"
@@ -45,7 +54,7 @@ function genTextarea(f) {
               @input="(v) => (values.${f.field} = v)"
               :hints="errors.${f.field}"
               :required="${f.required ? '!isReadOnly' : 'false'}"
-              :disabled="loading || isReadOnly"
+              ${getDisabledAttr(f)}
               ${readonlyAttr}
               placeholder="${f.placeholder || f.label}"
               class="w-full"
@@ -61,7 +70,7 @@ function genFieldNumber(f) {
               type="${fnType}"
               :value="values.${f.field}"
               @input="(v) => (values.${f.field} = v)"
-              :disabled="loading || isReadOnly"
+              ${getDisabledAttr(f)}
               ${readonlyAttr}
               class="w-full"
             />`
@@ -72,7 +81,7 @@ function genSwitch(f) {
               <Switch
                 id="${f.field}"
                 v-model="values.${f.field}"
-                :disabled="loading || isReadOnly"
+                ${getDisabledAttr(f)}
               />
               <Label for="${f.field}" class="cursor-pointer">
                 {{ values.${f.field} ? "${f.labelTrue || 'Aktif'}" : "${f.labelFalse || 'Tidak Aktif'}" }}
@@ -86,7 +95,7 @@ function genFieldBox(f) {
               label="${f.label}"
               :value="values.${f.field}"
               @input="(v) => (values.${f.field} = v)"
-              :disabled="loading || isReadOnly"
+              ${getDisabledAttr(f)}
               :readonly="isReadOnly"
               labelTrue="${f.labelTrue || 'Ya'}"
               labelFalse="${f.labelFalse || 'Tidak'}"
@@ -94,31 +103,79 @@ function genFieldBox(f) {
             />`
 }
 
-function genSelect(f, component = 'FieldSelect') {
+function genSelect(f, component = 'FieldSelect', allFields = []) {
   const readonlyAttr = f.readonly ? ':readonly="true"' : ':readonly="isReadOnly"'
   const isStatic = f.sourceType === 'static'
   const vf = isStatic ? 'value' : (f.valueField || 'id')
   const df = isStatic ? 'label' : (f.displayField || 'name')
+
+  // ── Chain / cascading logic ──
+  const hasDependsOn = !isStatic && f.dependsOn && f.dependsOnParam
+  const hasStaticDependsOn = isStatic && !!f.dependsOn
+  const hasSimpleDependsOn = !!f.dependsOn
+
+  // ── Source attribute (static options or API) ──
   let sourceAttr
-  if (isStatic) {
+  if (isStatic && hasStaticDependsOn) {
+    const allOpts = parseStaticOptionsLiteral(f.staticOptions || [], true)
+    sourceAttr = `:options="${allOpts}.filter(o => !o.parentValue || o.parentValue === values.${f.dependsOn})"`
+  } else if (isStatic) {
     sourceAttr = `:options="${parseStaticOptionsLiteral(f.staticOptions || [])}"`
   } else {
-    const paramsArr = Array.isArray(f.apiParams) ? f.apiParams.filter(p => p.key) : []
+    const paramsArr = Array.isArray(f.apiParams)
+      ? f.apiParams.filter(p => p.key && !(hasDependsOn && p.key === f.dependsOnParam))
+      : []
     const qs = paramsArr.map(p => `${p.key}=${p.value || ''}`).join('&')
     const params = qs ? `?${qs}` : ''
     sourceAttr = `apiUrl="${f.apiUrl || ''}${params}"`
   }
+
+  // Find all descendants (children, grandchildren, etc.)
+  function getDescendants(fieldName) {
+    const direct = allFields.filter(c => c.dependsOn === fieldName && c.field)
+    let result = []
+    for (const child of direct) {
+      result.push(child.field)
+      result = result.concat(getDescendants(child.field))
+    }
+    return result
+  }
+  const descendantFields = getDescendants(f.field)
+
+  // ── @input handler ──
+  let inputHandler
+  if (descendantFields.length > 0) {
+    const clears = descendantFields.map(cf => `values.${cf} = ''`).join('; ')
+    inputHandler = `@input="(v) => { values.${f.field} = v; ${clears} }"`
+  } else {
+    inputHandler = `@input="(v) => (values.${f.field} = v)"`
+  }
+
+  // ── :disabled binding ──
+  let disabledAttr
+  if (hasDependsOn || hasSimpleDependsOn) {
+    disabledAttr = `:disabled="!values.${f.dependsOn} || loading || isReadOnly"`
+  } else {
+    disabledAttr = ':disabled="loading || isReadOnly"'
+  }
+
+  // ── :apiParams binding (for cascading) ──
+  let apiParamsAttr = ''
+  if (hasDependsOn) {
+    apiParamsAttr = `\n              :apiParams="{ '${f.dependsOnParam}': values.${f.dependsOn} }"`
+  }
+
   return `            <${component}
               id="${f.field}"
               label="${f.label}"
               :value="values.${f.field}"
               :errorname="errors.${f.field} ? 'failed' : ''"
-              @input="(v) => (values.${f.field} = v)"
+              ${inputHandler}
               :hints="errors.${f.field}"
               :required="${f.required ? '!isReadOnly' : 'false'}"
-              :disabled="loading || isReadOnly"
+              ${disabledAttr}
               ${readonlyAttr}
-              ${sourceAttr}
+              ${sourceAttr}${apiParamsAttr}
               displayField="${df}"
               valueField="${vf}"
               placeholder="${f.placeholder || f.label}"
@@ -152,8 +209,8 @@ export const FIELD_REGISTRY = [
     generateReset:   (f) => `    ${f.field}: ${f.defaultValue || 'true'},`,
     generatePayload: (f) => `    ${f.field}: values.${f.field},`,
   },
-  { value: 'select',             searchable: false, showInMobile: false, hasError: true,  isSwitch: false, generateTemplate: (f) => genSelect(f, 'FieldSelect') },
-  { value: 'select_creatable',   searchable: false, showInMobile: false, hasError: true,  isSwitch: false, generateTemplate: (f) => genSelect(f, 'FieldSelectCreatable') },
+  { value: 'select',             searchable: false, showInMobile: false, hasError: true,  isSwitch: false, generateTemplate: (f, allFields) => genSelect(f, 'FieldSelect', allFields) },
+  { value: 'select_creatable',   searchable: false, showInMobile: false, hasError: true,  isSwitch: false, generateTemplate: (f, allFields) => genSelect(f, 'FieldSelectCreatable', allFields) },
   {
     value: 'space', searchable: false, showInMobile: false, hasError: false, isSpace: true,
     generateTemplate: () => `            <div></div>`,
