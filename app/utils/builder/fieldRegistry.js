@@ -40,6 +40,13 @@ const PANEL = {
     key: 'required', label: 'Required', type: 'checkbox',
     hideWhen: (f) => f.type === 'switch',
   },
+  errorMessage: {
+    key: 'errorMessage', label: 'Pesan Error', type: 'text',
+    placeholder: '',
+    dynamicPlaceholder: (f) => `${f.label || 'Field'} Wajib Di isi`,
+    hint: 'Kosongkan untuk pakai default: "{Label} Wajib Di isi"',
+    hideWhen: (f) => !f.required || f.type === 'switch',
+  },
   readonly: {
     key: 'readonly', label: 'Readonly', type: 'checkbox',
     hideWhen: (f) => f.type === 'switch',
@@ -120,13 +127,13 @@ const PANEL = {
 }
 
 // ── Common panel sets ──────────────────────────────────────────────────────
-const COMMON_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.defaultValue, PANEL.required, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn]
+const COMMON_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.defaultValue, PANEL.required, PANEL.errorMessage, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn]
 const SELECT_PANELS = [...COMMON_PANELS, PANEL.sourceType, PANEL.apiUrl, PANEL.apiParams, PANEL.dependsOnParam, PANEL.displayField, PANEL.valueField, PANEL.staticOptions]
 const SWITCH_PANELS = [PANEL.fieldName, PANEL.label, PANEL.defaultValue, PANEL.labelTrue, PANEL.labelFalse, PANEL.fullWidth, PANEL.dependsOn]
 const BOX_PANELS = [PANEL.fieldName, PANEL.label, PANEL.defaultValue, PANEL.labelTrue, PANEL.labelFalse, PANEL.fullWidth, PANEL.dependsOn]
-const DATE_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.dateDefaultValue, PANEL.required, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn]
-const RADIO_PANELS = [PANEL.fieldName, PANEL.label, PANEL.required, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn, PANEL.radioOptions]
-const POPUP_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.required, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn, PANEL.apiUrl, PANEL.apiParams, PANEL.dependsOnParam, PANEL.displayField, PANEL.valueField, PANEL.popupColumns, PANEL.searchFields, PANEL.dialogTitle]
+const DATE_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.dateDefaultValue, PANEL.required, PANEL.errorMessage, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn]
+const RADIO_PANELS = [PANEL.fieldName, PANEL.label, PANEL.required, PANEL.errorMessage, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn, PANEL.radioOptions]
+const POPUP_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.required, PANEL.errorMessage, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn, PANEL.apiUrl, PANEL.apiParams, PANEL.dependsOnParam, PANEL.displayField, PANEL.valueField, PANEL.popupColumns, PANEL.searchFields, PANEL.dialogTitle]
 
 // ── Static options helpers ────────────────────────────────────────────────
 // Returns a JS array literal string for code generation (from array of {value, label, parentValue?})
