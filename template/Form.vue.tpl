@@ -74,10 +74,13 @@ const isRead = !!recordId.value;  // true kalau mode Edit / View / Copy
 onBeforeMount(async () => {
   if (!isRead) return;  // Mode create, tidak perlu load data
 
+  const params = { join: true };
+  const fixedParams = new URLSearchParams(params);
+
   loading.value = true;
   try {
     // Panggil API untuk ambil data berdasarkan ID
-    const res = await api.get(`${API_BASE}/${recordId.value}?join=true`);
+    const res = await api.get(`${API_BASE}/${recordId.value}?` + fixedParams);
 
     // Ambil data dari response (handle berbagai format response)
     const data = res?.data ?? res;

@@ -78,9 +78,12 @@ const isRead = !!recordId.value;
 onBeforeMount(async () => {
   if (!isRead) return;
 
+  const params = { join: true };
+  const fixedParams = new URLSearchParams(params);
+
   loading.value = true;
   try {
-    const res = await api.get(`${API_BASE}/${recordId.value}`);
+    const res = await api.get(`${API_BASE}/${recordId.value}?` + fixedParams);
     const data = res?.data ?? res;
     if (!data || typeof data !== "object" || Array.isArray(data)) {
       throw new Error("Data tidak ditemukan");
