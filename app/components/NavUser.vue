@@ -22,7 +22,6 @@ const props = defineProps<{
 const { isMobile } = useSidebar()
 
 const authStore = useAuthStore()
-const router = useRouter()
 
 function getInitials(name: string) {
   return name
@@ -36,7 +35,7 @@ function getInitials(name: string) {
 async function logout() {
   await authStore.logout()
   toast.success('Logout berhasil')
-  router.push('/login')
+  navigateTo('/login', { replace: true })
 }
 </script>
 

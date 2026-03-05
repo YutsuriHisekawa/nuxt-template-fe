@@ -12,6 +12,7 @@ export const useAuthStore = defineStore('auth', () => {
   const user = ref(null)           // user data di memory
   const userDefault = ref(null)    // user default data di memory
   const sessionVerified = ref(false) // apakah sudah verify session ke backend
+  const loggedOut = ref(false)     // flag: user baru saja logout (cegah re-verify via stale cookie)
 
   const isLoggedIn = computed(() => !!token.value)
 
@@ -24,6 +25,7 @@ export const useAuthStore = defineStore('auth', () => {
     token.value = newToken
     user.value = newUser
     sessionVerified.value = true
+    loggedOut.value = false
   }
 
   function setUserDefault(data) {
@@ -80,15 +82,16 @@ export const useAuthStore = defineStore('auth', () => {
    * Logout — clear httpOnly cookie di backend + clear memory
    */
   async function logout() {
+    // Clear memory state FIRST (prevents re-verify via middleware)
+    clearSession()
     try {
       await $fetch(`${baseUrl}/api/auth/logout`, {
         method: 'POST',
         credentials: 'include',
       })
     } catch (e) {
-      console.warn('Logout API call failed:', e)
+      console.warn('Logout API call failed (cookie mungkin belum di-clear oleh backend):', e)
     }
-    clearSession()
   }
 
   /**
@@ -99,6 +102,7 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = null
     userDefault.value = null
     sessionVerified.value = false
+    loggedOut.value = true
   }
 
   return {
@@ -107,6 +111,7 @@ export const useAuthStore = defineStore('auth', () => {
     userDefault,
     isLoggedIn,
     sessionVerified,
+    loggedOut,
     setSession,
     setUserDefault,
     verifySession,
