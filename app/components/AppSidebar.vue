@@ -225,10 +225,11 @@ const filteredMenuItems = computed(() => {
 })
 
 const data = computed(() => {
+  const u = authStore.user as Record<string, any> | null
   return {
     user: {
-      name: authStore.user?.username ?? "User",
-      email: authStore.user?.email ?? "",
+      name: u?.username ?? "User",
+      email: u?.email ?? "",
       avatar: "",
     },
     navMain: searchQuery.value.trim()
