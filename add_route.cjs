@@ -56,9 +56,9 @@ console.log('  Title  : \x1b[33m' + readableName + '\x1b[0m');
 console.log('  Token  : \x1b[33m' + token + '\x1b[0m');
 console.log('\x1b[36m---------------------------------------\x1b[0m');
 console.log('\x1b[32m+ Config written to .builder_config.json\x1b[0m');
-console.log('\x1b[32m+ Opening browser -> http://localhost:5731/builder_file/' + token + '\x1b[0m');
+console.log('\x1b[32m+ Opening browser -> http://localhost:9999/builder_file/' + token + '\x1b[0m');
 console.log('\x1b[90m  (pastikan Nuxt dev server sudah jalan)\x1b[0m');
 
-const url = 'http://localhost:5731/builder_file/' + token;
+const url = 'http://localhost:9999/builder_file/' + token;
 const cmd = process.platform === 'win32' ? 'start "" "' + url + '"' : process.platform === 'darwin' ? 'open "' + url + '"' : 'xdg-open "' + url + '"';
 exec(cmd);
