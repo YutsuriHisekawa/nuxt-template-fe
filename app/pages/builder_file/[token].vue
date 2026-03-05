@@ -20,9 +20,12 @@ const themeCookie = useCookie('theme');
 const isDark = computed(() => themeCookie.value === 'dark');
 
 // ============================================================================
-// META
+// META & ROUTE
 // ============================================================================
 definePageMeta({ layout: false });
+
+const route = useRoute();
+const builderToken = route.params.token;
 
 // ============================================================================
 // STATE
@@ -57,25 +60,31 @@ function clearBuilderCookies() {
   savedDetails.value = null;
 }
 
-function cancelBuilder() {
+async function cancelBuilder() {
   clearBuilderCookies();
   fields.value = structuredClone(DEFAULT_FIELDS);
   details.value = [];
   closePanel();
   closeDetailPanel();
+  // Delete config on server so token is invalidated
+  try {
+    await $fetch("/api/builder/cancel", { method: "POST", body: { token: builderToken } });
+  } catch {}
   toast.info('Builder di-reset');
+  // Redirect to home — this route is no longer accessible
+  await navigateTo('/', { replace: true });
 }
 
 // ============================================================================
-// LOAD CONFIG
+// LOAD CONFIG (with token validation)
 // ============================================================================
 onMounted(async () => {
   try {
-    const data = await $fetch("/api/builder/config");
+    const data = await $fetch("/api/builder/config", { params: { token: builderToken } });
     config.value = data;
   } catch (e) {
     configError.value =
-      "Builder belum aktif. Jalankan dulu: node add_route.cjs <module_path>";
+      "Builder tidak aktif atau token tidak valid. Jalankan: node add_route.cjs <module_path>";
   }
 });
 
@@ -323,6 +332,7 @@ async function generate() {
     const result = await $fetch("/api/builder/generate", {
       method: "POST",
       body: {
+        token: builderToken,
         modulePath: config.value.modulePath,
         moduleName: config.value.moduleName,
         apiEndpoint: config.value.apiEndpoint,

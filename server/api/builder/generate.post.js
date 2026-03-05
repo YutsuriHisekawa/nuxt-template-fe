@@ -594,6 +594,16 @@ export default defineEventHandler(async (event) => {
   }
 
   const root = process.cwd()
+
+  // ── Token validation ───────────────────────────────────────────────────
+  const configPath = resolve(root, '.builder_config.json')
+  if (!existsSync(configPath)) {
+    throw createError({ statusCode: 403, statusMessage: 'Builder session not found' })
+  }
+  const savedConfig = JSON.parse(readFileSync(configPath, 'utf-8'))
+  if (!body.token || body.token !== savedConfig.token) {
+    throw createError({ statusCode: 403, statusMessage: 'Invalid builder token' })
+  }
   const readableName = pageTitle || getReadableName(moduleName)
 
   // ── Read templates ─────────────────────────────────────────────────────
@@ -669,7 +679,6 @@ export default defineEventHandler(async (event) => {
   }
 
   // Clean up config
-  const configPath = resolve(root, '.builder_config.json')
   if (existsSync(configPath)) {
     try { unlinkSync(configPath) } catch {}
   }
