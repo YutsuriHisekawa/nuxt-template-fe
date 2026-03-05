@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { getRegistryEntry, FIELD_REGISTRY } from '~/utils/builder/fieldRegistry'
 
 const props = defineProps({
@@ -12,10 +12,58 @@ const emit = defineEmits(['update:field', 'remove', 'close'])
 
 const entry = computed(() => getRegistryEntry(props.field.type))
 
+// ── Parent field options (static OR API-based) ─────────────────────────
+const apiParentOptions = ref([])
+const loadingParentOpts = ref(false)
+
+const parentField = computed(() => {
+  if (!props.field.dependsOn) return null
+  return props.allFields.find(f => f.field === props.field.dependsOn) || null
+})
+
+// Fetch parent's API options when parent is API-based
+watch(
+  () => [props.field.dependsOn, parentField.value?.sourceType, parentField.value?.apiUrl],
+  async () => {
+    const pf = parentField.value
+    if (!pf || pf.sourceType !== 'api' || !pf.apiUrl) {
+      apiParentOptions.value = []
+      return
+    }
+    loadingParentOpts.value = true
+    try {
+      const { get } = useApi()
+      let url = pf.apiUrl
+      // Append parent's own apiParams
+      const qp = new URLSearchParams()
+      if (Array.isArray(pf.apiParams)) {
+        pf.apiParams.forEach(p => { if (p.key) qp.set(p.key, p.value || '') })
+      }
+      qp.set('no_pagination', 'true')
+      const qs = qp.toString()
+      if (qs) url += (url.includes('?') ? '&' : '?') + qs
+      const res = await get(url)
+      const rows = Array.isArray(res) ? res : (res?.data || res?.rows || [])
+      const vf = pf.valueField || 'id'
+      const df = pf.displayField || 'name'
+      apiParentOptions.value = rows.map(r => ({ value: r[vf], label: r[df] || r[vf] }))
+    } catch (e) {
+      console.warn('Failed to fetch parent API options:', e)
+      apiParentOptions.value = []
+    } finally {
+      loadingParentOpts.value = false
+    }
+  },
+  { immediate: true }
+)
+
 const parentFieldOptions = computed(() => {
-  if (!props.field.dependsOn) return []
-  const parent = props.allFields.find(f => f.field === props.field.dependsOn)
-  return parent?.staticOptions || []
+  const pf = parentField.value
+  if (!pf) return []
+  // API-based parent → use fetched options
+  if (pf.sourceType === 'api') return apiParentOptions.value
+  // Static parent → use staticOptions
+  return pf.staticOptions || []
 })
 
 const visiblePanelFields = computed(() => {
