@@ -184,6 +184,68 @@ function genSelect(f, component = 'FieldSelect', allFields = []) {
             />`
 }
 
+function genFieldCurrency(f) {
+  const readonlyAttr = f.readonly ? ':readonly="true"' : ':readonly="isReadOnly"'
+  const prefix = f.currencyPrefix || 'Rp'
+  const allowDecimal = f.allowDecimal !== false
+  return `            <FieldCurrency
+              id="${f.field}"
+              label="${f.label}"
+              :value="values.${f.field}"
+              :errorname="errors.${f.field} ? 'failed' : ''"
+              @input="(v) => (values.${f.field} = v)"
+              :hints="errors.${f.field}"
+              :required="${f.required ? '!isReadOnly' : 'false'}"
+              ${getDisabledAttr(f)}
+              ${readonlyAttr}
+              prefix="${prefix}"
+              :allowDecimal="${allowDecimal}"
+              placeholder="${f.placeholder || f.label}"
+              class="w-full"
+            />`
+}
+
+function genFieldSlider(f) {
+  const min = f.sliderMin || 0
+  const max = f.sliderMax || 100
+  const step = f.sliderStep || 1
+  const unit = f.sliderUnit || ''
+  return `            <FieldSlider
+              id="${f.field}"
+              label="${f.label}"
+              :value="values.${f.field}"
+              @input="(v) => (values.${f.field} = v)"
+              ${getDisabledAttr(f)}
+              :readonly="isReadOnly"
+              :min="${min}"
+              :max="${max}"
+              :step="${step}"
+              unit="${unit}"
+              class="w-full"
+            />`
+}
+
+function genSection(f) {
+  return `            <div class="col-span-full border-b border-border pb-2 pt-4">
+              <h3 class="text-base font-semibold text-foreground">${f.label || 'Section'}</h3>
+            </div>`
+}
+
+// ── Conditional visibility wrapper ─────────────────────────────────────────
+function wrapVisibleWhen(tpl, f) {
+  // New format: separate fields
+  if (f.visibleWhenField && f.visibleWhenValue !== undefined && f.visibleWhenValue !== '') {
+    return `            <div v-if="values.${f.visibleWhenField} === '${f.visibleWhenValue}'">\n${tpl}\n            </div>`
+  }
+  // Legacy format: "field=value" string
+  if (!f.visibleWhen) return tpl
+  const parts = f.visibleWhen.split('=')
+  if (parts.length !== 2) return tpl
+  const watchField = parts[0].trim()
+  const watchValue = parts[1].trim()
+  return `            <div v-if="values.${watchField} === '${watchValue}'">\n${tpl}\n            </div>`
+}
+
 // ── The Registry ───────────────────────────────────────────────────────────
 export const FIELD_REGISTRY = [
   { value: 'text',               searchable: true,  showInMobile: true,  hasError: true,  isSwitch: false, generateTemplate: genFieldX },
@@ -218,9 +280,20 @@ export const FIELD_REGISTRY = [
     generateReset: () => null,
     generatePayload: () => null,
   },
+  {
+    value: 'section', searchable: false, showInMobile: false, hasError: false, isSection: true,
+    generateTemplate: genSection,
+    generateDefault: () => null,
+    generateReset: () => null,
+    generatePayload: () => null,
+  },
+  { value: 'currency',           searchable: false, showInMobile: false, hasError: true,  isSwitch: false, generateTemplate: genFieldCurrency },
+  { value: 'slider',             searchable: false, showInMobile: false, hasError: false, isSwitch: false, generateTemplate: genFieldSlider },
 ]
 
 // ── Lookup helper ──────────────────────────────────────────────────────────
 export function getRegistryEntry(type) {
   return FIELD_REGISTRY.find(r => r.value === type)
 }
+
+export { wrapVisibleWhen }

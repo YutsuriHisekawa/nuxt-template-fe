@@ -204,7 +204,7 @@ defineExpose({
           <UiTableRow v-if="loading">
             <UiTableCell :colspan="columns.length + (showIndex ? 2 : 1)">
               <div class="flex flex-col gap-2 py-4">
-                <UiSkeleton v-for="i in 5" :key="i" class="h-8 w-full" />
+                <Skeleton v-for="i in 5" :key="i" class="h-8 w-full" />
               </div>
             </UiTableCell>
           </UiTableRow>

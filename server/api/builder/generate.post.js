@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync } from 'fs'
 import { resolve, dirname } from 'path'
-import { FIELD_REGISTRY, getRegistryEntry } from '../../utils/builder/fieldRegistry.js'
+import { FIELD_REGISTRY, getRegistryEntry, wrapVisibleWhen } from '../../utils/builder/fieldRegistry.js'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 function getReadableName(text) {
@@ -10,7 +10,10 @@ function getReadableName(text) {
 }
 
 function buildValuesDefaults(fields) {
-  return fields.filter(f => !getRegistryEntry(f.type)?.isSpace).map(f => {
+  return fields.filter(f => {
+    const entry = getRegistryEntry(f.type)
+    return !entry?.isSpace && !entry?.isSection
+  }).map(f => {
     const entry = getRegistryEntry(f.type)
     if (entry?.generateDefault) return entry.generateDefault(f)
     if (entry?.isSwitch) return `  ${f.field}: ${f.defaultValue || 'true'},`
@@ -21,23 +24,68 @@ function buildValuesDefaults(fields) {
 function buildErrorsDefaults(fields) {
   return fields.filter(f => {
     const entry = getRegistryEntry(f.type)
-    return entry?.hasError !== false && !entry?.isSpace
+    return entry?.hasError !== false && !entry?.isSpace && !entry?.isSection
   }).map(f => `  ${f.field}: "",`).join('\n')
 }
 
 function buildValidation(fields) {
-  return fields.filter(f => {
-    if (!f.required) return false
+  const lines = []
+  fields.forEach(f => {
     const entry = getRegistryEntry(f.type)
-    return entry?.isSwitch !== true && !entry?.isSpace
-  }).map(f => {
-    const msg = f.errorMessage?.trim() || `${f.label} Wajib Di isi`
-    return `  if (!values.${f.field}?.toString().trim()) {\n    errors.${f.field} = "${msg}";\n    invalid = true;\n  }`
-  }).join('\n')
+    if (entry?.isSwitch || entry?.isSpace || entry?.isSection) return
+
+    // Required
+    if (f.required) {
+      const msg = f.errorMessage?.trim() || `${f.label} Wajib Di isi`
+      lines.push(`  if (!values.${f.field}?.toString().trim()) {\n    errors.${f.field} = "${msg}";\n    invalid = true;\n  }`)
+    }
+
+    // Min length
+    if (f.minLength) {
+      const n = parseInt(f.minLength)
+      if (n > 0) {
+        lines.push(`  if (values.${f.field}?.toString().trim() && values.${f.field}.toString().trim().length < ${n}) {\n    errors.${f.field} = "Minimal ${n} karakter";\n    invalid = true;\n  }`)
+      }
+    }
+
+    // Max length
+    if (f.maxLength) {
+      const n = parseInt(f.maxLength)
+      if (n > 0) {
+        lines.push(`  if (values.${f.field}?.toString().trim() && values.${f.field}.toString().trim().length > ${n}) {\n    errors.${f.field} = "Maksimal ${n} karakter";\n    invalid = true;\n  }`)
+      }
+    }
+
+    // Min value (for numbers)
+    if (f.minValue !== undefined && f.minValue !== '') {
+      const n = Number(f.minValue)
+      if (!isNaN(n)) {
+        lines.push(`  if (values.${f.field}?.toString().trim() && Number(values.${f.field}) < ${n}) {\n    errors.${f.field} = "Nilai minimal ${n}";\n    invalid = true;\n  }`)
+      }
+    }
+
+    // Max value (for numbers)
+    if (f.maxValue !== undefined && f.maxValue !== '') {
+      const n = Number(f.maxValue)
+      if (!isNaN(n)) {
+        lines.push(`  if (values.${f.field}?.toString().trim() && Number(values.${f.field}) > ${n}) {\n    errors.${f.field} = "Nilai maksimal ${n}";\n    invalid = true;\n  }`)
+      }
+    }
+
+    // Regex pattern
+    if (f.pattern?.trim()) {
+      const msg = f.patternMessage?.trim() || 'Format tidak valid'
+      lines.push(`  if (values.${f.field}?.toString().trim() && !/${f.pattern.trim()}/.test(values.${f.field}.toString().trim())) {\n    errors.${f.field} = "${msg}";\n    invalid = true;\n  }`)
+    }
+  })
+  return lines.join('\n')
 }
 
 function buildPayload(fields) {
-  return fields.filter(f => !getRegistryEntry(f.type)?.isSpace).map(f => {
+  return fields.filter(f => {
+    const entry = getRegistryEntry(f.type)
+    return !entry?.isSpace && !entry?.isSection
+  }).map(f => {
     const entry = getRegistryEntry(f.type)
     if (entry?.generatePayload) return entry.generatePayload(f)
     if (entry?.isSwitch) return `    ${f.field}: values.${f.field},`
@@ -46,7 +94,10 @@ function buildPayload(fields) {
 }
 
 function buildResetValues(fields) {
-  return fields.filter(f => !getRegistryEntry(f.type)?.isSpace).map(f => {
+  return fields.filter(f => {
+    const entry = getRegistryEntry(f.type)
+    return !entry?.isSpace && !entry?.isSection
+  }).map(f => {
     const entry = getRegistryEntry(f.type)
     if (entry?.generateReset) return entry.generateReset(f)
     if (entry?.isSwitch) return `    ${f.field}: ${f.defaultValue || 'true'},`
@@ -54,7 +105,9 @@ function buildResetValues(fields) {
   }).join('\n')
 }
 
-function buildFormFields(fields) {
+function buildFormFields(fields, columnLayout) {
+  const colsFull = { 1: '', 2: 'md:col-span-2', 3: 'md:col-span-3' }
+  const fullClass = colsFull[columnLayout] || colsFull[2]
   return fields.map(f => {
     const entry = getRegistryEntry(f.type)
     let tpl
@@ -76,15 +129,33 @@ function buildFormFields(fields) {
               class="w-full"
             />`
     }
-    // Wrap with col-span-2 if fullWidth
-    if (f.fullWidth) {
-      return `            <div class="md:col-span-2">\n${tpl}\n            </div>`
+    // Wrap with conditional visibility (v-if)
+    tpl = wrapVisibleWhen(tpl, f)
+    // Section dividers always span full width
+    if (entry?.isSection) {
+      return fullClass ? `            <div class="${fullClass}">\n${tpl}\n            </div>` : tpl
+    }
+    // Wrap with col-span-full if fullWidth
+    if (f.fullWidth && fullClass) {
+      return `            <div class="${fullClass}">\n${tpl}\n            </div>`
     }
     return tpl
   }).join('\n\n')
 }
 
-function buildColumns(fields) {
+function buildColumns(fields, landingConfig) {
+  if (Array.isArray(landingConfig) && landingConfig.length) {
+    return landingConfig
+      .filter(c => c.visible)
+      .map(c => {
+        const df = (c.displayField || '').trim();
+        if (df && df.includes('.')) {
+          return `\t\t{ headerName: "${c.label}", valueGetter: (p) => ${df.split('.').reduce((acc, k, i) => i === 0 ? `p.data?.${k}` : `${acc}?.${k}`, '')}, minWidth: ${c.minWidth || 140} },`;
+        }
+        return `\t\t{ headerName: "${c.label}", field: "${df || c.field}", minWidth: ${c.minWidth || 140} },`;
+      })
+      .join('\n')
+  }
   return fields
     .filter(f => {
       const entry = getRegistryEntry(f.type)
@@ -94,7 +165,16 @@ function buildColumns(fields) {
     .join('\n')
 }
 
-function buildSearchFields(fields) {
+function buildSearchFields(fields, landingConfig) {
+  if (Array.isArray(landingConfig) && landingConfig.length) {
+    return landingConfig
+      .filter(c => c.visible)
+      .map(c => {
+        const df = (c.displayField || '').trim();
+        return `"${df || c.field}"`;
+      })
+      .join(', ')
+  }
   return fields
     .filter(f => {
       const entry = getRegistryEntry(f.type)
@@ -104,13 +184,19 @@ function buildSearchFields(fields) {
     .join(', ')
 }
 
-function buildMobileCardHeader(fields) {
-  const textFields = fields.filter(f => {
-    const entry = getRegistryEntry(f.type)
-    return entry?.showInMobile === true
-  })
-  const first = textFields[0]?.field || 'id'
-  const second = textFields[1]?.field || null
+function buildMobileCardHeader(fields, landingConfig) {
+  let mobileFields
+  if (Array.isArray(landingConfig) && landingConfig.length) {
+    mobileFields = landingConfig.filter(c => c.visible)
+  } else {
+    mobileFields = fields.filter(f => {
+      const entry = getRegistryEntry(f.type)
+      return entry?.showInMobile === true
+    }).map(f => ({ field: f.field }))
+  }
+  const getDisplay = (c) => (c?.displayField || '').trim() || c?.field || 'id';
+  const first = getDisplay(mobileFields[0]) || 'id'
+  const second = mobileFields[1] ? getDisplay(mobileFields[1]) : null
   let html = `<p class="text-sm font-semibold truncate">{{ row.${first} || '-' }}</p>`
   if (second) {
     html += `\n\t\t\t\t\t\t\t\t<p class="text-xs text-muted-foreground truncate">{{ row.${second} || '-' }}</p>`
@@ -118,24 +204,36 @@ function buildMobileCardHeader(fields) {
   return html
 }
 
-function buildMobileInfoRows(fields) {
-  const extras = fields.filter(f => {
-    const entry = getRegistryEntry(f.type)
-    return entry?.isSwitch !== true && !entry?.isSpace
-  }).slice(2, 5)
-  if (extras.length === 0) return ''
-  return extras.map(f =>
-    `\t\t\t\t\t\t\t<div v-if="row.${f.field}"><span class="text-muted-foreground">${f.label}:</span> <span class="font-medium">{{ row.${f.field} }}</span></div>`
-  ).join('\n')
+function buildMobileInfoRows(fields, landingConfig) {
+  let infoFields
+  if (Array.isArray(landingConfig) && landingConfig.length) {
+    infoFields = landingConfig.filter(c => c.visible).slice(2, 5)
+  } else {
+    infoFields = fields.filter(f => {
+      const entry = getRegistryEntry(f.type)
+      return entry?.isSwitch !== true && !entry?.isSpace
+    }).slice(2, 5).map(f => ({ field: f.field, label: f.label }))
+  }
+  if (infoFields.length === 0) return ''
+  return infoFields.map(c => {
+    const df = (c.displayField || '').trim() || c.field;
+    return `\t\t\t\t\t\t\t<div v-if="row.${df}"><span class="text-muted-foreground">${c.label}:</span> <span class="font-medium">{{ row.${df} }}</span></div>`
+  }).join('\n')
 }
 
-function buildDeleteDescription(fields) {
-  const textFields = fields.filter(f => {
-    const entry = getRegistryEntry(f.type)
-    return entry?.showInMobile === true
-  })
-  const first = textFields[0]?.field || 'id'
-  return `{{ deleteTarget?.${first} || deleteTarget?.id || '-' }}`
+function buildDeleteDescription(fields, landingConfig) {
+  let firstField
+  if (Array.isArray(landingConfig) && landingConfig.length) {
+    const mc = landingConfig.find(c => c.visible);
+    firstField = (mc?.displayField || '').trim() || mc?.field;
+  } else {
+    const textFields = fields.filter(f => {
+      const entry = getRegistryEntry(f.type)
+      return entry?.showInMobile === true
+    })
+    firstField = textFields[0]?.field
+  }
+  return `{{ deleteTarget?.${firstField || 'id'} || deleteTarget?.id || '-' }}`
 }
 
 // ── Detail tab generation helpers ──────────────────────────────────────────
@@ -588,7 +686,7 @@ ${tabContents}
 // ── Handler ────────────────────────────────────────────────────────────────
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
-  const { modulePath, moduleName, apiEndpoint, routePath, pageTitle, fields, details } = body
+  const { modulePath, moduleName, apiEndpoint, routePath, pageTitle, fields, details, landingConfig, columnLayout } = body
 
   if (!modulePath || !fields?.length) {
     throw createError({ statusCode: 400, statusMessage: 'modulePath and fields are required' })
@@ -628,12 +726,13 @@ export default defineEventHandler(async (event) => {
     __VALIDATION__: buildValidation(fields),
     __PAYLOAD__: buildPayload(fields),
     __RESET_VALUES__: buildResetValues(fields),
-    __FORM_FIELDS__: buildFormFields(fields),
-    __COLUMNS__: buildColumns(fields),
-    __SEARCH_FIELDS__: buildSearchFields(fields),
-    __MOBILE_CARD_HEADER__: buildMobileCardHeader(fields),
-    __MOBILE_INFO_ROWS__: buildMobileInfoRows(fields),
-    __DELETE_DESCRIPTION__: buildDeleteDescription(fields),
+    __FORM_FIELDS__: buildFormFields(fields, columnLayout || 2),
+    __COLUMN_LAYOUT__: String(columnLayout || 2),
+    __COLUMNS__: buildColumns(fields, landingConfig),
+    __SEARCH_FIELDS__: buildSearchFields(fields, landingConfig),
+    __MOBILE_CARD_HEADER__: buildMobileCardHeader(fields, landingConfig),
+    __MOBILE_INFO_ROWS__: buildMobileInfoRows(fields, landingConfig),
+    __DELETE_DESCRIPTION__: buildDeleteDescription(fields, landingConfig),
     __DETAIL_IMPORTS__: buildDetailImports(details),
     __DETAIL_STATE__: buildDetailState(details),
     __DETAIL_SELECTED_IDS__: buildDetailSelectedIds(details),

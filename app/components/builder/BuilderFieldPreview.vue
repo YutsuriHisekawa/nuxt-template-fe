@@ -15,6 +15,8 @@ import FieldDate from '~/components/field/FieldDate.vue'
 import FieldDateTime from '~/components/field/FieldDateTime.vue'
 import FieldRadio from '~/components/field/FieldRadio.vue'
 import FieldPopUp from '~/components/field/FieldPopUp.vue'
+import FieldCurrency from '~/components/field/FieldCurrency.vue'
+import FieldSlider from '~/components/field/FieldSlider.vue'
 
 const COMPONENT_MAP = {
   FieldX,
@@ -27,6 +29,8 @@ const COMPONENT_MAP = {
   FieldDateTime,
   FieldRadio,
   FieldPopUp,
+  FieldCurrency,
+  FieldSlider,
 }
 
 const props = defineProps({
@@ -106,6 +110,7 @@ const previewProps = computed(() => {
 const isSwitch = computed(() => entry.value?.isSwitch === true)
 const isFieldBox = computed(() => entry.value?.isFieldBox === true)
 const isSpace = computed(() => entry.value?.isSpace === true)
+const isSection = computed(() => entry.value?.isSection === true)
 
 // Interactive switch state
 const switchValue = ref(props.field.defaultValue !== 'false')
@@ -118,6 +123,11 @@ const switchDisabled = computed(() => {
   <!-- Space: empty placeholder -->
   <div v-if="isSpace" class="w-full h-10 rounded border border-dashed border-muted-foreground/30 flex items-center justify-center">
     <span class="text-xs text-muted-foreground/50 select-none">Space</span>
+  </div>
+
+  <!-- Section Divider -->
+  <div v-else-if="isSection" class="w-full border-b border-border pb-2 pt-1">
+    <h3 class="text-base font-semibold text-foreground">{{ field.label || 'Section Title' }}</h3>
   </div>
 
   <!-- Switch memerlukan layout khusus -->

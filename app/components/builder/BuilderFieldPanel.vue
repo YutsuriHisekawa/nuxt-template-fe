@@ -66,6 +66,72 @@ const parentFieldOptions = computed(() => {
   return pf.staticOptions || []
 })
 
+// ── VisibleWhen: target field + smart value options ─────────────────────
+const visibleWhenTarget = computed(() => {
+  if (!props.field.visibleWhenField) return null
+  return props.allFields.find(f => f.field === props.field.visibleWhenField) || null
+})
+
+const apiVisibleWhenOpts = ref([])
+const loadingVisibleWhenOpts = ref(false)
+
+const visibleWhenTargetType = computed(() => {
+  const t = visibleWhenTarget.value
+  if (!t) return 'none'
+  const e = getRegistryEntry(t.type)
+  if (e?.isSwitch || t.type === 'fieldbox') return 'boolean'
+  if (['select', 'select_creatable', 'popup'].includes(t.type) && t.sourceType === 'static') return 'static'
+  if (['select', 'select_creatable', 'popup'].includes(t.type) && t.sourceType === 'api' && t.apiUrl) return 'api'
+  if (t.type === 'radio' && Array.isArray(t.radioOptions) && t.radioOptions.length) return 'radio'
+  return 'text'
+})
+
+// Fetch API data when visibleWhen target is API-based select
+watch(
+  () => [props.field.visibleWhenField, visibleWhenTargetType.value],
+  async () => {
+    if (visibleWhenTargetType.value !== 'api') {
+      apiVisibleWhenOpts.value = []
+      return
+    }
+    const t = visibleWhenTarget.value
+    if (!t?.apiUrl) return
+    loadingVisibleWhenOpts.value = true
+    try {
+      const { get } = useApi()
+      let url = t.apiUrl
+      const qp = new URLSearchParams()
+      if (Array.isArray(t.apiParams)) {
+        t.apiParams.forEach(p => { if (p.key) qp.set(p.key, p.value || '') })
+      }
+      qp.set('no_pagination', 'true')
+      const qs = qp.toString()
+      if (qs) url += (url.includes('?') ? '&' : '?') + qs
+      const res = await get(url)
+      const rows = Array.isArray(res) ? res : (res?.data || res?.rows || [])
+      const vf = t.valueField || 'id'
+      const df = t.displayField || 'name'
+      apiVisibleWhenOpts.value = rows.map(r => ({ value: String(r[vf]), label: r[df] || r[vf] }))
+    } catch (e) {
+      console.warn('Failed to fetch visibleWhen API options:', e)
+      apiVisibleWhenOpts.value = []
+    } finally {
+      loadingVisibleWhenOpts.value = false
+    }
+  },
+  { immediate: true }
+)
+
+const visibleWhenValueOptions = computed(() => {
+  const type = visibleWhenTargetType.value
+  const t = visibleWhenTarget.value
+  if (type === 'boolean') return [{ value: 'true', label: t?.labelTrue || 'Aktif' }, { value: 'false', label: t?.labelFalse || 'Tidak Aktif' }]
+  if (type === 'static') return (t?.staticOptions || []).map(o => ({ value: o.value, label: o.label || o.value }))
+  if (type === 'radio') return (t?.radioOptions || []).map(o => ({ value: o.value, label: o.label || o.value }))
+  if (type === 'api') return apiVisibleWhenOpts.value
+  return []
+})
+
 const visiblePanelFields = computed(() => {
   if (!entry.value?.panelFields) return []
   return entry.value.panelFields.filter(pf => {
@@ -437,6 +503,59 @@ function addColumnItem(key) {
             Tambah Param
           </button>
         </div>
+      </div>
+
+      <!-- Visible When Combo (select field + smart value) -->
+      <div v-else-if="pf.type === 'visibleWhenCombo'">
+        <label class="block mb-1 font-medium text-muted-foreground">{{ pf.label }}</label>
+        <div class="flex flex-col gap-2">
+          <!-- Field selector -->
+          <select
+            :value="field.visibleWhenField || ''"
+            class="w-full rounded bg-muted border border-border text-foreground px-3 py-1.5 focus:border-primary focus:ring-1 focus:ring-primary text-sm"
+            @change="emit('update:field', { ...field, visibleWhenField: $event.target.value, visibleWhenValue: '' })"
+          >
+            <option value="">-- Tidak ada (selalu tampil) --</option>
+            <option
+              v-for="f in allFields.filter(af => af.field && af.field !== field.field)"
+              :key="f.field"
+              :value="f.field"
+            >
+              {{ f.label || f.field }} ({{ f.field }})
+            </option>
+          </select>
+
+          <!-- Value input (shown when field selected) -->
+          <template v-if="field.visibleWhenField">
+            <label class="block text-xs font-medium text-muted-foreground">Bernilai</label>
+            <!-- Loading state for API -->
+            <div v-if="loadingVisibleWhenOpts" class="text-xs text-muted-foreground italic py-1">
+              Memuat opsi dari API...
+            </div>
+            <!-- Select dropdown when options available -->
+            <select
+              v-else-if="visibleWhenValueOptions.length > 0"
+              :value="field.visibleWhenValue || ''"
+              class="w-full rounded bg-muted border border-border text-foreground px-3 py-1.5 focus:border-primary focus:ring-1 focus:ring-primary text-sm"
+              @change="updateField('visibleWhenValue', $event.target.value)"
+            >
+              <option value="">-- Pilih nilai --</option>
+              <option v-for="opt in visibleWhenValueOptions" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
+              </option>
+            </select>
+            <!-- Fallback text input -->
+            <input
+              v-else
+              type="text"
+              :value="field.visibleWhenValue || ''"
+              placeholder="Ketik nilai..."
+              class="w-full rounded bg-muted border border-border text-foreground px-3 py-1.5 focus:border-primary focus:ring-1 focus:ring-primary text-sm"
+              @input="updateField('visibleWhenValue', $event.target.value)"
+            />
+          </template>
+        </div>
+        <p v-if="pf.hint" class="text-xs text-muted-foreground/70 mt-1">{{ pf.hint }}</p>
       </div>
 
       <!-- Select Field (pick another field as parent for cascading) -->

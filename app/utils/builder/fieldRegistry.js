@@ -124,16 +124,83 @@ const PANEL = {
     placeholder: 'Pilih Data',
     hint: 'Judul popup dialog (default: "Pilih {label}")',
   },
+  // ── Currency-specific ──
+  currencyPrefix: {
+    key: 'currencyPrefix', label: 'Prefix Mata Uang', type: 'text',
+    placeholder: 'Rp',
+    hint: 'Prefix yang tampil di depan angka (Rp, $, USD, dll)',
+  },
+  allowDecimal: {
+    key: 'allowDecimal', label: 'Boleh Desimal', type: 'checkbox',
+  },
+  // ── Slider-specific ──
+  sliderMin: {
+    key: 'sliderMin', label: 'Min', type: 'text', placeholder: '0',
+  },
+  sliderMax: {
+    key: 'sliderMax', label: 'Max', type: 'text', placeholder: '100',
+  },
+  sliderStep: {
+    key: 'sliderStep', label: 'Step', type: 'text', placeholder: '1',
+  },
+  sliderUnit: {
+    key: 'sliderUnit', label: 'Unit Suffix', type: 'text',
+    placeholder: '%',
+    hint: 'Satuan yang ditampilkan (%, pcs, kg, dll)',
+  },
+  // ── Conditional Visibility ──
+  visibleWhen: {
+    key: 'visibleWhenField', label: 'Visible When (Kondisional)', type: 'visibleWhenCombo',
+    hint: 'Tampilkan field ini hanya jika field lain bernilai tertentu. Kosongkan untuk selalu tampil.',
+  },
+  // ── Section Divider ──
+  sectionTitle: {
+    key: 'label', label: 'Judul Section', type: 'text', placeholder: 'Data Harga',
+  },
+  // ── Validation Rules ──
+  minLength: {
+    key: 'minLength', label: 'Min Length', type: 'text', placeholder: '',
+    hint: 'Panjang karakter minimum',
+    hideWhen: (f) => ['switch', 'fieldbox', 'date', 'datetime', 'fieldnumber', 'fieldnumber_decimal', 'slider', 'currency', 'radio'].includes(f.type),
+  },
+  maxLength: {
+    key: 'maxLength', label: 'Max Length', type: 'text', placeholder: '',
+    hint: 'Panjang karakter maksimum',
+    hideWhen: (f) => ['switch', 'fieldbox', 'date', 'datetime', 'fieldnumber', 'fieldnumber_decimal', 'slider', 'currency', 'radio'].includes(f.type),
+  },
+  minValue: {
+    key: 'minValue', label: 'Min Value', type: 'text', placeholder: '',
+    hint: 'Nilai minimum (untuk angka)',
+    hideWhen: (f) => !['number', 'decimal', 'fieldnumber', 'fieldnumber_decimal', 'currency', 'slider'].includes(f.type),
+  },
+  maxValue: {
+    key: 'maxValue', label: 'Max Value', type: 'text', placeholder: '',
+    hint: 'Nilai maksimum (untuk angka)',
+    hideWhen: (f) => !['number', 'decimal', 'fieldnumber', 'fieldnumber_decimal', 'currency', 'slider'].includes(f.type),
+  },
+  pattern: {
+    key: 'pattern', label: 'Regex Pattern', type: 'text', placeholder: '^[A-Z]{2,4}$',
+    hint: 'Regex pattern untuk validasi (kosongkan jika tidak perlu)',
+    hideWhen: (f) => !['text', 'email', 'tel', 'password', 'number', 'decimal'].includes(f.type),
+  },
+  patternMessage: {
+    key: 'patternMessage', label: 'Pesan Regex Error', type: 'text', placeholder: 'Format tidak sesuai',
+    hint: 'Pesan error jika regex tidak cocok',
+    hideWhen: (f) => !f.pattern,
+  },
 }
 
 // ── Common panel sets ──────────────────────────────────────────────────────
-const COMMON_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.defaultValue, PANEL.required, PANEL.errorMessage, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn]
+const COMMON_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.defaultValue, PANEL.required, PANEL.errorMessage, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.minLength, PANEL.maxLength, PANEL.minValue, PANEL.maxValue, PANEL.pattern, PANEL.patternMessage]
 const SELECT_PANELS = [...COMMON_PANELS, PANEL.sourceType, PANEL.apiUrl, PANEL.apiParams, PANEL.dependsOnParam, PANEL.displayField, PANEL.valueField, PANEL.staticOptions]
-const SWITCH_PANELS = [PANEL.fieldName, PANEL.label, PANEL.defaultValue, PANEL.labelTrue, PANEL.labelFalse, PANEL.fullWidth, PANEL.dependsOn]
-const BOX_PANELS = [PANEL.fieldName, PANEL.label, PANEL.defaultValue, PANEL.labelTrue, PANEL.labelFalse, PANEL.fullWidth, PANEL.dependsOn]
-const DATE_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.dateDefaultValue, PANEL.required, PANEL.errorMessage, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn]
-const RADIO_PANELS = [PANEL.fieldName, PANEL.label, PANEL.required, PANEL.errorMessage, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn, PANEL.radioOptions]
-const POPUP_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.required, PANEL.errorMessage, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn, PANEL.apiUrl, PANEL.apiParams, PANEL.dependsOnParam, PANEL.displayField, PANEL.valueField, PANEL.popupColumns, PANEL.searchFields, PANEL.dialogTitle]
+const SWITCH_PANELS = [PANEL.fieldName, PANEL.label, PANEL.defaultValue, PANEL.labelTrue, PANEL.labelFalse, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen]
+const BOX_PANELS = [PANEL.fieldName, PANEL.label, PANEL.defaultValue, PANEL.labelTrue, PANEL.labelFalse, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen]
+const DATE_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.dateDefaultValue, PANEL.required, PANEL.errorMessage, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen]
+const RADIO_PANELS = [PANEL.fieldName, PANEL.label, PANEL.required, PANEL.errorMessage, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.radioOptions]
+const POPUP_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.required, PANEL.errorMessage, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.apiUrl, PANEL.apiParams, PANEL.dependsOnParam, PANEL.displayField, PANEL.valueField, PANEL.popupColumns, PANEL.searchFields, PANEL.dialogTitle]
+const CURRENCY_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.defaultValue, PANEL.required, PANEL.errorMessage, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.currencyPrefix, PANEL.allowDecimal, PANEL.minValue, PANEL.maxValue]
+const SLIDER_PANELS = [PANEL.fieldName, PANEL.label, PANEL.defaultValue, PANEL.required, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.sliderMin, PANEL.sliderMax, PANEL.sliderStep, PANEL.sliderUnit]
+const SECTION_PANELS = [PANEL.sectionTitle, PANEL.visibleWhen]
 
 // ── Static options helpers ────────────────────────────────────────────────
 // Returns a JS array literal string for code generation (from array of {value, label, parentValue?})
@@ -449,6 +516,68 @@ function genFieldRadio(f) {
             />`
 }
 
+function genFieldCurrency(f) {
+  const readonlyAttr = f.readonly ? ':readonly="true"' : ':readonly="isReadOnly"'
+  const prefix = f.currencyPrefix || 'Rp'
+  const allowDecimal = f.allowDecimal !== false
+  return `            <FieldCurrency
+              id="${f.field}"
+              label="${f.label}"
+              :value="values.${f.field}"
+              :errorname="errors.${f.field} ? 'failed' : ''"
+              @input="(v) => (values.${f.field} = v)"
+              :hints="errors.${f.field}"
+              :required="${f.required ? '!isReadOnly' : 'false'}"
+              ${getDisabledAttr(f)}
+              ${readonlyAttr}
+              prefix="${prefix}"
+              :allowDecimal="${allowDecimal}"
+              placeholder="${f.placeholder || f.label}"
+              class="w-full"
+            />`
+}
+
+function genFieldSlider(f) {
+  const min = f.sliderMin || 0
+  const max = f.sliderMax || 100
+  const step = f.sliderStep || 1
+  const unit = f.sliderUnit || ''
+  return `            <FieldSlider
+              id="${f.field}"
+              label="${f.label}"
+              :value="values.${f.field}"
+              @input="(v) => (values.${f.field} = v)"
+              ${getDisabledAttr(f)}
+              :readonly="isReadOnly"
+              :min="${min}"
+              :max="${max}"
+              :step="${step}"
+              unit="${unit}"
+              class="w-full"
+            />`
+}
+
+function genSection(f) {
+  return `            <div class="col-span-full border-b border-border pb-2 pt-4">
+              <h3 class="text-base font-semibold text-foreground">${f.label || 'Section'}</h3>
+            </div>`
+}
+
+// ── Conditional visibility wrapper ─────────────────────────────────────────
+function wrapVisibleWhen(tpl, f) {
+  // New format: separate fields
+  if (f.visibleWhenField && f.visibleWhenValue !== undefined && f.visibleWhenValue !== '') {
+    return `            <div v-if="values.${f.visibleWhenField} === '${f.visibleWhenValue}'">\n${tpl}\n            </div>`
+  }
+  // Legacy format: "field=value" string
+  if (!f.visibleWhen) return tpl
+  const parts = f.visibleWhen.split('=')
+  if (parts.length !== 2) return tpl
+  const watchField = parts[0].trim()
+  const watchValue = parts[1].trim()
+  return `            <div v-if="values.${watchField} === '${watchValue}'">\n${tpl}\n            </div>`
+}
+
 // ── The Registry ───────────────────────────────────────────────────────────────────────────────────────────────────────────
 export const FIELD_REGISTRY = [
   // ── FieldX variants ────────────────────────────────────────
@@ -655,6 +784,47 @@ export const FIELD_REGISTRY = [
     generatePayload: () => null,
   },
 
+  // ── Section Divider ────────────────────────────────────────
+  {
+    value: 'section', label: 'Section Divider', component: null, category: 'layout',
+    searchable: false, showInMobile: false, hasError: false,
+    isSection: true,
+    defaultMeta: { label: 'Section Title' },
+    panelFields: SECTION_PANELS,
+    previewProps: () => ({}),
+    generateTemplate: genSection,
+    generateDefault: () => null,
+    generateReset: () => null,
+    generatePayload: () => null,
+  },
+
+  // ── FieldCurrency ──────────────────────────────────────────
+  {
+    value: 'currency', label: 'FieldCurrency', component: 'FieldCurrency', category: 'number',
+    searchable: false, showInMobile: false, hasError: true,
+    defaultMeta: { currencyPrefix: 'Rp', allowDecimal: true },
+    panelFields: CURRENCY_PANELS,
+    previewProps: (f) => ({
+      label: f.label || 'Label', value: '', prefix: f.currencyPrefix || 'Rp',
+      allowDecimal: f.allowDecimal !== false, placeholder: f.placeholder || f.label, required: f.required,
+    }),
+    generateTemplate: genFieldCurrency,
+  },
+
+  // ── FieldSlider ────────────────────────────────────────────
+  {
+    value: 'slider', label: 'FieldSlider', component: 'FieldSlider', category: 'number',
+    searchable: false, showInMobile: false, hasError: false,
+    defaultMeta: { sliderMin: 0, sliderMax: 100, sliderStep: 1, sliderUnit: '' },
+    panelFields: SLIDER_PANELS,
+    previewProps: (f) => ({
+      label: f.label || 'Label', value: f.defaultValue || '0',
+      min: Number(f.sliderMin) || 0, max: Number(f.sliderMax) || 100,
+      step: Number(f.sliderStep) || 1, unit: f.sliderUnit || '',
+    }),
+    generateTemplate: genFieldSlider,
+  },
+
   // ── FieldSelect ────────────────────────────────────────────
   {
     value: 'select', label: 'FieldSelect', component: 'FieldSelect', category: 'selection',
@@ -760,6 +930,15 @@ export function createBlankField() {
     fullWidth: false,
     dependsOn: '',
     dependsOnParam: '',
+    visibleWhen: '',
+    visibleWhenField: '',
+    visibleWhenValue: '',
+    minLength: '',
+    maxLength: '',
+    minValue: '',
+    maxValue: '',
+    pattern: '',
+    patternMessage: '',
     ...allMetaKeys,
     defaultValue: '', // always blank for new fields; boolean fields get their default when type is selected
   }
@@ -769,6 +948,7 @@ export function createBlankField() {
 export function getComponentBadge(type) {
   const entry = getRegistryEntry(type)
   if (entry?.isSpace) return 'Space'
+  if (entry?.isSection) return 'Section'
   return entry?.component || 'FieldX'
 }
 
@@ -785,6 +965,8 @@ export const DETAIL_FIELD_TYPES = [
   { value: 'date', label: 'FieldDate', component: 'FieldDate', defaultValue: '' },
   { value: 'datetime', label: 'FieldDateTime', component: 'FieldDateTime', defaultValue: '' },
   { value: 'radio', label: 'FieldRadio', component: 'FieldRadio', defaultValue: '' },
+  { value: 'currency', label: 'FieldCurrency', component: 'FieldCurrency', defaultValue: 0 },
+  { value: 'slider', label: 'FieldSlider', component: 'FieldSlider', defaultValue: 0 },
 ]
 
 // ── Detail Tab helpers ─────────────────────────────────────────────────────

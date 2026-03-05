@@ -289,7 +289,7 @@ const fetchData = async (reset = false) => {
               <ClientOnly>
                 <!-- Loading skeleton -->
                 <div v-if="loading" class="flex flex-col gap-2 py-4 h-full">
-                  <UiSkeleton v-for="i in 8" :key="i" class="h-8 w-full" />
+                  <Skeleton v-for="i in 8" :key="i" class="h-8 w-full" />
                 </div>
 
                 <!-- AG Grid -->

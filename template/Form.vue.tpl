@@ -224,7 +224,7 @@ const handleCancel = () => {
           </CardDescription>
         </CardHeader>
         <CardContent class="space-y-6">
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="grid grid-cols-1 md:grid-cols-__COLUMN_LAYOUT__ gap-6">
 __FORM_FIELDS__
           </div>
         </CardContent>
