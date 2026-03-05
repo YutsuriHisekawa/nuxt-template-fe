@@ -39,6 +39,7 @@ const landing = reactive({
 				const params = new URLSearchParams({
 					page: String(page),
 					paginate: String(pageSize),
+					join: "true",
 				})
 				params.set("order_by", "createdAt")
 				params.set("order_type", "DESC")

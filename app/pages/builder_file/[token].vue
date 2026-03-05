@@ -11,7 +11,7 @@ import {
   Loader2,
   CheckCircle,
 } from "lucide-vue-next";
-import { createBlankField, createBlankDetail, getComponentBadge } from "~/utils/builder/fieldRegistry";
+import { createBlankField, createBlankDetail, getComponentBadge, getRegistryEntry } from "~/utils/builder/fieldRegistry";
 import { Layers } from "lucide-vue-next";
 import { AgGridVue } from "ag-grid-vue3";
 
@@ -338,7 +338,11 @@ const detailDefaultColDef = {
 // GENERATE
 // ============================================================================
 async function generate() {
-  const empty = fields.value.filter((f) => !f.field.trim());
+  const empty = fields.value.filter((f) => {
+    const entry = getRegistryEntry(f.type)
+    if (entry?.isSpace) return false
+    return !f.field?.trim()
+  });
   if (empty.length) {
     toast.error("Ada field yang belum memiliki Field Name!");
     return;
@@ -661,7 +665,7 @@ async function generate() {
       <Transition name="slide">
         <div
           v-if="panelOpen && panelIndex >= 0 && panelIndex < fields.length"
-          class="fixed top-0 right-0 z-[101] h-full w-[480px] bg-card border-l border-border shadow-xl overflow-y-auto"
+          class="fixed top-0 right-0 z-[101] h-full w-[480px] bg-card border-l border-border shadow-xl overflow-y-auto overflow-x-hidden"
         >
           <div
             class="flex items-center justify-between px-5 py-4 border-b border-border"

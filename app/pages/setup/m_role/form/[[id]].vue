@@ -1,22 +1,19 @@
 <script setup lang="js">
-// @ts-nocheck — This is a generator template with placeholders, not runtime code
-import { nextTick } from "vue";
 import { toast } from "vue-sonner";
 import { ArrowLeft, Loader2, Save } from "lucide-vue-next";
 import { Trash2 } from "lucide-vue-next";
 
 // ============================================================================
-// COMPOSABLES & STORES
+// COMPOSABLES & ROUTE
 // ============================================================================
-const api = useApi();
-const router = useRouter();
-const route = useRoute();
+const api = useApi();       // Helper untuk panggil API (GET, POST, PUT)
+const router = useRouter();  // Untuk navigasi antar halaman
+const route = useRoute();    // Untuk baca parameter URL (misalnya :id)
 
 // ============================================================================
-// STATE
+// STATE — variabel reaktif yang dipakai di form
 // ============================================================================
-const loading = ref(false);
-const lastLoadRequestId = ref(0);
+const loading = ref(false);  // Menampilkan spinner saat sedang request
 
 const recordId = computed(() => route.params.id);
 const action = computed(() => route.query.action);
@@ -91,98 +88,45 @@ const removeDetail = (index) => {
 };
 
 // ============================================================================
-// API CONFIG — sesuaikan param di sini jika ada perubahan
+// API ENDPOINT — sesuaikan jika endpoint berubah
 // ============================================================================
 const API_BASE = "/api/dynamic/m_role";
-const API_SAVE = API_BASE + "/with-details"; // with-details karena ada detail
-
-const getByIdParams = {
-  join: true,
-};
+const API_SAVE = API_BASE + "/with-details";
 
 // ============================================================================
-// API FUNCTIONS
+// LOAD DATA — Dipanggil saat halaman pertama kali dibuka (onBeforeMount)
 // ============================================================================
-const getById = async (id) => {
-  const qs = new URLSearchParams(getByIdParams).toString();
-  return await api.get(`${API_BASE}/${id}${qs ? `?${qs}` : ''}`);
-};
+const isRead = !!recordId.value;
 
-const createData = async (payload) => {
-  return await api.post(API_SAVE, payload);
-};
+onBeforeMount(async () => {
+  if (!isRead) return;
 
-const updateData = async (id, payload) => {
-  return await api.put(`${API_SAVE}/${id}`, payload);
-};
-
-// ============================================================================
-// RESET FORM HANDLER
-// ============================================================================
-const onReset = () => {
-  Object.assign(values, {
-    kode_role: "",
-    nama_role: "",
-    catatan: "",
-    is_active: true,
-  });
-  Object.keys(errors).forEach((key) => {
-    errors[key] = "";
-  });
-
-  // Reset detail arrays
-  detailArr.value = [];
-};
-
-// ============================================================================
-// LOAD DATA (watch route param — works on both navigation & refresh)
-// ============================================================================
-const loadData = async (id) => {
-  if (!id) return;
-
-  const requestId = ++lastLoadRequestId.value;
+  const params = { join: true };
+  const fixedParams = new URLSearchParams(params);
 
   loading.value = true;
   try {
-    const res = await getById(id);
-
-    const normalizedStatus =
-      res?.status === "success" ? res.status : res?.data?.status;
-    if (normalizedStatus && normalizedStatus !== "success") {
-      throw new Error("Gagal memuat data");
+    const res = await api.get(`${API_BASE}/${recordId.value}?${defaultParams}`);
+    const data = res?.data ?? res;
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+      throw new Error("Data tidak ditemukan");
     }
 
-    const sourceData =
-      res?.status === "success"
-        ? res?.data
-        : (res?.data?.data ?? res?.data ?? null);
-
-    if (!sourceData || typeof sourceData !== "object" || Array.isArray(sourceData)) {
-      throw new Error("Format data tidak valid");
-    }
-
-    if (requestId !== lastLoadRequestId.value) {
-      return;
-    }
-
-    const data = { ...sourceData };
-
-    // Ensure boolean for switch fields
+    // Konversi boolean untuk field switch
     for (const key of Object.keys(values)) {
       if (typeof values[key] === "boolean" && data[key] !== undefined) {
-        const v = data[key];
-        data[key] = v === true || v === 1 || v === "1";
+        data[key] = data[key] === true || data[key] === 1 || data[key] === "1";
       }
     }
 
-    // Mode copy: hapus id agar jadi create baru
+    // Mode Copy: hapus id supaya tersimpan sebagai data baru
     if (isCopyMode.value) {
       delete data.id;
       delete data.createdAt;
       delete data.updatedAt;
     }
 
-    // Assign hanya key yang sudah ada di state reactive values
+    // Masukkan data ke form
     for (const key in data) {
       if (Object.prototype.hasOwnProperty.call(values, key)) {
         values[key] = data[key] ?? "";
@@ -201,54 +145,43 @@ const loadData = async (id) => {
         is_copy: detail.is_copy !== undefined ? detail.is_copy : true,
       }));
     }
-
-    // Force Vue to flush DOM updates
-    await nextTick();
-
-    if (isCopyMode.value) {
-      toast.success("Data berhasil disalin", {
-        description: "Silakan edit dan simpan sebagai data baru",
-      });
-    } else {
-      toast.success("Data berhasil dimuat");
-    }
-  } catch (error) {
-    console.error("Error loading data:", error);
+  } catch (err) {
     toast.error("Gagal memuat data", {
-      description: error?.message || "Terjadi kesalahan",
+      description: err?.message || "Terjadi kesalahan",
     });
     setTimeout(() => router.push("/setup/m_role"), 2000);
-  } finally {
-    loading.value = false;
   }
-};
-
-watch(
-  () => route.params.id,
-  (id) => {
-    const normalizedId = Array.isArray(id) ? id[0] : id;
-
-    if (!normalizedId) {
-      onReset();
-      return;
-    }
-
-    onReset();
-    loadData(normalizedId);
-  },
-  { immediate: true },
-);
+  loading.value = false;
+});
 
 // ============================================================================
-// SAVE HANDLER
+// RESET FORM — Kembalikan semua field ke nilai default
 // ============================================================================
-const onSave = async () => {
-  // Clear errors
+const onReset = () => {
+  Object.assign(values, {
+    kode_role: "",
+    nama_role: "",
+    catatan: "",
+    is_active: true,
+  });
   Object.keys(errors).forEach((key) => {
     errors[key] = "";
   });
 
-  // Validasi required
+  // Reset detail arrays
+  detailArr.value = [];
+};
+
+// ============================================================================
+// SAVE — Simpan data ke server (POST untuk create, PUT untuk update)
+// ============================================================================
+const onSave = async () => {
+  // 1. Bersihkan error sebelumnya
+  Object.keys(errors).forEach((key) => {
+    errors[key] = "";
+  });
+
+  // 2. Validasi field wajib
   let invalid = false;
   if (!values.nama_role?.toString().trim()) {
     errors.nama_role = "Nama Role wajib diisi";
@@ -262,14 +195,17 @@ const onSave = async () => {
     return;
   }
 
+  // 3. Konfirmasi sebelum menyimpan
+  if (!window.confirm("Simpan data?")) return;
+
+  // 4. Kirim data ke server
   loading.value = true;
   try {
-    // Clean payload
     const payload = {
-    kode_role: values.kode_role?.toString().trim() || null,
-    nama_role: values.nama_role?.toString().trim() || null,
-    catatan: values.catatan?.toString().trim() || null,
-    is_active: values.is_active,
+      kode_role: values.kode_role?.toString().trim() || null,
+      nama_role: values.nama_role?.toString().trim() || null,
+      catatan: values.catatan?.toString().trim() || null,
+      is_active: values.is_active,
 
       m_role_d: detailArr.value.map((d) => ({
         m_menu_id: d.m_menu_id,
@@ -282,29 +218,25 @@ const onSave = async () => {
     };
 
     if (isEditMode.value) {
-      await updateData(recordId.value, payload);
+      await api.put(`${API_SAVE}/${recordId.value}`, payload);
       toast.success("Data berhasil diperbarui");
     } else {
-      await createData(payload);
+      await api.post(API_SAVE, payload);
       toast.success("Data berhasil dibuat");
     }
 
-    // Navigate back to list
     router.replace("/setup/m_role");
   } catch (error) {
     toast.error(
       isEditMode.value ? "Gagal memperbarui data" : "Gagal membuat data",
-      {
-        description: error?.message || "Terjadi kesalahan",
-      },
+      { description: error?.message || "Terjadi kesalahan" },
     );
-  } finally {
-    loading.value = false;
   }
+  loading.value = false;
 };
 
 // ============================================================================
-// CANCEL HANDLER
+// CANCEL — Kembali ke halaman list tanpa menyimpan
 // ============================================================================
 const handleCancel = () => {
   router.push("/setup/m_role");

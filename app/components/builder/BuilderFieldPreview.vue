@@ -14,6 +14,7 @@ import FieldBox from '~/components/field/FieldBox.vue'
 import FieldDate from '~/components/field/FieldDate.vue'
 import FieldDateTime from '~/components/field/FieldDateTime.vue'
 import FieldRadio from '~/components/field/FieldRadio.vue'
+import FieldPopUp from '~/components/field/FieldPopUp.vue'
 
 const COMPONENT_MAP = {
   FieldX,
@@ -25,6 +26,7 @@ const COMPONENT_MAP = {
   FieldDate,
   FieldDateTime,
   FieldRadio,
+  FieldPopUp,
 }
 
 const props = defineProps({

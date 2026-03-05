@@ -1,34 +1,37 @@
 <script setup lang="js">
-// @ts-nocheck — This is a generator template with placeholders, not runtime code
-import { nextTick } from "vue";
+// @ts-nocheck — Template builder, bukan runtime code
 import { toast } from "vue-sonner";
 import { ArrowLeft, Loader2, Save } from "lucide-vue-next";
 __DETAIL_IMPORTS__
 
 // ============================================================================
-// COMPOSABLES & STORES
+// COMPOSABLES & ROUTE
 // ============================================================================
-const api = useApi();
-const router = useRouter();
-const route = useRoute();
+const api = useApi();       // Helper untuk panggil API (GET, POST, PUT)
+const router = useRouter();  // Untuk navigasi antar halaman
+const route = useRoute();    // Untuk baca parameter URL (misalnya :id)
 
 // ============================================================================
-// STATE
+// STATE — variabel reaktif yang dipakai di form
 // ============================================================================
-const loading = ref(false);
-const lastLoadRequestId = ref(0);
+const loading = ref(false);  // Menampilkan spinner saat sedang request
 
+// Ambil parameter dari URL:
+// recordId = id record yang sedang diedit/dilihat (null jika mode create)
+// action   = aksi saat ini: "Edit", "View", "Copy", atau null (create)
 const recordId = computed(() => route.params.id);
 const action = computed(() => route.query.action);
 
+// Cek mode saat ini berdasarkan URL
 const isEditMode = computed(() => !!recordId.value && action.value === "Edit");
 const isViewMode = computed(
   () => !!recordId.value && (!action.value || action.value === "View"),
 );
 const isCopyMode = computed(() => !!recordId.value && action.value === "Copy");
 const isCreateMode = computed(() => !recordId.value);
-const isReadOnly = computed(() => isViewMode.value);
+const isReadOnly = computed(() => isViewMode.value);  // View mode = form readonly
 
+// Judul & deskripsi halaman dinamis sesuai mode
 const pageTitle = computed(() => {
   if (isViewMode.value) return "Detail __READABLE_NAME__";
   if (isCopyMode.value) return "Salin __READABLE_NAME__";
@@ -43,12 +46,12 @@ const pageDescription = computed(() => {
   return "Buat data __READABLE_NAME_LOWER__ baru";
 });
 
-// Reactive form values with defaults
+// Nilai-nilai form — setiap field punya default kosong
 const values = reactive({
 __VALUES_DEFAULTS__
 });
 
-// Errors object (manual validation)
+// Error validasi per field (string pesan error, kosong = tidak ada error)
 const errors = reactive({
 __ERRORS_DEFAULTS__
 });
@@ -57,33 +60,67 @@ __DETAIL_SELECTED_IDS__
 __DETAIL_METHODS__
 
 // ============================================================================
-// API CONFIG — sesuaikan param di sini jika ada perubahan
+// API ENDPOINT — sesuaikan jika endpoint berubah
 // ============================================================================
 const API_BASE = "/api/dynamic/__API_ENDPOINT__";
 __API_DETAIL_ENDPOINT__
 
-const getByIdParams = {
-  join: true,
-};
+// ============================================================================
+// LOAD DATA — Dipanggil saat halaman pertama kali dibuka (onBeforeMount)
+// Jika ada recordId (mode Edit/View/Copy), ambil data dari server
+// ============================================================================
+const isRead = !!recordId.value;  // true kalau mode Edit / View / Copy
+
+onBeforeMount(async () => {
+  if (!isRead) return;  // Mode create, tidak perlu load data
+
+  const params = { join: true };
+  const fixedParams = new URLSearchParams(params);
+
+  loading.value = true;
+  try {
+    // Panggil API untuk ambil data berdasarkan ID
+    const res = await api.get(`${API_BASE}/${recordId.value}?` + fixedParams);
+
+    // Ambil data dari response (handle berbagai format response)
+    const data = res?.data ?? res;
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+      throw new Error("Data tidak ditemukan");
+    }
+
+    // Konversi boolean untuk field switch (karena dari DB bisa 0/1)
+    for (const key of Object.keys(values)) {
+      if (typeof values[key] === "boolean" && data[key] !== undefined) {
+        data[key] = data[key] === true || data[key] === 1 || data[key] === "1";
+      }
+    }
+
+    // Mode Copy: hapus id supaya nanti tersimpan sebagai data baru
+    if (isCopyMode.value) {
+      delete data.id;
+      delete data.createdAt;
+      delete data.updatedAt;
+    }
+
+    // Masukkan data ke form (hanya field yang sudah didefinisikan di values)
+    for (const key in data) {
+      if (Object.prototype.hasOwnProperty.call(values, key)) {
+        values[key] = data[key] ?? "";
+      }
+    }
+__DETAIL_LOAD_DATA__
+  } catch (err) {
+    // Kalau gagal load data, tampilkan error dan kembali ke halaman list
+    toast.error("Gagal memuat data", {
+      description: err?.message || "Terjadi kesalahan",
+    });
+    setTimeout(() => router.push("__ROUTE_PATH__"), 2000);
+  }
+  loading.value = false;
+});
 
 // ============================================================================
-// API FUNCTIONS
-// ============================================================================
-const getById = async (id) => {
-  const qs = new URLSearchParams(getByIdParams).toString();
-  return await api.get(`${API_BASE}/${id}${qs ? `?${qs}` : ''}`);
-};
-
-const createData = async (payload) => {
-  return await api.post(API_SAVE, payload);
-};
-
-const updateData = async (id, payload) => {
-  return await api.put(`${API_SAVE}/${id}`, payload);
-};
-
-// ============================================================================
-// RESET FORM HANDLER
+// RESET FORM — Kembalikan semua field ke nilai default
 // ============================================================================
 const onReset = () => {
   Object.assign(values, {
@@ -96,108 +133,15 @@ __DETAIL_RESET__
 };
 
 // ============================================================================
-// LOAD DATA (watch route param — works on both navigation & refresh)
-// ============================================================================
-const loadData = async (id) => {
-  if (!id) return;
-
-  const requestId = ++lastLoadRequestId.value;
-
-  loading.value = true;
-  try {
-    const res = await getById(id);
-
-    const normalizedStatus =
-      res?.status === "success" ? res.status : res?.data?.status;
-    if (normalizedStatus && normalizedStatus !== "success") {
-      throw new Error("Gagal memuat data");
-    }
-
-    const sourceData =
-      res?.status === "success"
-        ? res?.data
-        : (res?.data?.data ?? res?.data ?? null);
-
-    if (!sourceData || typeof sourceData !== "object" || Array.isArray(sourceData)) {
-      throw new Error("Format data tidak valid");
-    }
-
-    if (requestId !== lastLoadRequestId.value) {
-      return;
-    }
-
-    const data = { ...sourceData };
-
-    // Ensure boolean for switch fields
-    for (const key of Object.keys(values)) {
-      if (typeof values[key] === "boolean" && data[key] !== undefined) {
-        const v = data[key];
-        data[key] = v === true || v === 1 || v === "1";
-      }
-    }
-
-    // Mode copy: hapus id agar jadi create baru
-    if (isCopyMode.value) {
-      delete data.id;
-      delete data.createdAt;
-      delete data.updatedAt;
-    }
-
-    // Assign hanya key yang sudah ada di state reactive values
-    for (const key in data) {
-      if (Object.prototype.hasOwnProperty.call(values, key)) {
-        values[key] = data[key] ?? "";
-      }
-    }
-__DETAIL_LOAD_DATA__
-
-    // Force Vue to flush DOM updates
-    await nextTick();
-
-    if (isCopyMode.value) {
-      toast.success("Data berhasil disalin", {
-        description: "Silakan edit dan simpan sebagai data baru",
-      });
-    } else {
-      toast.success("Data berhasil dimuat");
-    }
-  } catch (error) {
-    console.error("Error loading data:", error);
-    toast.error("Gagal memuat data", {
-      description: error?.message || "Terjadi kesalahan",
-    });
-    setTimeout(() => router.push("__ROUTE_PATH__"), 2000);
-  } finally {
-    loading.value = false;
-  }
-};
-
-watch(
-  () => route.params.id,
-  (id) => {
-    const normalizedId = Array.isArray(id) ? id[0] : id;
-
-    if (!normalizedId) {
-      onReset();
-      return;
-    }
-
-    onReset();
-    loadData(normalizedId);
-  },
-  { immediate: true },
-);
-
-// ============================================================================
-// SAVE HANDLER
+// SAVE — Simpan data ke server (POST untuk create, PUT untuk update)
 // ============================================================================
 const onSave = async () => {
-  // Clear errors
+  // 1. Bersihkan semua pesan error sebelumnya
   Object.keys(errors).forEach((key) => {
     errors[key] = "";
   });
 
-  // Validasi required
+  // 2. Validasi: cek field yang wajib diisi
   let invalid = false;
 __VALIDATION__
 
@@ -208,38 +152,41 @@ __VALIDATION__
     return;
   }
 
+  // 3. Konfirmasi sebelum menyimpan
+  if (!window.confirm("Simpan data?")) return;
+
+  // 4. Kirim data ke server
   loading.value = true;
   try {
-    // Clean payload
+    // Siapkan payload (data yang akan dikirim)
     const payload = {
 __PAYLOAD__
 __DETAIL_PAYLOAD__
     };
 
+    // Pilih method: PUT (update) atau POST (create baru)
     if (isEditMode.value) {
-      await updateData(recordId.value, payload);
+      await api.put(`${API_SAVE}/${recordId.value}`, payload);
       toast.success("Data berhasil diperbarui");
     } else {
-      await createData(payload);
+      await api.post(API_SAVE, payload);
       toast.success("Data berhasil dibuat");
     }
 
-    // Navigate back to list
+    // Kembali ke halaman list setelah sukses simpan
     router.replace("__ROUTE_PATH__");
   } catch (error) {
+    // Tampilkan error dari server
     toast.error(
       isEditMode.value ? "Gagal memperbarui data" : "Gagal membuat data",
-      {
-        description: error?.message || "Terjadi kesalahan",
-      },
+      { description: error?.message || "Terjadi kesalahan" },
     );
-  } finally {
-    loading.value = false;
   }
+  loading.value = false;
 };
 
 // ============================================================================
-// CANCEL HANDLER
+// CANCEL — Kembali ke halaman list tanpa menyimpan
 // ============================================================================
 const handleCancel = () => {
   router.push("__ROUTE_PATH__");
