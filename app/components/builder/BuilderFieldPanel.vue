@@ -34,6 +34,7 @@ const groupedOptions = computed(() => {
 const categoryLabels = {
   input: 'Input Fields',
   number: 'Number Fields',
+  date: 'Date / Time',
   selection: 'Selection',
   toggle: 'Toggle',
   layout: 'Layout',
@@ -41,13 +42,12 @@ const categoryLabels = {
 
 function updateField(key, value) {
   const updated = { ...props.field, [key]: value }
-  // When type changes, merge in defaultMeta from the new type so new fields appear
+  // When type changes, force-apply defaultMeta from the new type
   if (key === 'type') {
     const newEntry = getRegistryEntry(value)
     if (newEntry?.defaultMeta) {
       Object.entries(newEntry.defaultMeta).forEach(([k, v]) => {
-        // Only set if currently empty
-        if (!updated[k]) updated[k] = v
+        updated[k] = v
       })
     }
   }
@@ -178,6 +178,55 @@ function addParamItem(key) {
         <label class="block mb-1 font-medium text-muted-foreground">{{ pf.label }}</label>
         <div class="flex flex-col gap-2">
           <div v-for="(opt, i) in (Array.isArray(field[pf.key]) ? field[pf.key] : [])" :key="i" class="flex gap-2 items-center">
+            <input
+              type="text"
+              :value="opt.value"
+              placeholder="Value"
+              class="flex-1 rounded bg-muted border border-border text-foreground px-2 py-1.5 text-sm focus:border-primary focus:ring-1 focus:ring-primary"
+              @input="updateListItem(pf.key, i, 'value', $event.target.value)"
+            />
+            <input
+              type="text"
+              :value="opt.label"
+              placeholder="Label"
+              class="flex-1 rounded bg-muted border border-border text-foreground px-2 py-1.5 text-sm focus:border-primary focus:ring-1 focus:ring-primary"
+              @input="updateListItem(pf.key, i, 'label', $event.target.value)"
+            />
+            <button
+              class="text-muted-foreground hover:text-destructive transition-colors p-1"
+              @click="removeListItem(pf.key, i)"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <button
+            class="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 transition-colors py-1"
+            @click="addOptionItem(pf.key)"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Tambah Option
+          </button>
+        </div>
+      </div>
+
+      <!-- Radio Options List (with default value radio selector) -->
+      <div v-else-if="pf.type === 'radioOptionsList'">
+        <label class="block mb-1 font-medium text-muted-foreground">{{ pf.label }}</label>
+        <div class="flex flex-col gap-2">
+          <div class="flex gap-2 items-center text-xs text-muted-foreground px-1">
+            <span class="w-5 text-center shrink-0">Default</span>
+            <span class="flex-1">Value</span>
+            <span class="flex-1">Label</span>
+            <span class="w-6"></span>
+          </div>
+          <div v-for="(opt, i) in (Array.isArray(field[pf.key]) ? field[pf.key] : [])" :key="i" class="flex gap-2 items-center">
+            <input
+              type="radio"
+              name="radio-default-option"
+              :checked="field.defaultValue === opt.value && opt.value !== ''"
+              class="w-5 h-4 shrink-0 accent-primary cursor-pointer"
+              @change="updateField('defaultValue', opt.value)"
+            />
             <input
               type="text"
               :value="opt.value"

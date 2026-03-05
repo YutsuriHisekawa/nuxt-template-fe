@@ -6,6 +6,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Search,
+  RefreshCw,
   Trash2,
   Eye,
   Edit,
@@ -94,6 +95,11 @@ const internalPage = ref(1)
 const internalPageSize = ref(props.pageSize)
 const internalSearch = ref("")
 
+// Column floating filter state (per-column search from ag-grid header filters)
+const columnFilterSearch = ref("") // current search value from column filter
+const columnFilterField = ref("")  // current searchfield from column filter
+let filterDebounceTimer = null
+
 const themeCookie = useCookie("theme")
 const isDark = computed(() => themeCookie.value === "dark")
 
@@ -108,14 +114,38 @@ const showToolbarActions = computed(
   () => props.actionsPlacement === "toolbar" && props.actions.length > 0
 )
 const resolvedSearchFields = computed(() => {
-  if (Array.isArray(props.searchFields)) {
+  // Priority 1: explicit searchFields prop (override)
+  if (Array.isArray(props.searchFields) && props.searchFields.length > 0) {
     return props.searchFields.filter(Boolean).join(",")
   }
-  if (typeof props.searchFields === "string") {
+  if (typeof props.searchFields === "string" && props.searchFields.trim()) {
     return props.searchFields.trim()
   }
+  // Priority 2: auto-extract from columnDefs (smart mode)
+  const skipFields = new Set(["__actions"])
+  const skipPatterns = /^is_|^has_|^flag_/
   const fields = (props.columnDefs || [])
-    .map((col) => col?.field)
+    .filter((col) => {
+      if (!col?.field) return false
+      if (skipFields.has(col.field)) return false
+      // Skip boolean/status fields by field name pattern
+      if (skipPatterns.test(col.field)) return false
+      // Skip columns explicitly marked as non-filterable
+      if (col.filter === false) return false
+      // Skip columns with cellRenderer that renders boolean/status (Aktif/Nonaktif, Ya/Tidak)
+      if (col.cellRenderer && typeof col.cellRenderer === "function") {
+        try {
+          const fnStr = col.cellRenderer.toString()
+          if (/is_active|isActive/.test(fnStr) && /Aktif|Nonaktif|Ya|Tidak/i.test(fnStr)) return false
+        } catch (_) { /* ignore */ }
+      }
+      return true
+    })
+    .map((col) => {
+      // Support explicit searchField per colDef (e.g. for joined table dot-path)
+      if (col.searchField) return col.searchField
+      return col.field
+    })
     .filter((field) => typeof field === "string" && field.length > 0)
   return Array.from(new Set(fields)).join(",")
 })
@@ -129,17 +159,44 @@ const endItem = computed(() => {
   return Math.min(currentPage.value * perPage.value, totalItems.value)
 })
 
+// Build a map from colDef field → searchField (for joined table dot-path support)
+const buildSearchFieldMap = () => {
+  const map = {}
+  ;(props.columnDefs || []).forEach((col) => {
+    if (!col?.field) return
+    if (col.searchField) {
+      map[col.field] = col.searchField
+    }
+  })
+  return map
+}
+
 const emitRequest = () => {
+  // Column filter takes priority over toolbar search
+  const hasColumnFilter = columnFilterSearch.value && columnFilterField.value
   emit("request", {
     page: internalPage.value,
     pageSize: internalPageSize.value,
-    search: internalSearch.value,
-    searchfield: resolvedSearchFields.value,
+    search: hasColumnFilter ? columnFilterSearch.value : internalSearch.value,
+    searchfield: hasColumnFilter ? columnFilterField.value : resolvedSearchFields.value,
   })
 }
 
 const refresh = (resetPage = true) => {
   if (resetPage) internalPage.value = 1
+  emitRequest()
+}
+
+// Refresh button handler — clears all search/filter state and reloads
+const handleRefresh = () => {
+  searchInput.value = ""
+  internalSearch.value = ""
+  columnFilterSearch.value = ""
+  columnFilterField.value = ""
+  internalPage.value = 1
+  if (gridApi.value) {
+    gridApi.value.setFilterModel(null)
+  }
   emitRequest()
 }
 
@@ -162,6 +219,38 @@ const changePageSize = (size) => {
 const onGridReady = (params) => {
   gridApi.value = params.api
   emit("grid-ready", params)
+}
+
+// Handle ag-grid floating filter (column header filter) changes
+const onFilterChanged = () => {
+  if (!gridApi.value) return
+
+  if (filterDebounceTimer) clearTimeout(filterDebounceTimer)
+
+  filterDebounceTimer = setTimeout(() => {
+    const filterModel = gridApi.value.getFilterModel()
+    const searchFieldMap = buildSearchFieldMap()
+
+    // Find the first column with an active filter value
+    let filterValue = ""
+    let filterField = ""
+
+    for (const [colField, model] of Object.entries(filterModel)) {
+      if (model && model.filter && typeof model.filter === "string" && model.filter.trim()) {
+        filterValue = model.filter.trim()
+        // Map to searchField if defined, otherwise use colField
+        filterField = searchFieldMap[colField] || colField
+        break
+      }
+    }
+
+    columnFilterSearch.value = filterValue
+    columnFilterField.value = filterField
+
+    // Reset to page 1 and hit API
+    internalPage.value = 1
+    emitRequest()
+  }, 300)
 }
 const onRowClicked = (params) => emit("row-clicked", params)
 const onRowDoubleClicked = (params) => emit("row-double-clicked", params)
@@ -370,6 +459,13 @@ const getIconSvg = (iconName) => {
 const onSearchSubmit = () => {
   internalSearch.value = searchInput.value.trim()
   internalPage.value = 1
+  // Clear column filter state so toolbar search takes priority
+  columnFilterSearch.value = ""
+  columnFilterField.value = ""
+  // Also clear ag-grid filter model to avoid conflict
+  if (gridApi.value) {
+    gridApi.value.setFilterModel(null)
+  }
   emit("search-change", {
     search: internalSearch.value,
     searchfield: resolvedSearchFields.value,
@@ -447,24 +543,36 @@ watch(
         </div>
       </div>
 
-      <button
-        v-if="showCreateButton"
-        type="button"
-        class="ml-auto inline-flex h-9 items-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-        @click="emit('create')"
-      >
-        <svg
-          viewBox="0 0 24 24"
-          class="h-4 w-4"
-          aria-hidden="true"
+      <div class="ml-auto flex items-center gap-2">
+        <button
+          type="button"
+          class="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground"
+          title="Refresh data"
+          :disabled="loading"
+          @click="handleRefresh"
         >
-          <path
-            fill="currentColor"
-            d="M12 5a1 1 0 0 1 1 1v5h5a1 1 0 1 1 0 2h-5v5a1 1 0 1 1-2 0v-5H6a1 1 0 1 1 0-2h5V6a1 1 0 0 1 1-1z"
-          />
-        </svg>
-        {{ createButtonText }}
-      </button>
+          <RefreshCw class="h-4 w-4" :class="{ 'animate-spin': loading }" />
+        </button>
+
+        <button
+          v-if="showCreateButton"
+          type="button"
+          class="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          @click="emit('create')"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            class="h-4 w-4"
+            aria-hidden="true"
+          >
+            <path
+              fill="currentColor"
+              d="M12 5a1 1 0 0 1 1 1v5h5a1 1 0 1 1 0 2h-5v5a1 1 0 1 1-2 0v-5H6a1 1 0 1 1 0-2h5V6a1 1 0 0 1 1-1z"
+            />
+          </svg>
+          {{ createButtonText }}
+        </button>
+      </div>
     </div>
 
     <AgGridVue
@@ -479,6 +587,7 @@ watch(
       :quickFilterText="quickFilterText"
       :loading="loading"
       @grid-ready="onGridReady"
+      @filter-changed="onFilterChanged"
       @row-clicked="onRowClicked"
       @row-double-clicked="onRowDoubleClicked"
       @selection-changed="onSelectionChanged"

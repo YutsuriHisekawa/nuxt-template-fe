@@ -79,8 +79,18 @@ const PANEL = {
     key: 'staticOptions', label: 'Options', type: 'optionsList',
     hideWhen: (f) => f.sourceType !== 'static',
   },
+  radioOptions: {
+    key: 'staticOptions', label: 'Radio Options', type: 'radioOptionsList',
+  },
   fullWidth: {
     key: 'fullWidth', label: 'Full Width (2 kolom)', type: 'checkbox',
+  },
+  dateDefaultValue: {
+    key: 'defaultValue', label: 'Default Value', type: 'buttongroup',
+    options: [
+      { value: '', label: 'Kosong' },
+      { value: 'NOW', label: 'Hari Ini' },
+    ],
   },
 }
 
@@ -89,6 +99,8 @@ const COMMON_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.de
 const SELECT_PANELS = [...COMMON_PANELS, PANEL.sourceType, PANEL.apiUrl, PANEL.apiParams, PANEL.displayField, PANEL.valueField, PANEL.staticOptions]
 const SWITCH_PANELS = [PANEL.fieldName, PANEL.label, PANEL.defaultValue, PANEL.labelTrue, PANEL.labelFalse, PANEL.fullWidth]
 const BOX_PANELS = [PANEL.fieldName, PANEL.label, PANEL.defaultValue, PANEL.labelTrue, PANEL.labelFalse, PANEL.fullWidth]
+const DATE_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.dateDefaultValue, PANEL.required, PANEL.readonly, PANEL.fullWidth]
+const RADIO_PANELS = [PANEL.fieldName, PANEL.label, PANEL.required, PANEL.readonly, PANEL.fullWidth, PANEL.radioOptions]
 
 // ── Static options helpers ────────────────────────────────────────────────
 // Returns a JS array literal string for code generation (from array of {value, label})
@@ -212,6 +224,60 @@ function genSelect(f, component = 'FieldSelect') {
             />`
 }
 
+function genFieldDate(f) {
+  const readonlyAttr = f.readonly ? ':readonly="true"' : ':readonly="isReadOnly"'
+  return `            <FieldDate
+              id="${f.field}"
+              label="${f.label}"
+              :value="values.${f.field}"
+              :errorname="errors.${f.field} ? 'failed' : ''"
+              @input="(v) => (values.${f.field} = v)"
+              :hints="errors.${f.field}"
+              :required="${f.required ? '!isReadOnly' : 'false'}"
+              :disabled="loading || isReadOnly"
+              ${readonlyAttr}
+              placeholder="${f.placeholder || f.label}"
+              :clearable="true"
+              class="w-full"
+            />`
+}
+
+function genFieldDateTime(f) {
+  const readonlyAttr = f.readonly ? ':readonly="true"' : ':readonly="isReadOnly"'
+  return `            <FieldDateTime
+              id="${f.field}"
+              label="${f.label}"
+              :value="values.${f.field}"
+              :errorname="errors.${f.field} ? 'failed' : ''"
+              @input="(v) => (values.${f.field} = v)"
+              :hints="errors.${f.field}"
+              :required="${f.required ? '!isReadOnly' : 'false'}"
+              :disabled="loading || isReadOnly"
+              ${readonlyAttr}
+              placeholder="${f.placeholder || f.label}"
+              :clearable="true"
+              class="w-full"
+            />`
+}
+
+function genFieldRadio(f) {
+  const readonlyAttr = f.readonly ? ':readonly="true"' : ':readonly="isReadOnly"'
+  const optionsLiteral = parseStaticOptionsLiteral(f.staticOptions || [])
+  return `            <FieldRadio
+              id="${f.field}"
+              label="${f.label}"
+              :value="values.${f.field}"
+              :errorname="errors.${f.field} ? 'failed' : ''"
+              @input="(v) => (values.${f.field} = v)"
+              :hints="errors.${f.field}"
+              :required="${f.required ? '!isReadOnly' : 'false'}"
+              :disabled="loading || isReadOnly"
+              ${readonlyAttr}
+              :options="${optionsLiteral}"
+              class="w-full"
+            />`
+}
+
 // ── The Registry ───────────────────────────────────────────────────────────────────────────────────────────────────────────
 export const FIELD_REGISTRY = [
   // ── FieldX variants ────────────────────────────────────────
@@ -320,6 +386,60 @@ export const FIELD_REGISTRY = [
     generatePayload: (f) => `    ${f.field}: values.${f.field},`,
   },
 
+  // ── FieldDate ──────────────────────────────────────────────
+  {
+    value: 'date', label: 'FieldDate', component: 'FieldDate', category: 'date',
+    searchable: false, showInMobile: true, hasError: true,
+    defaultMeta: { defaultValue: '' },
+    panelFields: DATE_PANELS,
+    previewProps: (f) => ({ label: f.label || 'Label', value: '', placeholder: f.placeholder || f.label, required: f.required, clearable: true }),
+    generateTemplate: genFieldDate,
+    generateDefault: (f) => {
+      if (f.defaultValue === 'NOW') return `  ${f.field}: new Date().toISOString().slice(0, 10),`
+      return `  ${f.field}: '',`
+    },
+    generateReset: (f) => {
+      if (f.defaultValue === 'NOW') return `    ${f.field}: new Date().toISOString().slice(0, 10),`
+      return `    ${f.field}: '',`
+    },
+    generatePayload: (f) => `    ${f.field}: values.${f.field},`,
+  },
+
+  // ── FieldDateTime ──────────────────────────────────────────
+  {
+    value: 'datetime', label: 'FieldDateTime', component: 'FieldDateTime', category: 'date',
+    searchable: false, showInMobile: true, hasError: true,
+    defaultMeta: { defaultValue: '' },
+    panelFields: DATE_PANELS,
+    previewProps: (f) => ({ label: f.label || 'Label', value: '', placeholder: f.placeholder || f.label, required: f.required, clearable: true }),
+    generateTemplate: genFieldDateTime,
+    generateDefault: (f) => {
+      if (f.defaultValue === 'NOW') return `  ${f.field}: (() => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0') + 'T' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0') })(),`
+      return `  ${f.field}: '',`
+    },
+    generateReset: (f) => {
+      if (f.defaultValue === 'NOW') return `    ${f.field}: (() => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0') + 'T' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0') })(),`
+      return `    ${f.field}: '',`
+    },
+    generatePayload: (f) => `    ${f.field}: values.${f.field},`,
+  },
+
+  // ── FieldRadio ─────────────────────────────────────────────
+  {
+    value: 'radio', label: 'FieldRadio', component: 'FieldRadio', category: 'selection',
+    searchable: false, showInMobile: true, hasError: true,
+    defaultMeta: { sourceType: 'static', staticOptions: [{ value: 'yes', label: 'Ya' }, { value: 'no', label: 'Tidak' }] },
+    panelFields: RADIO_PANELS,
+    previewProps: (f) => {
+      const opts = f.staticOptions && f.staticOptions.length ? f.staticOptions : [{ value: 'yes', label: 'Ya' }, { value: 'no', label: 'Tidak' }]
+      return { label: f.label || 'Label', value: '', options: opts, required: f.required }
+    },
+    generateTemplate: genFieldRadio,
+    generateDefault: (f) => `  ${f.field}: '${f.defaultValue || ''}',`,
+    generateReset: (f) => `    ${f.field}: '${f.defaultValue || ''}',`,
+    generatePayload: (f) => `    ${f.field}: values.${f.field},`,
+  },
+
   // ── Space (layout spacer) ─────────────────────────────────
   {
     value: 'space', label: 'Space', component: null, category: 'layout',
@@ -420,6 +540,9 @@ export const DETAIL_FIELD_TYPES = [
   { value: 'fieldnumber_decimal', label: 'FieldNumber (Decimal)', component: 'FieldNumber', defaultValue: 0 },
   { value: 'textarea', label: 'FieldTextarea', component: 'FieldTextarea', defaultValue: '' },
   { value: 'select', label: 'FieldSelect', component: 'FieldSelect', defaultValue: '' },
+  { value: 'date', label: 'FieldDate', component: 'FieldDate', defaultValue: '' },
+  { value: 'datetime', label: 'FieldDateTime', component: 'FieldDateTime', defaultValue: '' },
+  { value: 'radio', label: 'FieldRadio', component: 'FieldRadio', defaultValue: '' },
 ]
 
 // ── Detail Tab helpers ─────────────────────────────────────────────────────

@@ -32,7 +32,6 @@ const checkActive = (val) => val === true || val === 1 || val === "1" || val ===
 const landing = reactive({
 	api: {
 		url: "/api/dynamic/m_menu",
-		searchFields: ["name", "modul", "sub_modul", "path", "icon"],
 		async fetch({ page = 1, pageSize = 25, search = '', searchfield = '' } = {}) {
 			loading.value = true
 			errorMessage.value = ""
@@ -47,7 +46,7 @@ const landing = reactive({
 				params.set("filter_operator_is_active", "=")
 				if (search) {
 					params.set("search", search)
-					params.set("searchfield", searchfield || landing.api.searchFields.join(","))
+					params.set("searchfield", searchfield)
 				}
 				const response = await api.get(`${landing.api.url}?${params.toString()}`)
 				if (response?.status === "success" && Array.isArray(response.data)) {
@@ -195,7 +194,6 @@ const actionIcons = { trash: Trash2, eye: Eye, edit: Edit, copy: Copy }
 					:columnDefs="landing.columns"
 					:rowData="rowData"
 					:loading="loading"
-					:searchFields="landing.api.searchFields"
 					:pagination="paginationData"
 					:actions="landing.actions"
 					actionsPlacement="toolbar"
