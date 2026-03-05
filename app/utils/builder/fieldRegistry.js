@@ -103,6 +103,20 @@ const PANEL = {
       { value: 'NOW', label: 'Hari Ini' },
     ],
   },
+  popupColumns: {
+    key: 'popupColumns', label: 'Popup Columns (AG Grid)', type: 'columnsList',
+    hint: 'Kolom-kolom yang muncul di tabel popup',
+  },
+  searchFields: {
+    key: 'searchFields', label: 'Search Fields', type: 'text',
+    placeholder: 'code,name,value1',
+    hint: 'Comma-separated field names untuk search (auto dari columns jika kosong)',
+  },
+  dialogTitle: {
+    key: 'dialogTitle', label: 'Dialog Title', type: 'text',
+    placeholder: 'Pilih Data',
+    hint: 'Judul popup dialog (default: "Pilih {label}")',
+  },
 }
 
 // ── Common panel sets ──────────────────────────────────────────────────────
@@ -112,14 +126,19 @@ const SWITCH_PANELS = [PANEL.fieldName, PANEL.label, PANEL.defaultValue, PANEL.l
 const BOX_PANELS = [PANEL.fieldName, PANEL.label, PANEL.defaultValue, PANEL.labelTrue, PANEL.labelFalse, PANEL.fullWidth, PANEL.dependsOn]
 const DATE_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.dateDefaultValue, PANEL.required, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn]
 const RADIO_PANELS = [PANEL.fieldName, PANEL.label, PANEL.required, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn, PANEL.radioOptions]
+const POPUP_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.required, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn, PANEL.apiUrl, PANEL.apiParams, PANEL.dependsOnParam, PANEL.displayField, PANEL.valueField, PANEL.popupColumns, PANEL.searchFields, PANEL.dialogTitle]
 
 // ── Static options helpers ────────────────────────────────────────────────
-// Returns a JS array literal string for code generation (from array of {value, label})
-function parseStaticOptionsLiteral(items) {
+// Returns a JS array literal string for code generation (from array of {value, label, parentValue?})
+function parseStaticOptionsLiteral(items, includeParentValue = false) {
   if (!Array.isArray(items) || !items.length) return '[]'
   return '[' + items.map(it => {
     const v = String(it.value || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'")
     const l = String(it.label || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    if (includeParentValue && it.parentValue) {
+      const pv = String(it.parentValue).replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+      return `{ value: '${v}', label: '${l}', parentValue: '${pv}' }`
+    }
     return `{ value: '${v}', label: '${l}' }`
   }).join(', ') + ']'
 }
@@ -215,11 +234,16 @@ function genSelect(f, component = 'FieldSelect', allFields = []) {
 
   // ── Chain / cascading logic ──
   const hasDependsOn = !isStatic && f.dependsOn && f.dependsOnParam
+  const hasStaticDependsOn = isStatic && !!f.dependsOn
   const hasSimpleDependsOn = !!f.dependsOn // dependsOn without param (just disable)
 
   // ── Source attribute (static options or API) ──
   let sourceAttr
-  if (isStatic) {
+  if (isStatic && hasStaticDependsOn) {
+    // Static cascading: filter options by parent value
+    const allOpts = parseStaticOptionsLiteral(f.staticOptions || [], true)
+    sourceAttr = `:options="${allOpts}.filter(o => !o.parentValue || o.parentValue === values.${f.dependsOn})"`
+  } else if (isStatic) {
     sourceAttr = `:options="${parseStaticOptionsLiteral(f.staticOptions || [])}"`
   } else {
     // Filter out params that match dependsOnParam (those are handled by :apiParams binding)
@@ -317,6 +341,83 @@ function genFieldDateTime(f) {
               :required="${f.required ? '!isReadOnly' : 'false'}"
               ${getDisabledAttr(f)}
               ${readonlyAttr}
+              placeholder="${f.placeholder || f.label}"
+              :clearable="true"
+              class="w-full"
+            />`
+}
+
+function genPopup(f, allFields = []) {
+  const readonlyAttr = f.readonly ? ':readonly="true"' : ':readonly="isReadOnly"'
+  const vf = f.valueField || 'id'
+  const df = f.displayField || 'name'
+
+  // ── Chain / cascading logic ──
+  const hasDependsOn = f.dependsOn && f.dependsOnParam
+
+  // Build API params
+  const paramsArr = Array.isArray(f.apiParams)
+    ? f.apiParams.filter(p => p.key && !(hasDependsOn && p.key === f.dependsOnParam))
+    : []
+  const qs = paramsArr.map(p => `${p.key}=${p.value || ''}`).join('&')
+  const params = qs ? `?${qs}` : ''
+
+  // Build columns literal
+  const cols = Array.isArray(f.popupColumns) && f.popupColumns.length
+    ? f.popupColumns.filter(c => c.field)
+    : []
+  const colsLiteral = cols.length
+    ? '[' + cols.map(c => {
+        const parts = [`field: '${c.field}'`]
+        if (c.headerName) parts.push(`headerName: '${c.headerName}'`)
+        if (c.width) parts.push(`width: '${c.width}'`)
+        if (c.flex) parts.push(`flex: ${c.flex}`)
+        return `{ ${parts.join(', ')} }`
+      }).join(', ') + ']'
+    : '[]'
+
+  // Find descendants for cascade clear
+  function getDescendants(fieldName) {
+    const direct = allFields.filter(c => c.dependsOn === fieldName && c.field)
+    let result = []
+    for (const child of direct) {
+      result.push(child.field)
+      result = result.concat(getDescendants(child.field))
+    }
+    return result
+  }
+  const descendantFields = getDescendants(f.field)
+
+  let inputHandler
+  if (descendantFields.length > 0) {
+    const clears = descendantFields.map(cf => `values.${cf} = ''`).join('; ')
+    inputHandler = `@input="(v) => { values.${f.field} = v; ${clears} }"`
+  } else {
+    inputHandler = `@input="(v) => (values.${f.field} = v)"`
+  }
+
+  let apiParamsAttr = ''
+  if (hasDependsOn) {
+    apiParamsAttr = `\n              :apiParams="{ ${f.dependsOnParam}: values.${f.dependsOn} }"`
+  }
+
+  const searchFieldsAttr = f.searchFields ? `\n              searchFields="${f.searchFields}"` : ''
+  const dialogTitleAttr = f.dialogTitle ? `\n              dialogTitle="${f.dialogTitle}"` : ''
+
+  return `            <FieldPopUp
+              id="${f.field}"
+              label="${f.label}"
+              :value="values.${f.field}"
+              :errorname="errors.${f.field} ? 'failed' : ''"
+              ${inputHandler}
+              :hints="errors.${f.field}"
+              :required="${f.required ? '!isReadOnly' : 'false'}"
+              ${getDisabledAttr(f)}
+              ${readonlyAttr}
+              apiUrl="${f.apiUrl || ''}${params}"${apiParamsAttr}
+              displayField="${df}"
+              valueField="${vf}"
+              :columns="${colsLiteral}"${searchFieldsAttr}${dialogTitleAttr}
               placeholder="${f.placeholder || f.label}"
               :clearable="true"
               class="w-full"
@@ -503,6 +604,36 @@ export const FIELD_REGISTRY = [
     generatePayload: (f) => `    ${f.field}: values.${f.field},`,
   },
 
+  // ── FieldPopUp ─────────────────────────────────────────────
+  {
+    value: 'popup', label: 'FieldPopUp', component: 'FieldPopUp', category: 'selection',
+    searchable: false, showInMobile: false, hasError: true,
+    defaultMeta: { apiUrl: '', apiParams: [], displayField: 'name', valueField: 'id', popupColumns: [], searchFields: '', dialogTitle: '', dependsOn: '', dependsOnParam: '' },
+    panelFields: POPUP_PANELS,
+    previewProps: (f, previewValues) => {
+      const result = {
+        label: f.label || 'Label',
+        value: '',
+        displayField: f.displayField || 'name',
+        valueField: f.valueField || 'id',
+        placeholder: f.placeholder || f.label,
+        required: f.required,
+        clearable: true,
+        apiUrl: f.apiUrl || '',
+        columns: f.popupColumns || [],
+        searchFields: f.searchFields || '',
+        dialogTitle: f.dialogTitle || '',
+      }
+      if (f.dependsOn && f.dependsOnParam && previewValues) {
+        const parentVal = previewValues[f.dependsOn] || ''
+        result.apiParams = { [f.dependsOnParam]: parentVal }
+        if (!parentVal) result.disabled = true
+      }
+      return result
+    },
+    generateTemplate: (f, allFields) => genPopup(f, allFields),
+  },
+
   // ── Space (layout spacer) ─────────────────────────────────
   {
     value: 'space', label: 'Space', component: null, category: 'layout',
@@ -528,7 +659,16 @@ export const FIELD_REGISTRY = [
       const vf = isStatic ? 'value' : (f.valueField || 'id')
       const df = isStatic ? 'label' : (f.displayField || 'name')
       const base = { label: f.label || 'Label', value: '', displayField: df, valueField: vf, placeholder: f.placeholder || f.label, required: f.required, clearable: true }
-      if (isStatic) return { ...base, options: f.staticOptions || [] }
+      if (isStatic) {
+        let opts = f.staticOptions || []
+        // Static cascading: filter by parent value
+        if (f.dependsOn && previewValues) {
+          const parentVal = previewValues[f.dependsOn] || ''
+          if (!parentVal) return { ...base, options: [], disabled: true }
+          opts = opts.filter(o => !o.parentValue || o.parentValue === parentVal)
+        }
+        return { ...base, options: opts }
+      }
       // Cascading: if dependsOn is set, pass parent value as apiParams and disable if parent empty
       const result = { ...base, apiUrl: f.apiUrl || '' }
       if (f.dependsOn && f.dependsOnParam && previewValues) {
@@ -552,7 +692,15 @@ export const FIELD_REGISTRY = [
       const vf = isStatic ? 'value' : (f.valueField || 'id')
       const df = isStatic ? 'label' : (f.displayField || 'name')
       const base = { label: f.label || 'Label', value: '', displayField: df, valueField: vf, placeholder: f.placeholder || f.label, required: f.required, clearable: true }
-      if (isStatic) return { ...base, options: f.staticOptions || [] }
+      if (isStatic) {
+        let opts = f.staticOptions || []
+        if (f.dependsOn && previewValues) {
+          const parentVal = previewValues[f.dependsOn] || ''
+          if (!parentVal) return { ...base, options: [], disabled: true }
+          opts = opts.filter(o => !o.parentValue || o.parentValue === parentVal)
+        }
+        return { ...base, options: opts }
+      }
       const result = { ...base, apiUrl: f.apiUrl || '' }
       if (f.dependsOn && f.dependsOnParam && previewValues) {
         const parentVal = previewValues[f.dependsOn] || ''

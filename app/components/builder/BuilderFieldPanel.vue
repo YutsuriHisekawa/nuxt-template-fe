@@ -12,6 +12,12 @@ const emit = defineEmits(['update:field', 'remove', 'close'])
 
 const entry = computed(() => getRegistryEntry(props.field.type))
 
+const parentFieldOptions = computed(() => {
+  if (!props.field.dependsOn) return []
+  const parent = props.allFields.find(f => f.field === props.field.dependsOn)
+  return parent?.staticOptions || []
+})
+
 const visiblePanelFields = computed(() => {
   if (!entry.value?.panelFields) return []
   return entry.value.panelFields.filter(pf => {
@@ -59,11 +65,6 @@ function updateField(key, value) {
   if (key === 'sourceType' && value === 'api' && !Array.isArray(updated.apiParams)) {
     updated.apiParams = []
   }
-  // Clear dependsOn chain config when switching to static
-  if (key === 'sourceType' && value === 'static') {
-    updated.dependsOn = ''
-    updated.dependsOnParam = ''
-  }
   // Clear dependsOnParam when dependsOn is cleared
   if (key === 'dependsOn' && !value) {
     updated.dependsOnParam = ''
@@ -95,6 +96,11 @@ function addOptionItem(key) {
 function addParamItem(key) {
   const arr = [...(props.field[key] || [])]
   arr.push({ key: '', value: '' })
+  updateField(key, arr)
+}
+function addColumnItem(key) {
+  const arr = [...(props.field[key] || [])]
+  arr.push({ field: '', headerName: '', width: '' })
   updateField(key, arr)
 }
 </script>
@@ -186,13 +192,22 @@ function addParamItem(key) {
       <div v-else-if="pf.type === 'optionsList'">
         <label class="block mb-1 font-medium text-muted-foreground">{{ pf.label }}</label>
         <div class="flex flex-col gap-2">
-          <div class="flex gap-2 items-center text-xs text-muted-foreground px-1">
+          <!-- Header row -->
+          <div v-if="field.dependsOn" class="flex gap-1.5 items-center text-xs text-muted-foreground px-1">
+            <span class="w-4 shrink-0"></span>
+            <span class="w-24 shrink-0">Parent</span>
+            <span class="flex-1 min-w-0">Value</span>
+            <span class="flex-1 min-w-0">Label</span>
+            <span class="w-6 shrink-0"></span>
+          </div>
+          <div v-else class="flex gap-2 items-center text-xs text-muted-foreground px-1">
             <span class="w-5 text-center shrink-0">Default</span>
             <span class="flex-1">Value</span>
             <span class="flex-1">Label</span>
             <span class="w-6"></span>
           </div>
-          <div v-for="(opt, i) in (Array.isArray(field[pf.key]) ? field[pf.key] : [])" :key="i" class="flex gap-2 items-center">
+          <!-- Option rows -->
+          <div v-for="(opt, i) in (Array.isArray(field[pf.key]) ? field[pf.key] : [])" :key="i" class="flex gap-1.5 items-center">
             <button
               type="button"
               class="w-4 h-4 shrink-0 rounded-full border-2 flex items-center justify-center cursor-pointer transition-colors"
@@ -201,22 +216,31 @@ function addParamItem(key) {
             >
               <span v-if="field.defaultValue === opt.value && opt.value !== ''" class="w-1.5 h-1.5 rounded-full bg-primary-foreground"></span>
             </button>
+            <select
+              v-if="field.dependsOn"
+              :value="opt.parentValue || ''"
+              class="w-24 shrink-0 rounded bg-muted border border-border text-foreground px-1.5 py-1.5 text-sm focus:border-primary focus:ring-1 focus:ring-primary"
+              @change="updateListItem(pf.key, i, 'parentValue', $event.target.value)"
+            >
+              <option value="">--</option>
+              <option v-for="po in parentFieldOptions" :key="po.value" :value="po.value">{{ po.label || po.value }}</option>
+            </select>
             <input
               type="text"
               :value="opt.value"
               placeholder="Value"
-              class="flex-1 rounded bg-muted border border-border text-foreground px-2 py-1.5 text-sm focus:border-primary focus:ring-1 focus:ring-primary"
+              class="flex-1 min-w-0 rounded bg-muted border border-border text-foreground px-2 py-1.5 text-sm focus:border-primary focus:ring-1 focus:ring-primary"
               @input="updateListItem(pf.key, i, 'value', $event.target.value)"
             />
             <input
               type="text"
               :value="opt.label"
               placeholder="Label"
-              class="flex-1 rounded bg-muted border border-border text-foreground px-2 py-1.5 text-sm focus:border-primary focus:ring-1 focus:ring-primary"
+              class="flex-1 min-w-0 rounded bg-muted border border-border text-foreground px-2 py-1.5 text-sm focus:border-primary focus:ring-1 focus:ring-primary"
               @input="updateListItem(pf.key, i, 'label', $event.target.value)"
             />
             <button
-              class="text-muted-foreground hover:text-destructive transition-colors p-1"
+              class="text-muted-foreground hover:text-destructive transition-colors p-1 shrink-0"
               @click="removeListItem(pf.key, i)"
             >
               <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -278,6 +302,55 @@ function addParamItem(key) {
           >
             <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Tambah Option
+          </button>
+        </div>
+      </div>
+
+      <!-- Columns List (for popup AG Grid columns) -->
+      <div v-else-if="pf.type === 'columnsList'">
+        <label class="block mb-1 font-medium text-muted-foreground">{{ pf.label }}</label>
+        <p v-if="pf.hint" class="text-xs text-muted-foreground/70 mb-2">{{ pf.hint }}</p>
+        <div class="flex flex-col gap-2">
+          <div v-for="(col, i) in (Array.isArray(field[pf.key]) ? field[pf.key] : [])" :key="i" class="flex gap-1.5 items-center">
+            <input
+              type="text"
+              :value="col.field"
+              placeholder="Key"
+              class="min-w-0 flex-1 rounded bg-muted border border-border text-foreground px-2 py-1.5 text-sm focus:border-primary focus:ring-1 focus:ring-primary"
+              @input="updateListItem(pf.key, i, 'field', $event.target.value)"
+            />
+            <input
+              type="text"
+              :value="col.headerName"
+              placeholder="Label"
+              class="min-w-0 flex-1 rounded bg-muted border border-border text-foreground px-2 py-1.5 text-sm focus:border-primary focus:ring-1 focus:ring-primary"
+              @input="updateListItem(pf.key, i, 'headerName', $event.target.value)"
+            />
+            <div class="relative w-16 shrink-0">
+              <input
+                type="number"
+                min="1"
+                max="100"
+                :value="col.width ? parseInt(col.width) : null"
+                placeholder="%"
+                class="w-full rounded bg-muted border border-border text-foreground px-2 py-1.5 pr-5 text-sm focus:border-primary focus:ring-1 focus:ring-primary [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                @input="updateListItem(pf.key, i, 'width', $event.target.value ? $event.target.value + '%' : '')"
+              />
+              <span class="absolute right-1.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">%</span>
+            </div>
+            <button
+              class="text-muted-foreground hover:text-destructive transition-colors p-0.5 shrink-0"
+              @click="removeListItem(pf.key, i)"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <button
+            class="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 transition-colors py-1"
+            @click="addColumnItem(pf.key)"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Tambah Kolom
           </button>
         </div>
       </div>
