@@ -5,10 +5,14 @@ export const useAuthStore = defineStore('auth', () => {
   const baseUrl = config.public.baseUrl
 
   // ============================================================================
-  // STATE — semua data di MEMORY saja (bukan cookie/localStorage)
-  // Token auth disimpan oleh backend sebagai httpOnly cookie (tidak bisa diakses JS)
+  // STATE
+  // Token disimpan di same-domain cookie (useCookie) supaya survive refresh & SSR.
+  // httpOnly cookie dari backend tetap dipakai sebagai primary auth,
+  // tapi token di cookie Nuxt jadi fallback Authorization header saat SSR
+  // (karena cross-origin httpOnly cookie tidak bisa di-forward saat SSR).
   // ============================================================================
-  const token = ref(null)          // token di memory (untuk Authorization header fallback)
+  const tokenCookie = useCookie('auth_token', { maxAge: 60 * 60 * 24 * 7 }) // 7 hari
+  const token = ref(tokenCookie.value || null)       // init dari cookie (survive refresh)
   const user = ref(null)           // user data di memory
   const userDefault = ref(null)    // user default data di memory
   const sessionVerified = ref(false) // apakah sudah verify session ke backend
@@ -23,6 +27,7 @@ export const useAuthStore = defineStore('auth', () => {
    */
   function setSession({ token: newToken, user: newUser }) {
     token.value = newToken
+    tokenCookie.value = newToken  // persist di same-domain cookie (survive refresh/SSR)
     user.value = newUser
     sessionVerified.value = true
     loggedOut.value = false
@@ -52,9 +57,10 @@ export const useAuthStore = defineStore('auth', () => {
       })
 
       if (data.status === 'success') {
-        // Simpan fresh token di memory
+        // Simpan fresh token di memory + cookie
         if (data.token) {
           token.value = data.token
+          tokenCookie.value = data.token
         }
         // Restore minimal user info dari verify response
         user.value = {
@@ -99,6 +105,7 @@ export const useAuthStore = defineStore('auth', () => {
    */
   function clearSession() {
     token.value = null
+    tokenCookie.value = null     // hapus cookie
     user.value = null
     userDefault.value = null
     sessionVerified.value = false
