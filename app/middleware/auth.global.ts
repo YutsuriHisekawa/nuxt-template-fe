@@ -5,6 +5,15 @@ export default defineNuxtRouteMiddleware(async (to) => {
   const publicPages = ['/login']
   const isPublicPage = publicPages.includes(to.path)
 
+  // Halaman yang skip auth sepenuhnya (boleh diakses siapa saja, login atau tidak)
+  const isGuestPage = to.path.startsWith('/builder_file')
+  if (isGuestPage) return // bypass semua auth check
+
+  // Kalau user baru saja logout, langsung redirect ke login (jangan re-verify)
+  if (authStore.loggedOut && !isPublicPage) {
+    return navigateTo('/login', { replace: true })
+  }
+
   // Saat page refresh (session belum di-verify), cek httpOnly cookie via backend
   if (!authStore.sessionVerified && !isPublicPage) {
     // Saat SSR, browser cookie tidak otomatis dikirim oleh $fetch

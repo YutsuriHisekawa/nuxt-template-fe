@@ -182,11 +182,25 @@ function addParamItem(key) {
         <p v-if="pf.hint" class="text-xs text-muted-foreground/70 mt-0.5">{{ pf.hint }}</p>
       </div>
 
-      <!-- Options List (for static select options) -->
+      <!-- Options List (for static select options with default value selector) -->
       <div v-else-if="pf.type === 'optionsList'">
         <label class="block mb-1 font-medium text-muted-foreground">{{ pf.label }}</label>
         <div class="flex flex-col gap-2">
+          <div class="flex gap-2 items-center text-xs text-muted-foreground px-1">
+            <span class="w-5 text-center shrink-0">Default</span>
+            <span class="flex-1">Value</span>
+            <span class="flex-1">Label</span>
+            <span class="w-6"></span>
+          </div>
           <div v-for="(opt, i) in (Array.isArray(field[pf.key]) ? field[pf.key] : [])" :key="i" class="flex gap-2 items-center">
+            <button
+              type="button"
+              class="w-4 h-4 shrink-0 rounded-full border-2 flex items-center justify-center cursor-pointer transition-colors"
+              :class="field.defaultValue === opt.value && opt.value !== '' ? 'border-primary bg-primary' : 'border-muted-foreground/40 bg-transparent hover:border-primary/60'"
+              @click="updateField('defaultValue', field.defaultValue === opt.value ? '' : opt.value)"
+            >
+              <span v-if="field.defaultValue === opt.value && opt.value !== ''" class="w-1.5 h-1.5 rounded-full bg-primary-foreground"></span>
+            </button>
             <input
               type="text"
               :value="opt.value"
@@ -229,13 +243,14 @@ function addParamItem(key) {
             <span class="w-6"></span>
           </div>
           <div v-for="(opt, i) in (Array.isArray(field[pf.key]) ? field[pf.key] : [])" :key="i" class="flex gap-2 items-center">
-            <input
-              type="radio"
-              name="radio-default-option"
-              :checked="field.defaultValue === opt.value && opt.value !== ''"
-              class="w-5 h-4 shrink-0 accent-primary cursor-pointer"
-              @change="updateField('defaultValue', opt.value)"
-            />
+            <button
+              type="button"
+              class="w-4 h-4 shrink-0 rounded-full border-2 flex items-center justify-center cursor-pointer transition-colors"
+              :class="field.defaultValue === opt.value && opt.value !== '' ? 'border-primary bg-primary' : 'border-muted-foreground/40 bg-transparent hover:border-primary/60'"
+              @click="updateField('defaultValue', field.defaultValue === opt.value ? '' : opt.value)"
+            >
+              <span v-if="field.defaultValue === opt.value && opt.value !== ''" class="w-1.5 h-1.5 rounded-full bg-primary-foreground"></span>
+            </button>
             <input
               type="text"
               :value="opt.value"

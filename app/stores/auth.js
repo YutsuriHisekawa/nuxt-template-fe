@@ -5,13 +5,18 @@ export const useAuthStore = defineStore('auth', () => {
   const baseUrl = config.public.baseUrl
 
   // ============================================================================
-  // STATE — semua data di MEMORY saja (bukan cookie/localStorage)
-  // Token auth disimpan oleh backend sebagai httpOnly cookie (tidak bisa diakses JS)
+  // STATE
+  // Token disimpan di same-domain cookie (useCookie) supaya survive refresh & SSR.
+  // httpOnly cookie dari backend tetap dipakai sebagai primary auth,
+  // tapi token di cookie Nuxt jadi fallback Authorization header saat SSR
+  // (karena cross-origin httpOnly cookie tidak bisa di-forward saat SSR).
   // ============================================================================
-  const token = ref(null)          // token di memory (untuk Authorization header fallback)
+  const tokenCookie = useCookie('auth_token', { maxAge: 60 * 60 * 24 * 7 }) // 7 hari
+  const token = ref(tokenCookie.value || null)       // init dari cookie (survive refresh)
   const user = ref(null)           // user data di memory
   const userDefault = ref(null)    // user default data di memory
   const sessionVerified = ref(false) // apakah sudah verify session ke backend
+  const loggedOut = ref(false)     // flag: user baru saja logout (cegah re-verify via stale cookie)
 
   const isLoggedIn = computed(() => !!token.value)
 
@@ -22,8 +27,10 @@ export const useAuthStore = defineStore('auth', () => {
    */
   function setSession({ token: newToken, user: newUser }) {
     token.value = newToken
+    tokenCookie.value = newToken  // persist di same-domain cookie (survive refresh/SSR)
     user.value = newUser
     sessionVerified.value = true
+    loggedOut.value = false
   }
 
   function setUserDefault(data) {
@@ -50,9 +57,10 @@ export const useAuthStore = defineStore('auth', () => {
       })
 
       if (data.status === 'success') {
-        // Simpan fresh token di memory
+        // Simpan fresh token di memory + cookie
         if (data.token) {
           token.value = data.token
+          tokenCookie.value = data.token
         }
         // Restore minimal user info dari verify response
         user.value = {
@@ -80,15 +88,16 @@ export const useAuthStore = defineStore('auth', () => {
    * Logout — clear httpOnly cookie di backend + clear memory
    */
   async function logout() {
+    // Clear memory state FIRST (prevents re-verify via middleware)
+    clearSession()
     try {
       await $fetch(`${baseUrl}/api/auth/logout`, {
         method: 'POST',
         credentials: 'include',
       })
     } catch (e) {
-      console.warn('Logout API call failed:', e)
+      console.warn('Logout API call failed (cookie mungkin belum di-clear oleh backend):', e)
     }
-    clearSession()
   }
 
   /**
@@ -96,9 +105,11 @@ export const useAuthStore = defineStore('auth', () => {
    */
   function clearSession() {
     token.value = null
+    tokenCookie.value = null     // hapus cookie
     user.value = null
     userDefault.value = null
     sessionVerified.value = false
+    loggedOut.value = true
   }
 
   return {
@@ -107,6 +118,7 @@ export const useAuthStore = defineStore('auth', () => {
     userDefault,
     isLoggedIn,
     sessionVerified,
+    loggedOut,
     setSession,
     setUserDefault,
     verifySession,

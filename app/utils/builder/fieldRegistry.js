@@ -34,6 +34,7 @@ const PANEL = {
   defaultValue: {
     key: 'defaultValue', label: 'Default Value', type: 'text', placeholder: '',
     dynamicPlaceholder: (f) => f.type === 'switch' ? 'true / false' : '',
+    hideWhen: (f) => (f.type === 'select' || f.type === 'select_creatable') && f.sourceType === 'static',
   },
   required: {
     key: 'required', label: 'Required', type: 'checkbox',

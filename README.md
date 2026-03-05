@@ -78,7 +78,7 @@ NUXT_PUBLIC_BASE_URL=https://your-api-server.com:8002
 pnpm dev
 ```
 
-Aplikasi berjalan di **http://localhost:5731**
+Aplikasi berjalan di **http://localhost:9999**
 
 ---
 
@@ -100,7 +100,7 @@ Output:
   API    : m_supplier
   Route  : /setup/m_supplier
 ---------------------------------------
-  → Buka browser: http://localhost:5731/builder_file
+  → Buka browser: http://localhost:9999/builder_file
 ```
 
 ### Step 2: Konfigurasi di Visual Builder
@@ -205,7 +205,7 @@ const updateData = async (id, payload) => {
 
 | Command | Description |
 |---|---|
-| `pnpm dev` | Start dev server (port 5731) |
+| `pnpm dev` | Start dev server (port 9999) |
 | `pnpm build` | Build for production |
 | `pnpm preview` | Preview production build |
 | `node add_route.cjs <path>` | Generate builder config & open builder |
