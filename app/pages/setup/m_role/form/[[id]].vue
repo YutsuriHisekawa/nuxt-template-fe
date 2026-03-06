@@ -106,7 +106,7 @@ onBeforeMount(async () => {
 
   loading.value = true;
   try {
-    const res = await api.get(`${API_BASE}/${recordId.value}?${defaultParams}`);
+    const res = await api.get(`${API_BASE}/${recordId.value}?${fixedParams}`);
     const data = res?.data ?? res;
     if (!data || typeof data !== "object" || Array.isArray(data)) {
       throw new Error("Data tidak ditemukan");

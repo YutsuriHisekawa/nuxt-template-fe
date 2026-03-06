@@ -55,6 +55,7 @@ __VALUES_DEFAULTS__
 const errors = reactive({
 __ERRORS_DEFAULTS__
 });
+__WIZARD_STATE__
 __DETAIL_STATE__
 __DETAIL_SELECTED_IDS__
 __DETAIL_METHODS__
@@ -224,9 +225,7 @@ const handleCancel = () => {
           </CardDescription>
         </CardHeader>
         <CardContent class="space-y-6">
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-__FORM_FIELDS__
-          </div>
+__FORM_CONTENT__
         </CardContent>
       </Card>
 __DETAIL_TEMPLATE__

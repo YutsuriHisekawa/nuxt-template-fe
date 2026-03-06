@@ -66,6 +66,136 @@ const parentFieldOptions = computed(() => {
   return pf.staticOptions || []
 })
 
+// ── VisibleWhen: target field + smart value options ─────────────────────
+const visibleWhenTarget = computed(() => {
+  if (!props.field.visibleWhenField) return null
+  return props.allFields.find(f => f.field === props.field.visibleWhenField) || null
+})
+
+const apiVisibleWhenOpts = ref([])
+const loadingVisibleWhenOpts = ref(false)
+
+const visibleWhenTargetType = computed(() => {
+  const t = visibleWhenTarget.value
+  if (!t) return 'none'
+  const e = getRegistryEntry(t.type)
+  if (e?.isSwitch || t.type === 'fieldbox') return 'boolean'
+  if (['select', 'select_creatable', 'popup'].includes(t.type) && t.sourceType === 'static') return 'static'
+  if (['select', 'select_creatable', 'popup'].includes(t.type) && t.sourceType === 'api' && t.apiUrl) return 'api'
+  if (t.type === 'radio' && Array.isArray(t.radioOptions) && t.radioOptions.length) return 'radio'
+  return 'text'
+})
+
+// Fetch API data when visibleWhen target is API-based select
+watch(
+  () => [props.field.visibleWhenField, visibleWhenTargetType.value],
+  async () => {
+    if (visibleWhenTargetType.value !== 'api') {
+      apiVisibleWhenOpts.value = []
+      return
+    }
+    const t = visibleWhenTarget.value
+    if (!t?.apiUrl) return
+    loadingVisibleWhenOpts.value = true
+    try {
+      const { get } = useApi()
+      let url = t.apiUrl
+      const qp = new URLSearchParams()
+      if (Array.isArray(t.apiParams)) {
+        t.apiParams.forEach(p => { if (p.key) qp.set(p.key, p.value || '') })
+      }
+      qp.set('no_pagination', 'true')
+      const qs = qp.toString()
+      if (qs) url += (url.includes('?') ? '&' : '?') + qs
+      const res = await get(url)
+      const rows = Array.isArray(res) ? res : (res?.data || res?.rows || [])
+      const vf = t.valueField || 'id'
+      const df = t.displayField || 'name'
+      apiVisibleWhenOpts.value = rows.map(r => ({ value: String(r[vf]), label: r[df] || r[vf] }))
+    } catch (e) {
+      console.warn('Failed to fetch visibleWhen API options:', e)
+      apiVisibleWhenOpts.value = []
+    } finally {
+      loadingVisibleWhenOpts.value = false
+    }
+  },
+  { immediate: true }
+)
+
+const visibleWhenValueOptions = computed(() => {
+  const type = visibleWhenTargetType.value
+  const t = visibleWhenTarget.value
+  if (type === 'boolean') return [{ value: 'true', label: t?.labelTrue || 'Aktif' }, { value: 'false', label: t?.labelFalse || 'Tidak Aktif' }]
+  if (type === 'static') return (t?.staticOptions || []).map(o => ({ value: o.value, label: o.label || o.value }))
+  if (type === 'radio') return (t?.radioOptions || []).map(o => ({ value: o.value, label: o.label || o.value }))
+  if (type === 'api') return apiVisibleWhenOpts.value
+  return []
+})
+
+// ── RequiredWhen: reuse same option logic ─────────────────────────────
+const requiredWhenTarget = computed(() => {
+  if (!props.field.requiredWhenField) return null
+  return props.allFields.find(f => f.field === props.field.requiredWhenField) || null
+})
+
+const requiredWhenTargetType = computed(() => {
+  const t = requiredWhenTarget.value
+  if (!t) return 'none'
+  const e = getRegistryEntry(t.type)
+  if (e?.isSwitch || t.type === 'fieldbox') return 'boolean'
+  if (['select', 'select_creatable', 'popup'].includes(t.type) && t.sourceType === 'static') return 'static'
+  if (['select', 'select_creatable', 'popup'].includes(t.type) && t.sourceType === 'api' && t.apiUrl) return 'api'
+  if (t.type === 'radio' && Array.isArray(t.radioOptions) && t.radioOptions.length) return 'radio'
+  return 'text'
+})
+
+const apiRequiredWhenOpts = ref([])
+const loadingRequiredWhenOpts = ref(false)
+
+watch(
+  () => [props.field.requiredWhenField, requiredWhenTargetType.value],
+  async () => {
+    if (requiredWhenTargetType.value !== 'api') {
+      apiRequiredWhenOpts.value = []
+      return
+    }
+    const t = requiredWhenTarget.value
+    if (!t?.apiUrl) return
+    loadingRequiredWhenOpts.value = true
+    try {
+      const { get } = useApi()
+      let url = t.apiUrl
+      const qp = new URLSearchParams()
+      if (Array.isArray(t.apiParams)) {
+        t.apiParams.forEach(p => { if (p.key) qp.set(p.key, p.value || '') })
+      }
+      qp.set('no_pagination', 'true')
+      const qs = qp.toString()
+      if (qs) url += (url.includes('?') ? '&' : '?') + qs
+      const res = await get(url)
+      const rows = Array.isArray(res) ? res : (res?.data || res?.rows || [])
+      const vf = t.valueField || 'id'
+      const df = t.displayField || 'name'
+      apiRequiredWhenOpts.value = rows.map(r => ({ value: String(r[vf]), label: r[df] || r[vf] }))
+    } catch (e) {
+      apiRequiredWhenOpts.value = []
+    } finally {
+      loadingRequiredWhenOpts.value = false
+    }
+  },
+  { immediate: true }
+)
+
+const requiredWhenValueOptions = computed(() => {
+  const type = requiredWhenTargetType.value
+  const t = requiredWhenTarget.value
+  if (type === 'boolean') return [{ value: 'true', label: t?.labelTrue || 'Aktif' }, { value: 'false', label: t?.labelFalse || 'Tidak Aktif' }]
+  if (type === 'static') return (t?.staticOptions || []).map(o => ({ value: o.value, label: o.label || o.value }))
+  if (type === 'radio') return (t?.radioOptions || []).map(o => ({ value: o.value, label: o.label || o.value }))
+  if (type === 'api') return apiRequiredWhenOpts.value
+  return []
+})
+
 const visiblePanelFields = computed(() => {
   if (!entry.value?.panelFields) return []
   return entry.value.panelFields.filter(pf => {
@@ -118,6 +248,22 @@ function updateField(key, value) {
     updated.dependsOnParam = ''
   }
   emit('update:field', updated)
+}
+
+function handleCheckboxGroupChange(key, value, checked, options) {
+  const current = Array.isArray(props.field[key]) ? [...props.field[key]] : []
+  if (value === '*') {
+    // "Semua" toggles: if checked, set to ['*']; if unchecked, clear
+    updateField(key, checked ? ['*'] : [])
+    return
+  }
+  // Remove '*' when specific option is toggled
+  let next = current.filter(v => v !== '*')
+  if (checked) { next.push(value) } else { next = next.filter(v => v !== value) }
+  // If all specific options are selected, switch to ['*']
+  const specificOptions = options.filter(o => o.value !== '*')
+  if (next.length === specificOptions.length) next = ['*']
+  updateField(key, next)
 }
 
 function getPanelPlaceholder(pf) {
@@ -200,6 +346,42 @@ function addColumnItem(key) {
         <label :for="'panel-' + pf.key" class="text-foreground cursor-pointer">
           {{ pf.label }}
         </label>
+      </div>
+
+      <!-- Checkbox Group (e.g. file type selection) -->
+      <div v-else-if="pf.type === 'checkboxGroup'">
+        <label class="block mb-1 font-medium text-muted-foreground">{{ pf.label }}</label>
+        <div class="flex flex-wrap gap-2">
+          <label
+            v-for="opt in pf.options"
+            :key="opt.value"
+            class="flex items-center gap-1.5 px-2.5 py-1.5 rounded border text-xs cursor-pointer transition-colors select-none"
+            :class="(Array.isArray(field[pf.key]) ? field[pf.key] : []).includes(opt.value) ? 'bg-primary/10 border-primary text-primary font-medium' : 'bg-muted border-border text-muted-foreground hover:border-foreground/30'"
+          >
+            <input
+              type="checkbox"
+              class="rounded border-border text-primary focus:ring-primary h-3 w-3"
+              :checked="(Array.isArray(field[pf.key]) ? field[pf.key] : []).includes(opt.value)"
+              @change="handleCheckboxGroupChange(pf.key, opt.value, $event.target.checked, pf.options)"
+            />
+            {{ opt.label }}
+          </label>
+        </div>
+        <p v-if="pf.hint" class="text-xs text-muted-foreground/70 mt-1">{{ pf.hint }}</p>
+      </div>
+
+      <!-- Select with predefined options -->
+      <div v-else-if="pf.type === 'select'">
+        <label :for="'panel-' + pf.key" class="block mb-1 font-medium text-muted-foreground">{{ pf.label }}</label>
+        <select
+          :id="'panel-' + pf.key"
+          :value="field[pf.key] || ''"
+          class="w-full rounded bg-muted border border-border text-foreground px-3 py-1.5 focus:border-primary focus:ring-1 focus:ring-primary text-sm"
+          @change="updateField(pf.key, $event.target.value)"
+        >
+          <option v-for="opt in pf.options" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+        </select>
+        <p v-if="pf.hint" class="text-xs text-muted-foreground/70 mt-0.5">{{ pf.hint }}</p>
       </div>
 
       <!-- Button group (e.g. sourceType: api vs static) -->
@@ -437,6 +619,106 @@ function addColumnItem(key) {
             Tambah Param
           </button>
         </div>
+      </div>
+
+      <!-- Visible When Combo (select field + smart value) -->
+      <div v-else-if="pf.type === 'visibleWhenCombo'">
+        <label class="block mb-1 font-medium text-muted-foreground">{{ pf.label }}</label>
+        <div class="flex flex-col gap-2">
+          <!-- Field selector -->
+          <select
+            :value="field.visibleWhenField || ''"
+            class="w-full rounded bg-muted border border-border text-foreground px-3 py-1.5 focus:border-primary focus:ring-1 focus:ring-primary text-sm"
+            @change="emit('update:field', { ...field, visibleWhenField: $event.target.value, visibleWhenValue: '' })"
+          >
+            <option value="">-- Tidak ada (selalu tampil) --</option>
+            <option
+              v-for="f in allFields.filter(af => af.field && af.field !== field.field)"
+              :key="f.field"
+              :value="f.field"
+            >
+              {{ f.label || f.field }} ({{ f.field }})
+            </option>
+          </select>
+
+          <!-- Value input (shown when field selected) -->
+          <template v-if="field.visibleWhenField">
+            <label class="block text-xs font-medium text-muted-foreground">Bernilai</label>
+            <!-- Loading state for API -->
+            <div v-if="loadingVisibleWhenOpts" class="text-xs text-muted-foreground italic py-1">
+              Memuat opsi dari API...
+            </div>
+            <!-- Select dropdown when options available -->
+            <select
+              v-else-if="visibleWhenValueOptions.length > 0"
+              :value="field.visibleWhenValue || ''"
+              class="w-full rounded bg-muted border border-border text-foreground px-3 py-1.5 focus:border-primary focus:ring-1 focus:ring-primary text-sm"
+              @change="updateField('visibleWhenValue', $event.target.value)"
+            >
+              <option value="">-- Pilih nilai --</option>
+              <option v-for="opt in visibleWhenValueOptions" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
+              </option>
+            </select>
+            <!-- Fallback text input -->
+            <input
+              v-else
+              type="text"
+              :value="field.visibleWhenValue || ''"
+              placeholder="Ketik nilai..."
+              class="w-full rounded bg-muted border border-border text-foreground px-3 py-1.5 focus:border-primary focus:ring-1 focus:ring-primary text-sm"
+              @input="updateField('visibleWhenValue', $event.target.value)"
+            />
+          </template>
+        </div>
+        <p v-if="pf.hint" class="text-xs text-muted-foreground/70 mt-1">{{ pf.hint }}</p>
+      </div>
+
+      <!-- Required When Combo (conditional required) -->
+      <div v-else-if="pf.type === 'requiredWhenCombo'">
+        <label class="block mb-1 font-medium text-muted-foreground">{{ pf.label }}</label>
+        <div class="flex flex-col gap-2">
+          <select
+            :value="field.requiredWhenField || ''"
+            class="w-full rounded bg-muted border border-border text-foreground px-3 py-1.5 focus:border-primary focus:ring-1 focus:ring-primary text-sm"
+            @change="emit('update:field', { ...field, requiredWhenField: $event.target.value, requiredWhenValue: '' })"
+          >
+            <option value="">-- Selalu required --</option>
+            <option
+              v-for="f in allFields.filter(af => af.field && af.field !== field.field)"
+              :key="f.field"
+              :value="f.field"
+            >
+              {{ f.label || f.field }} ({{ f.field }})
+            </option>
+          </select>
+          <template v-if="field.requiredWhenField">
+            <label class="block text-xs font-medium text-muted-foreground">Bernilai</label>
+            <div v-if="loadingRequiredWhenOpts" class="text-xs text-muted-foreground italic py-1">
+              Memuat opsi dari API...
+            </div>
+            <select
+              v-else-if="requiredWhenValueOptions.length > 0"
+              :value="field.requiredWhenValue || ''"
+              class="w-full rounded bg-muted border border-border text-foreground px-3 py-1.5 focus:border-primary focus:ring-1 focus:ring-primary text-sm"
+              @change="updateField('requiredWhenValue', $event.target.value)"
+            >
+              <option value="">-- Pilih nilai --</option>
+              <option v-for="opt in requiredWhenValueOptions" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
+              </option>
+            </select>
+            <input
+              v-else
+              type="text"
+              :value="field.requiredWhenValue || ''"
+              placeholder="Ketik nilai..."
+              class="w-full rounded bg-muted border border-border text-foreground px-3 py-1.5 focus:border-primary focus:ring-1 focus:ring-primary text-sm"
+              @input="updateField('requiredWhenValue', $event.target.value)"
+            />
+          </template>
+        </div>
+        <p v-if="pf.hint" class="text-xs text-muted-foreground/70 mt-1">{{ pf.hint }}</p>
       </div>
 
       <!-- Select Field (pick another field as parent for cascading) -->

@@ -10,6 +10,23 @@ import {
   Settings2,
   Loader2,
   CheckCircle,
+  Table2,
+  Search,
+  RefreshCw,
+  Database,
+  X,
+  BookOpen,
+  Copy,
+  Download,
+  Upload,
+  Undo2,
+  Redo2,
+  AlertTriangle,
+  Package,
+  CheckSquare,
+  Square,
+  ListChecks,
+  Footprints,
 } from "lucide-vue-next";
 import { createBlankField, createBlankDetail, getComponentBadge, getRegistryEntry } from "~/utils/builder/fieldRegistry";
 import { Layers } from "lucide-vue-next";
@@ -37,6 +54,7 @@ const generated = ref(false);
 const generatedMessage = ref("");
 const panelOpen = ref(false);
 const panelIndex = ref(-1);
+const docsOpen = ref(false);
 
 // Shared preview values for cascading selects in builder preview
 const previewValues = reactive({});
@@ -56,6 +74,273 @@ function onPreviewChange(fieldName, value) {
 
 // Detail tabs state
 const detailPanelOpen = ref(false);
+
+// ── Drag & Drop state ──────────────────────────────────────────────────────
+const dragIndex = ref(-1);
+const dragOverIndex = ref(-1);
+
+function onDragStart(idx, event) {
+  dragIndex.value = idx;
+  event.dataTransfer.effectAllowed = 'move';
+  event.dataTransfer.setData('text/plain', String(idx));
+}
+function onDragOver(idx, event) {
+  event.preventDefault();
+  event.dataTransfer.dropEffect = 'move';
+  dragOverIndex.value = idx;
+}
+function onDragLeave() { dragOverIndex.value = -1; }
+function onDrop(idx, event) {
+  event.preventDefault();
+  const from = dragIndex.value;
+  if (from < 0 || from === idx) { dragIndex.value = -1; dragOverIndex.value = -1; return; }
+  pushUndo();
+  const [item] = fields.value.splice(from, 1);
+  fields.value.splice(idx, 0, item);
+  // Adjust panel index
+  if (panelIndex.value === from) panelIndex.value = idx;
+  else if (from < panelIndex.value && idx >= panelIndex.value) panelIndex.value--;
+  else if (from > panelIndex.value && idx <= panelIndex.value) panelIndex.value++;
+  dragIndex.value = -1;
+  dragOverIndex.value = -1;
+}
+function onDragEnd() { dragIndex.value = -1; dragOverIndex.value = -1; }
+
+// ── Undo / Redo ────────────────────────────────────────────────────────────
+const undoStack = ref([]);
+const redoStack = ref([]);
+const MAX_HISTORY = 50;
+
+function pushUndo() {
+  undoStack.value.push(JSON.stringify(fields.value));
+  if (undoStack.value.length > MAX_HISTORY) undoStack.value.shift();
+  redoStack.value = []; // new action clears redo
+}
+
+function undo() {
+  if (!undoStack.value.length) return;
+  redoStack.value.push(JSON.stringify(fields.value));
+  const prev = undoStack.value.pop();
+  fields.value = JSON.parse(prev);
+  closePanel();
+  toast.info('Undo');
+}
+
+function redo() {
+  if (!redoStack.value.length) return;
+  undoStack.value.push(JSON.stringify(fields.value));
+  const next = redoStack.value.pop();
+  fields.value = JSON.parse(next);
+  closePanel();
+  toast.info('Redo');
+}
+
+// Ctrl+Z / Ctrl+Y keyboard shortcut
+onMounted(() => {
+  const handler = (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); redo(); }
+  };
+  window.addEventListener('keydown', handler);
+  onUnmounted(() => window.removeEventListener('keydown', handler));
+});
+
+// ── Search / Filter Fields ─────────────────────────────────────────────────
+const searchQuery = ref('');
+const filteredFieldIndices = computed(() => {
+  const q = searchQuery.value.toLowerCase().trim();
+  if (!q) return fields.value.map((_, i) => i);
+  return fields.value.reduce((acc, f, i) => {
+    const match = (f.label || '').toLowerCase().includes(q) ||
+                  (f.field || '').toLowerCase().includes(q) ||
+                  (f.type || '').toLowerCase().includes(q);
+    if (match) acc.push(i);
+    return acc;
+  }, []);
+});
+
+// ── Duplicate Field Detection ──────────────────────────────────────────────
+const duplicateFieldNames = computed(() => {
+  const counts = {};
+  const dupes = new Set();
+  fields.value.forEach(f => {
+    const entry = getRegistryEntry(f.type);
+    if (entry?.isSpace || entry?.isSection || entry?.isFieldGroup || entry?.isFieldGroupEnd) return;
+    const name = (f.field || '').trim();
+    if (!name) return;
+    if (counts[name]) dupes.add(name);
+    else counts[name] = true;
+  });
+  return dupes;
+});
+
+// ── Bulk Select ────────────────────────────────────────────────────────────
+const bulkMode = ref(false);
+const selectedFields = ref(new Set());
+
+function toggleBulkMode() {
+  bulkMode.value = !bulkMode.value;
+  if (!bulkMode.value) selectedFields.value = new Set();
+}
+
+function toggleFieldSelect(idx) {
+  const s = new Set(selectedFields.value);
+  if (s.has(idx)) s.delete(idx);
+  else s.add(idx);
+  selectedFields.value = s;
+}
+
+function selectAllFields() {
+  selectedFields.value = new Set(fields.value.map((_, i) => i));
+}
+
+function deselectAllFields() {
+  selectedFields.value = new Set();
+}
+
+function bulkDelete() {
+  if (!selectedFields.value.size) return;
+  pushUndo();
+  const indices = [...selectedFields.value].sort((a, b) => b - a);
+  indices.forEach(i => fields.value.splice(i, 1));
+  selectedFields.value = new Set();
+  closePanel();
+  toast.success(`${indices.length} field dihapus`);
+}
+
+function bulkSetReadonly(val) {
+  if (!selectedFields.value.size) return;
+  pushUndo();
+  selectedFields.value.forEach(i => {
+    if (fields.value[i]) fields.value[i].readonly = val;
+  });
+  toast.success(`${selectedFields.value.size} field di-set ${val ? 'readonly' : 'editable'}`);
+}
+
+function bulkSetRequired(val) {
+  if (!selectedFields.value.size) return;
+  pushUndo();
+  selectedFields.value.forEach(i => {
+    if (fields.value[i]) fields.value[i].required = val;
+  });
+  toast.success(`${selectedFields.value.size} field di-set ${val ? 'required' : 'optional'}`);
+}
+
+// ── Wizard Steps ───────────────────────────────────────────────────────────
+const savedWizardSteps = useCookie('builder_wizard_steps', { default: () => null, maxAge: 60 * 60 * 24 });
+const wizardSteps = ref(savedWizardSteps.value || []);
+watch(wizardSteps, (v) => { savedWizardSteps.value = v; }, { deep: true });
+
+function addWizardStep() {
+  wizardSteps.value.push({ label: `Step ${wizardSteps.value.length + 1}` });
+}
+
+function removeWizardStep(idx) {
+  wizardSteps.value.splice(idx, 1);
+  fields.value.forEach(f => {
+    if (f.step === idx) f.step = 0;
+    else if (f.step > idx) f.step--;
+  });
+}
+
+// ── Field Group Helpers ────────────────────────────────────────────────────
+function isInsideGroup(idx) {
+  let depth = 0;
+  for (let i = 0; i < idx; i++) {
+    const entry = getRegistryEntry(fields.value[i].type);
+    if (entry?.isFieldGroup) depth++;
+    if (entry?.isFieldGroupEnd) depth--;
+  }
+  return depth > 0;
+}
+
+// ── Preset Templates ───────────────────────────────────────────────────────
+const showPresetMenu = ref(false);
+const PRESET_TEMPLATES = [
+  {
+    name: 'Alamat Set',
+    icon: '🏠',
+    fields: [
+      {
+        field: 'provinsi', label: 'Provinsi', type: 'select', required: true,
+        sourceType: 'api',
+        apiUrl: 'https://backend.qqltech.com/kodepos/region/provinsi',
+        displayField: 'name', valueField: 'name',
+        placeholder: 'Pilih Provinsi',
+      },
+      {
+        field: 'kota', label: 'Kota', type: 'select', required: true,
+        sourceType: 'api',
+        apiUrl: 'https://backend.qqltech.com/kodepos/region/kabupaten-kota',
+        displayField: 'name', valueField: 'name',
+        dependsOn: 'provinsi', dependsOnParam: 'provinsi',
+        placeholder: 'Pilih Kota',
+      },
+      {
+        field: 'kecamatan', label: 'Kecamatan', type: 'select', required: true,
+        sourceType: 'api',
+        apiUrl: 'https://backend.qqltech.com/kodepos/region/kecamatan',
+        displayField: 'name', valueField: 'name',
+        dependsOn: 'kota', dependsOnParam: 'kota',
+        placeholder: 'Pilih Kecamatan',
+      },
+      { field: 'kode_pos', label: 'Kode Pos', type: 'text', placeholder: 'Isi Kode Pos' },
+      { field: 'alamat', label: 'Alamat', type: 'textarea', required: true, fullWidth: true, placeholder: 'Masukan Alamat Lengkap' },
+    ],
+  },
+  {
+    name: 'Contact Info',
+    icon: '📞',
+    fields: [
+      { field: 'nama', label: 'Nama Lengkap', type: 'text', required: true },
+      { field: 'email', label: 'Email', type: 'email', required: true },
+      { field: 'telepon', label: 'No. Telepon', type: 'tel', required: true },
+      { field: 'hp', label: 'No. HP', type: 'tel' },
+    ],
+  },
+  {
+    name: 'Perusahaan',
+    icon: '🏢',
+    fields: [
+      { field: 'nama_perusahaan', label: 'Nama Perusahaan', type: 'text', required: true },
+      { field: 'npwp', label: 'NPWP', type: 'text' },
+      { field: 'alamat_perusahaan', label: 'Alamat Perusahaan', type: 'textarea', required: true },
+      { field: 'telepon_perusahaan', label: 'Telepon', type: 'tel' },
+      { field: 'email_perusahaan', label: 'Email', type: 'email' },
+    ],
+  },
+  {
+    name: 'Rekening Bank',
+    icon: '🏦',
+    fields: [
+      { field: 'nama_bank', label: 'Nama Bank', type: 'text', required: true },
+      { field: 'no_rekening', label: 'No. Rekening', type: 'text', required: true },
+      { field: 'atas_nama', label: 'Atas Nama', type: 'text', required: true },
+      { field: 'cabang', label: 'Cabang', type: 'text' },
+    ],
+  },
+  {
+    name: 'Harga & Diskon',
+    icon: '💰',
+    fields: [
+      { field: 'harga', label: 'Harga', type: 'currency', required: true, currencyPrefix: 'Rp', allowDecimal: true },
+      { field: 'diskon_persen', label: 'Diskon (%)', type: 'fieldnumber_decimal' },
+      { field: 'diskon_nominal', label: 'Diskon (Rp)', type: 'currency', currencyPrefix: 'Rp', allowDecimal: true },
+      { field: 'total', label: 'Total', type: 'currency', currencyPrefix: 'Rp', allowDecimal: true, readonly: true },
+    ],
+  },
+];
+
+function addPreset(preset) {
+  pushUndo();
+  const blankBase = createBlankField();
+  preset.fields.forEach(pf => {
+    fields.value.push({ ...blankBase, ...pf });
+  });
+  showPresetMenu.value = false;
+  toast.success(`${preset.name}: ${preset.fields.length} field ditambahkan`);
+}
+
 const detailPanelIndex = ref(-1);
 
 // ── Cookie-backed state (survives refresh) ─────────────────────────────────
@@ -63,23 +348,75 @@ const DEFAULT_FIELDS = [];
 
 const savedFields = useCookie('builder_fields', { default: () => null, maxAge: 60 * 60 * 24 });
 const savedDetails = useCookie('builder_details', { default: () => null, maxAge: 60 * 60 * 24 });
+const savedLandingConfig = useCookie('builder_landing', { default: () => null, maxAge: 60 * 60 * 24 });
+const savedColumnLayout = useCookie('builder_col_layout', { default: () => 2, maxAge: 60 * 60 * 24 });
 
 const fields = ref(savedFields.value && savedFields.value.length ? savedFields.value : structuredClone(DEFAULT_FIELDS));
 const details = ref(savedDetails.value && savedDetails.value.length ? savedDetails.value : []);
+const landingConfig = ref(savedLandingConfig.value || []);
+const columnLayout = ref(savedColumnLayout.value || 2);
 
 // Auto-save to cookies on change
 watch(fields, (v) => { savedFields.value = v; }, { deep: true });
 watch(details, (v) => { savedDetails.value = v; }, { deep: true });
+watch(landingConfig, (v) => { savedLandingConfig.value = v; }, { deep: true });
+watch(columnLayout, (v) => { savedColumnLayout.value = v; });
+
+// Auto-sync landing config ketika fields berubah
+watch(fields, (newFields) => {
+  const current = landingConfig.value;
+  const validFields = newFields.filter(f => {
+    const entry = getRegistryEntry(f.type);
+    return !entry?.isSpace && !entry?.isSwitch && f.field?.trim();
+  });
+  const existingSet = new Set(current.map(c => c.field));
+  const newFieldSet = new Set(validFields.map(f => f.field));
+  // Pertahankan urutan existing yg masih ada, update label
+  const result = current
+    .filter(c => newFieldSet.has(c.field))
+    .map(c => {
+      const f = validFields.find(vf => vf.field === c.field);
+      return { ...c, label: f?.label || c.label };
+    });
+  // Tambahkan field baru yang belum ada di config
+  validFields.forEach(f => {
+    if (!existingSet.has(f.field)) {
+      const entry = getRegistryEntry(f.type);
+      result.push({
+        field: f.field,
+        label: f.label || f.field,
+        displayField: '',
+        visible: true,
+        minWidth: 140,
+      });
+    }
+  });
+  landingConfig.value = result;
+}, { deep: true, immediate: true });
 
 function clearBuilderCookies() {
   savedFields.value = null;
   savedDetails.value = null;
+  savedLandingConfig.value = null;
+  savedColumnLayout.value = null;
+  savedWizardSteps.value = null;
 }
+
+// Dynamic grid class for column layout
+const gridClass = computed(() => {
+  const cols = { 1: 'grid grid-cols-1 gap-6', 2: 'grid grid-cols-1 md:grid-cols-2 gap-6', 3: 'grid grid-cols-1 md:grid-cols-3 gap-6' };
+  return cols[columnLayout.value] || cols[2];
+});
+const colSpanFull = computed(() => {
+  const spans = { 1: '', 2: 'md:col-span-2', 3: 'md:col-span-3' };
+  return spans[columnLayout.value] || spans[2];
+});
 
 async function cancelBuilder() {
   clearBuilderCookies();
   fields.value = structuredClone(DEFAULT_FIELDS);
   details.value = [];
+  landingConfig.value = [];
   closePanel();
   closeDetailPanel();
   // Delete config on server so token is invalidated
@@ -108,11 +445,32 @@ onMounted(async () => {
 // FIELD ACTIONS
 // ============================================================================
 function addField() {
+  pushUndo();
   fields.value.push(createBlankField());
   openPanel(fields.value.length - 1);
 }
 
 function removeField(idx) {
+  pushUndo();
+  const entry = getRegistryEntry(fields.value[idx]?.type);
+  // If removing a fieldgroup start, also remove its matching end
+  if (entry?.isFieldGroup) {
+    let depth = 1;
+    for (let i = idx + 1; i < fields.value.length; i++) {
+      const e = getRegistryEntry(fields.value[i].type);
+      if (e?.isFieldGroup) depth++;
+      if (e?.isFieldGroupEnd) { depth--; if (depth === 0) { fields.value.splice(i, 1); break; } }
+    }
+  }
+  // If removing a fieldgroup end, also remove its matching start
+  if (entry?.isFieldGroupEnd) {
+    let depth = 1;
+    for (let i = idx - 1; i >= 0; i--) {
+      const e = getRegistryEntry(fields.value[i].type);
+      if (e?.isFieldGroupEnd) depth++;
+      if (e?.isFieldGroup) { depth--; if (depth === 0) { fields.value.splice(i, 1); idx--; break; } }
+    }
+  }
   fields.value.splice(idx, 1);
   if (panelIndex.value === idx) closePanel();
 }
@@ -120,11 +478,70 @@ function removeField(idx) {
 function moveField(idx, dir) {
   const to = idx + dir;
   if (to < 0 || to >= fields.value.length) return;
+  pushUndo();
   const tmp = fields.value[idx];
   fields.value[idx] = fields.value[to];
   fields.value[to] = tmp;
   if (panelIndex.value === idx) panelIndex.value = to;
   else if (panelIndex.value === to) panelIndex.value = idx;
+}
+
+function addFieldInsideGroup(groupIdx) {
+  pushUndo();
+  const blank = createBlankField();
+  fields.value.splice(groupIdx + 1, 0, blank);
+  openPanel(groupIdx + 1);
+}
+
+function cloneField(idx) {
+  pushUndo();
+  const src = fields.value[idx];
+  const copy = JSON.parse(JSON.stringify(src));
+  copy.field = src.field ? src.field + '_copy' : '';
+  copy.label = src.label ? src.label + ' (Copy)' : '';
+  fields.value.splice(idx + 1, 0, copy);
+  openPanel(idx + 1);
+  toast.success('Field diduplikasi');
+}
+
+function exportConfig() {
+  const data = {
+    fields: fields.value,
+    details: details.value,
+    landingConfig: landingConfig.value,
+    columnLayout: columnLayout.value,
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `builder_config_${config.value?.moduleName || 'export'}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast.success('Config exported');
+}
+
+function importConfig() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json';
+  input.onchange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      pushUndo();
+      if (Array.isArray(data.fields)) fields.value = data.fields;
+      if (Array.isArray(data.details)) details.value = data.details;
+      if (Array.isArray(data.landingConfig)) landingConfig.value = data.landingConfig;
+      if (data.columnLayout) columnLayout.value = data.columnLayout;
+      toast.success(`Config imported: ${data.fields?.length || 0} fields`);
+    } catch (err) {
+      toast.error('Gagal import: file JSON tidak valid');
+    }
+  };
+  input.click();
 }
 
 function openPanel(idx) {
@@ -136,6 +553,123 @@ function closePanel() {
   panelOpen.value = false;
   panelIndex.value = -1;
 }
+
+// ============================================================================
+// LANDING CONFIG ACTIONS
+// ============================================================================
+function moveLandingCol(idx, dir) {
+  const to = idx + dir;
+  if (to < 0 || to >= landingConfig.value.length) return;
+  const arr = [...landingConfig.value];
+  const tmp = arr[idx];
+  arr[idx] = arr[to];
+  arr[to] = tmp;
+  landingConfig.value = arr;
+}
+
+function updateLandingCol(idx, key, val) {
+  const arr = [...landingConfig.value];
+  arr[idx] = { ...arr[idx], [key]: val };
+  landingConfig.value = arr;
+}
+
+// Computed: kolom AG Grid untuk preview landing
+const landingPreviewCols = computed(() => {
+  const cols = [
+    {
+      headerName: 'No',
+      valueGetter: (params) => (params.node?.rowIndex ?? 0) + 1,
+      width: 60,
+      minWidth: 60,
+      maxWidth: 80,
+      pinned: 'left',
+      sortable: false,
+      filter: false,
+      suppressMovable: true,
+    },
+  ];
+  landingConfig.value
+    .filter(c => c.visible)
+    .forEach(c => {
+      const df = c.displayField?.trim();
+      const colDef = {
+        headerName: c.label || c.field,
+        minWidth: c.minWidth || 140,
+        filter: true,
+        floatingFilter: true,
+        floatingFilterComponentParams: { suppressFilterButton: true },
+        suppressMenu: true,
+      };
+      if (df && df.includes('.')) {
+        colDef.valueGetter = (params) => {
+          return df.split('.').reduce((obj, k) => obj?.[k], params.data);
+        };
+      } else {
+        colDef.field = df || c.field;
+      }
+      cols.push(colDef);
+    });
+  return cols;
+});
+
+// ── Landing Preview: sample vs real API data ──
+const useRealApi = ref(false);
+const realApiLoading = ref(false);
+const realApiRows = ref([]);
+const apiParams = ref([{ key: '', value: '' }]);
+
+function addApiParam() {
+  apiParams.value.push({ key: '', value: '' });
+}
+function removeApiParam(idx) {
+  apiParams.value.splice(idx, 1);
+  if (!apiParams.value.length) apiParams.value.push({ key: '', value: '' });
+}
+
+async function fetchRealApiData() {
+  if (!config.value?.apiEndpoint) {
+    toast.error('API endpoint belum tersedia');
+    return;
+  }
+  realApiLoading.value = true;
+  try {
+    const qp = new URLSearchParams();
+    qp.set('join', 'true');
+    apiParams.value.forEach(p => {
+      if (p.key?.trim() && p.value?.trim()) qp.set(p.key.trim(), p.value.trim());
+    });
+    const api = useApi();
+    const res = await api.get(`/api/dynamic/${config.value.apiEndpoint}?${qp.toString()}`);
+    const list = Array.isArray(res) ? res : (res?.data || res?.rows || []);
+    realApiRows.value = list;
+    toast.success(`${list.length} baris data diterima`);
+  } catch (e) {
+    toast.error('Gagal fetch: ' + (e?.data?.message || e?.message || 'Error'));
+    realApiRows.value = [];
+  } finally {
+    realApiLoading.value = false;
+  }
+}
+
+// Dummy rows untuk preview landing (sample data)
+const sampleRows = computed(() => {
+  const visible = landingConfig.value.filter(c => c.visible);
+  if (!visible.length) return [];
+  const rows = [];
+  for (let r = 1; r <= 3; r++) {
+    const row = { id: r };
+    visible.forEach(c => {
+      row[c.field] = `Sample ${c.label || c.field} ${r}`;
+    });
+    rows.push(row);
+  }
+  return rows;
+});
+
+const landingPreviewRows = computed(() => {
+  if (useRealApi.value && realApiRows.value.length) return realApiRows.value;
+  return sampleRows.value;
+});
 
 // ============================================================================
 // DETAIL TAB ACTIONS
@@ -165,7 +699,25 @@ function updateDetailAtIndex(updated) {
 }
 
 function updateFieldAtIndex(updated) {
-  fields.value[panelIndex.value] = updated;
+  const idx = panelIndex.value;
+  const oldType = fields.value[idx]?.type;
+  fields.value[idx] = updated;
+
+  // Auto-insert fieldgroup_end when changing type TO fieldgroup
+  if (updated.type === 'fieldgroup' && oldType !== 'fieldgroup') {
+    const endMarker = { ...createBlankField(), type: 'fieldgroup_end', label: '', field: '' };
+    fields.value.splice(idx + 1, 0, endMarker);
+  }
+  // Auto-remove orphan fieldgroup_end when changing type FROM fieldgroup
+  if (oldType === 'fieldgroup' && updated.type !== 'fieldgroup') {
+    // Find matching end marker
+    let depth = 1;
+    for (let i = idx + 1; i < fields.value.length; i++) {
+      const e = getRegistryEntry(fields.value[i].type);
+      if (e?.isFieldGroup) depth++;
+      if (e?.isFieldGroupEnd) { depth--; if (depth === 0) { fields.value.splice(i, 1); break; } }
+    }
+  }
 }
 
 // ============================================================================
@@ -340,11 +892,16 @@ const detailDefaultColDef = {
 async function generate() {
   const empty = fields.value.filter((f) => {
     const entry = getRegistryEntry(f.type)
-    if (entry?.isSpace) return false
+    if (entry?.isSpace || entry?.isSection || entry?.isFieldGroup || entry?.isFieldGroupEnd) return false
     return !f.field?.trim()
   });
   if (empty.length) {
     toast.error("Ada field yang belum memiliki Field Name!");
+    return;
+  }
+  // Check duplicate field names
+  if (duplicateFieldNames.value.size) {
+    toast.error(`Field name duplikat: ${[...duplicateFieldNames.value].join(', ')}`);
     return;
   }
   generating.value = true;
@@ -360,6 +917,9 @@ async function generate() {
         pageTitle: config.value.readableName,
         fields: fields.value,
         details: details.value,
+        landingConfig: landingConfig.value,
+        columnLayout: columnLayout.value,
+        wizardSteps: wizardSteps.value.length ? wizardSteps.value : null,
       },
     });
     if (result.success) {
@@ -445,14 +1005,48 @@ async function generate() {
       <span class="bg-muted text-muted-foreground px-2.5 py-1 rounded-md text-xs font-medium">Endpoint: {{ config?.apiEndpoint }}</span>
       <span class="bg-primary text-primary-foreground px-2.5 py-1 rounded-md text-xs font-semibold">{{ config?.readableName }}</span>
 
-      <!-- Theme toggles (matches default layout) -->
+      <!-- Theme toggles + docs (matches default layout) -->
       <div class="ml-auto flex items-center gap-2">
+        <Button variant="ghost" size="sm" class="h-8 gap-1 text-xs" :disabled="!undoStack.length" title="Undo (Ctrl+Z)" @click="undo">
+          <Undo2 class="h-3.5 w-3.5" />
+        </Button>
+        <Button variant="ghost" size="sm" class="h-8 gap-1 text-xs" :disabled="!redoStack.length" title="Redo (Ctrl+Y)" @click="redo">
+          <Redo2 class="h-3.5 w-3.5" />
+        </Button>
+        <div class="w-px h-5 bg-border" />
+        <Button variant="ghost" size="sm" class="h-8 gap-1 text-xs" title="Import Config" @click="importConfig">
+          <Upload class="h-3.5 w-3.5" />
+        </Button>
+        <Button variant="ghost" size="sm" class="h-8 gap-1 text-xs" title="Export Config" @click="exportConfig">
+          <Download class="h-3.5 w-3.5" />
+        </Button>
+        <Button variant="ghost" size="icon" class="h-8 w-8" title="Dokumentasi Builder" @click="docsOpen = true">
+          <BookOpen class="h-4 w-4" />
+        </Button>
         <ThemeColorToggle />
         <ThemeToggle />
       </div>
     </div>
 
-    <div class="max-w-[860px] mx-auto p-6 space-y-6">
+    <!-- Documentation Dialog -->
+    <BuilderDocs v-model:open="docsOpen" />
+
+    <div class="max-w-[80%] mx-auto p-6 space-y-6">
+      <!-- Builder Tabs -->
+      <Tabs default-value="form" class="w-full">
+        <TabsList class="grid w-full grid-cols-2">
+          <TabsTrigger value="form">
+            <Settings2 class="h-4 w-4 mr-1.5" /> Form Builder
+          </TabsTrigger>
+          <TabsTrigger value="landing">
+            <Table2 class="h-4 w-4 mr-1.5" /> Konfigurasi Landing
+          </TabsTrigger>
+        </TabsList>
+
+        <!-- ============================================================ -->
+        <!-- TAB: FORM BUILDER -->
+        <!-- ============================================================ -->
+        <TabsContent value="form" class="space-y-6 mt-4">
       <!-- Page header (preview) -->
       <div class="flex items-center gap-4">
         <Button variant="ghost" size="icon" disabled>
@@ -466,33 +1060,169 @@ async function generate() {
             Buat data {{ (config?.readableName || '').toLowerCase() }} baru
           </p>
         </div>
+        <!-- Column layout selector -->
+        <div class="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
+          <span class="font-medium">Kolom:</span>
+          <button
+            v-for="n in [1, 2, 3]"
+            :key="n"
+            class="h-7 w-7 rounded-md border text-xs font-semibold flex items-center justify-center transition-colors"
+            :class="columnLayout === n ? 'bg-primary text-primary-foreground border-primary' : 'bg-background border-border hover:border-primary hover:text-primary'"
+            @click="columnLayout = n"
+          >
+            {{ n }}
+          </button>
+        </div>
       </div>
+
+      <!-- Duplicate Warning Banner -->
+      <div v-if="duplicateFieldNames.size" class="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive text-sm">
+        <AlertTriangle class="h-4 w-4 shrink-0" />
+        <span><strong>Field name duplikat:</strong> {{ [...duplicateFieldNames].join(', ') }} — perbaiki sebelum generate!</span>
+      </div>
+
+      <!-- Wizard Steps Editor -->
+      <Card v-if="wizardSteps.length > 0 || true" class="border-dashed">
+        <CardHeader class="py-3 px-4">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <Footprints class="h-4 w-4 text-primary" />
+              <span class="text-sm font-semibold">Form Wizard / Multi-Step</span>
+              <span class="text-xs text-muted-foreground">({{ wizardSteps.length }} step)</span>
+            </div>
+            <Button variant="outline" size="sm" class="h-7 text-xs gap-1" @click="addWizardStep">
+              <Plus class="h-3 w-3" /> Tambah Step
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent v-if="wizardSteps.length > 0" class="pt-0 pb-3 px-4">
+          <div class="flex flex-wrap gap-2">
+            <div
+              v-for="(step, si) in wizardSteps"
+              :key="si"
+              class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border bg-muted text-sm"
+            >
+              <span class="flex items-center justify-center w-5 h-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold">{{ si + 1 }}</span>
+              <input
+                type="text"
+                :value="step.label"
+                class="bg-transparent border-none outline-none text-xs w-24 focus:ring-0"
+                @input="wizardSteps[si].label = $event.target.value"
+              />
+              <button class="text-muted-foreground hover:text-destructive" @click="removeWizardStep(si)">
+                <X class="h-3 w-3" />
+              </button>
+            </div>
+          </div>
+          <p class="text-[10px] text-muted-foreground mt-2">Assign step ke tiap field via dropdown pada card field.</p>
+        </CardContent>
+      </Card>
 
       <!-- Form Card (preview with real components) -->
       <Card>
         <CardHeader>
-          <CardTitle>Informasi {{ config?.readableName || '' }}</CardTitle>
-          <CardDescription>
-            Isi data {{ (config?.readableName || '').toLowerCase() }} dengan lengkap
-            dan benar
-          </CardDescription>
+          <div class="flex items-center justify-between">
+            <div>
+              <CardTitle>Informasi {{ config?.readableName || '' }}</CardTitle>
+              <CardDescription>
+                Isi data {{ (config?.readableName || '').toLowerCase() }} dengan lengkap dan benar
+              </CardDescription>
+            </div>
+          </div>
+          <!-- Search + Preset + Bulk toolbar -->
+          <div class="flex items-center gap-2 mt-3 flex-wrap">
+            <!-- Search bar -->
+            <div class="relative flex-1 min-w-[200px] max-w-sm">
+              <Search class="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <input
+                type="text"
+                v-model="searchQuery"
+                placeholder="Cari field... (label, nama, tipe)"
+                class="w-full h-8 pl-8 pr-3 rounded-md border border-border bg-muted text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+              <button v-if="searchQuery" class="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" @click="searchQuery = ''">
+                <X class="h-3 w-3" />
+              </button>
+            </div>
+            <!-- Preset button -->
+            <div class="relative">
+              <Button variant="outline" size="sm" class="h-8 gap-1 text-xs" @click="showPresetMenu = !showPresetMenu">
+                <Package class="h-3.5 w-3.5" /> Preset
+              </Button>
+              <div v-if="showPresetMenu" class="absolute top-full left-0 mt-1 z-50 bg-card border border-border rounded-lg shadow-lg p-1 min-w-[200px]">
+                <button
+                  v-for="preset in PRESET_TEMPLATES"
+                  :key="preset.name"
+                  class="w-full text-left px-3 py-2 rounded-md text-sm hover:bg-accent flex items-center gap-2"
+                  @click="addPreset(preset)"
+                >
+                  <span>{{ preset.icon }}</span>
+                  <div>
+                    <div class="font-medium text-xs">{{ preset.name }}</div>
+                    <div class="text-[10px] text-muted-foreground">{{ preset.fields.length }} field</div>
+                  </div>
+                </button>
+              </div>
+            </div>
+            <!-- Bulk toggle -->
+            <Button
+              :variant="bulkMode ? 'default' : 'outline'"
+              size="sm"
+              class="h-8 gap-1 text-xs"
+              @click="toggleBulkMode"
+            >
+              <ListChecks class="h-3.5 w-3.5" /> Bulk
+            </Button>
+          </div>
+          <!-- Bulk action bar -->
+          <div v-if="bulkMode" class="flex items-center gap-2 mt-2 px-3 py-2 rounded-lg bg-muted border border-border text-xs">
+            <span class="text-muted-foreground font-medium">{{ selectedFields.size }} dipilih</span>
+            <button class="text-primary hover:underline" @click="selectAllFields">Pilih Semua</button>
+            <button class="text-primary hover:underline" @click="deselectAllFields">Batal Pilih</button>
+            <div class="w-px h-4 bg-border" />
+            <button class="text-destructive hover:underline" @click="bulkDelete" :disabled="!selectedFields.size">Hapus</button>
+            <button class="hover:underline" @click="bulkSetReadonly(true)" :disabled="!selectedFields.size">Set Readonly</button>
+            <button class="hover:underline" @click="bulkSetReadonly(false)" :disabled="!selectedFields.size">Set Editable</button>
+            <button class="hover:underline" @click="bulkSetRequired(true)" :disabled="!selectedFields.size">Set Required</button>
+            <button class="hover:underline" @click="bulkSetRequired(false)" :disabled="!selectedFields.size">Set Optional</button>
+          </div>
         </CardHeader>
         <CardContent>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div :class="gridClass">
             <!-- Render each field with real components -->
+            <template v-for="idx in filteredFieldIndices" :key="idx">
             <div
-              v-for="(f, idx) in fields"
-              :key="idx"
+              :draggable="!bulkMode"
+              @dragstart="onDragStart(idx, $event)"
+              @dragover="onDragOver(idx, $event)"
+              @dragleave="onDragLeave"
+              @drop="onDrop(idx, $event)"
+              @dragend="onDragEnd"
               class="relative group rounded-lg pt-4 pb-2 px-2 transition-all"
               :class="[
-                f.fullWidth ? 'md:col-span-2' : '',
+                fields[idx].fullWidth || getRegistryEntry(fields[idx].type)?.isSection || getRegistryEntry(fields[idx].type)?.isFieldGroup || getRegistryEntry(fields[idx].type)?.isFieldGroupEnd ? colSpanFull : '',
                 panelIndex === idx
                   ? 'ring-2 ring-ring ring-offset-2 ring-offset-background bg-accent/50'
                   : 'hover:ring-2 hover:ring-ring/40 hover:ring-offset-2 hover:ring-offset-background hover:bg-accent/30',
+                fields[idx].visibleWhenField && String(previewValues[fields[idx].visibleWhenField] ?? '') !== String(fields[idx].visibleWhenValue ?? '')
+                  ? 'opacity-30 pointer-events-none'
+                  : '',
+                dragIndex === idx ? 'opacity-40 scale-95' : '',
+                dragOverIndex === idx && dragIndex !== idx ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : '',
+                isInsideGroup(idx) ? 'border-l-2 border-l-primary/40 ml-2' : '',
+                !bulkMode ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer',
+                selectedFields.has(idx) ? 'ring-2 ring-primary bg-primary/5' : '',
               ]"
+              @click="bulkMode ? toggleFieldSelect(idx) : null"
             >
-              <!-- Action buttons (show on hover) -->
+              <!-- Bulk checkbox -->
+              <div v-if="bulkMode" class="absolute top-1 left-1 z-10">
+                <component :is="selectedFields.has(idx) ? CheckSquare : Square" class="h-4 w-4 text-primary" />
+              </div>
+
+              <!-- Action buttons (show on hover, hidden in bulk mode) -->
               <div
+                v-if="!bulkMode"
                 class="absolute -top-2.5 -right-1.5 hidden group-hover:flex gap-1 z-10"
               >
                 <button
@@ -501,6 +1231,21 @@ async function generate() {
                   title="Edit field"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+                </button>
+                <button
+                  class="h-6 w-6 rounded-full border bg-background text-muted-foreground hover:text-blue-500 hover:border-blue-500 flex items-center justify-center shadow-sm"
+                  @click.stop="cloneField(idx)"
+                  title="Duplikasi field"
+                >
+                  <Copy class="h-3 w-3" />
+                </button>
+                <button
+                  v-if="getRegistryEntry(fields[idx].type)?.isFieldGroup"
+                  class="h-6 w-6 rounded-full border bg-background text-muted-foreground hover:text-green-500 hover:border-green-500 flex items-center justify-center shadow-sm"
+                  @click.stop="addFieldInsideGroup(idx)"
+                  title="Tambah field di dalam group"
+                >
+                  <Plus class="h-3 w-3" />
                 </button>
                 <button
                   v-if="idx > 0"
@@ -528,20 +1273,72 @@ async function generate() {
               <span
                 class="absolute top-0 left-2 -translate-y-1/2 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300"
               >
-                {{ getComponentBadge(f.type) }}
+                {{ getComponentBadge(fields[idx].type) }}
               </span>
+
+              <!-- Duplicate warning badge -->
+              <span
+                v-if="fields[idx].field && duplicateFieldNames.has(fields[idx].field)"
+                class="absolute top-0 right-2 -translate-y-1/2 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-destructive/10 text-destructive flex items-center gap-0.5"
+              >
+                <AlertTriangle class="w-3 h-3" /> Duplikat
+              </span>
+
+              <!-- VisibleWhen indicator badge -->
+              <span
+                v-if="fields[idx].visibleWhenField"
+                class="absolute top-0 -translate-y-1/2 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 flex items-center gap-0.5"
+                :style="{ left: `${(getComponentBadge(fields[idx].type)?.length || 5) * 7 + 24}px` }"
+                :title="`Tampil jika ${fields[idx].visibleWhenField} = ${fields[idx].visibleWhenValue}`"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>
+                Kondisional
+              </span>
+
+              <!-- RequiredWhen badge -->
+              <span
+                v-if="fields[idx].requiredWhenField"
+                class="absolute bottom-0.5 left-2 text-[9px] font-medium px-1 py-0.5 rounded bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400"
+                :title="`Required jika ${fields[idx].requiredWhenField} = ${fields[idx].requiredWhenValue}`"
+              >
+                Req. Kondisional
+              </span>
+
+              <!-- Wizard step selector -->
+              <div v-if="wizardSteps.length > 0 && !getRegistryEntry(fields[idx].type)?.isSpace && !getRegistryEntry(fields[idx].type)?.isFieldGroupEnd" class="absolute bottom-0.5 right-2">
+                <select
+                  :value="fields[idx].step || 0"
+                  class="text-[10px] bg-muted border border-border rounded px-1 py-0.5 focus:ring-0 focus:border-primary cursor-pointer"
+                  @click.stop
+                  @change.stop="fields[idx].step = Number($event.target.value)"
+                >
+                  <option v-for="(step, si) in wizardSteps" :key="si" :value="si">S{{ si + 1 }}: {{ step.label }}</option>
+                </select>
+              </div>
 
               <!-- Dynamic preview from registry -->
               <BuilderFieldPreview
-                :field="f"
+                :field="fields[idx]"
                 :previewValues="previewValues"
                 @previewChange="(fieldName, val) => onPreviewChange(fieldName, val)"
               />
+
+              <!-- Add field inside group button -->
+              <div
+                v-if="getRegistryEntry(fields[idx].type)?.isFieldGroup && !bulkMode"
+                class="mt-2 border border-dashed border-primary/40 rounded-md p-1.5 flex items-center justify-center cursor-pointer text-primary/70 hover:text-primary hover:border-primary hover:bg-primary/5 transition-all"
+                @click.stop="addFieldInsideGroup(idx)"
+              >
+                <Plus class="h-3.5 w-3.5 mr-1" />
+                <span class="text-xs font-medium">Tambah Field di Group ini</span>
+              </div>
             </div>
+            </template>
 
             <!-- Add field zone -->
             <div
-              class="border-2 border-dashed border-border rounded-lg p-6 flex items-center justify-center cursor-pointer text-muted-foreground hover:border-primary hover:text-primary hover:bg-accent/30 transition-all col-span-1 md:col-span-2"
+              class="border-2 border-dashed border-border rounded-lg p-6 flex items-center justify-center cursor-pointer text-muted-foreground hover:border-primary hover:text-primary hover:bg-accent/30 transition-all"
+              :class="colSpanFull"
               @click="addField"
             >
               <Plus class="h-5 w-5 mr-2" />
@@ -550,6 +1347,177 @@ async function generate() {
           </div>
         </CardContent>
       </Card>
+
+        </TabsContent>
+
+        <!-- ============================================================ -->
+        <!-- TAB: KONFIGURASI LANDING -->
+        <!-- ============================================================ -->
+        <TabsContent value="landing" class="space-y-6 mt-4">
+      <Card v-if="landingConfig.length > 0">
+        <CardHeader>
+          <div class="flex items-center gap-3">
+            <Table2 class="h-5 w-5 text-primary shrink-0" />
+            <div>
+              <CardTitle class="text-base">Konfigurasi Landing</CardTitle>
+              <CardDescription>Atur kolom tabel & tampilan di halaman daftar</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <!-- Quick hint for Display Field -->
+          <div class="flex items-center gap-2 mb-3 text-xs text-muted-foreground">
+            <BookOpen class="h-3.5 w-3.5 text-blue-500 shrink-0" />
+            <span>Untuk data nested/relasi, isi <strong>Display Field</strong> dengan dot-notation (misal: <code class="bg-muted px-1 py-0.5 rounded font-mono text-[11px]">unit_bisnis.nama_comp</code>). <button class="text-primary hover:underline font-medium" @click="docsOpen = true">Lihat dokumentasi lengkap →</button></span>
+          </div>
+
+          <div class="border border-border rounded-lg overflow-hidden text-xs">
+            <!-- Table Header -->
+            <div class="grid grid-cols-[28px_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_52px_52px_28px] gap-1.5 px-2.5 py-2 bg-muted font-semibold text-muted-foreground items-center">
+              <span class="text-center">#</span>
+              <span>Field</span>
+              <span>Label Kolom</span>
+              <span title="Field yang ditampilkan (kosong = field asli, misal: unit_bisnis.nama_comp)">Display Field</span>
+              <span class="text-center" title="Tampil di tabel desktop">Tampil</span>
+              <span class="text-center" title="Min Width (px)">Width</span>
+              <span></span>
+            </div>
+            <!-- Rows -->
+            <div
+              v-for="(col, i) in landingConfig"
+              :key="col.field"
+              class="grid grid-cols-[28px_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_52px_52px_28px] gap-1.5 px-2.5 py-1.5 border-t border-border items-center transition-opacity"
+              :class="!col.visible ? 'opacity-40' : ''"
+            >
+              <span class="text-center text-muted-foreground">{{ i + 1 }}</span>
+              <span class="font-mono text-[11px] truncate" :title="col.field">{{ col.field }}</span>
+              <input
+                type="text"
+                :value="col.label"
+                class="w-full bg-transparent border-b border-transparent hover:border-border focus:border-primary outline-none px-0.5 py-0.5 text-xs"
+                @input="updateLandingCol(i, 'label', $event.target.value)"
+              />
+              <input
+                type="text"
+                :value="col.displayField"
+                :placeholder="col.field"
+                class="w-full bg-transparent border-b border-transparent hover:border-border focus:border-primary outline-none px-0.5 py-0.5 text-xs font-mono text-[11px]"
+                @input="updateLandingCol(i, 'displayField', $event.target.value)"
+              />
+              <div class="flex justify-center">
+                <input
+                  type="checkbox"
+                  :checked="col.visible"
+                  class="h-3.5 w-3.5 rounded border-border accent-primary cursor-pointer"
+                  @change="updateLandingCol(i, 'visible', $event.target.checked)"
+                />
+              </div>
+              <input
+                type="number"
+                :value="col.minWidth"
+                min="50"
+                max="500"
+                class="w-full bg-transparent border-b border-transparent hover:border-border focus:border-primary outline-none text-center px-0 py-0.5 text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                @input="updateLandingCol(i, 'minWidth', parseInt($event.target.value) || 140)"
+              />
+              <div class="flex flex-col items-center -space-y-1">
+                <button
+                  v-if="i > 0"
+                  class="text-muted-foreground hover:text-foreground transition-colors p-0"
+                  @click="moveLandingCol(i, -1)"
+                >
+                  <ChevronUp class="h-3.5 w-3.5" />
+                </button>
+                <button
+                  v-if="i < landingConfig.length - 1"
+                  class="text-muted-foreground hover:text-foreground transition-colors p-0"
+                  @click="moveLandingCol(i, 1)"
+                >
+                  <ChevronDown class="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Landing Preview (DataTable style) -->
+          <div class="mt-5">
+            <p class="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">Preview Tabel Landing</p>
+
+            <!-- Toolbar: Refresh + Try API -->
+            <div class="flex items-center gap-2 mb-2 flex-wrap">
+              <Button variant="outline" size="sm" @click="useRealApi = false; realApiRows = [];">
+                <RefreshCw class="h-3.5 w-3.5 mr-1" /> Sample Data
+              </Button>
+              <Button
+                variant="outline" size="sm"
+                :class="useRealApi ? 'border-primary text-primary' : ''"
+                @click="useRealApi = !useRealApi"
+              >
+                <Database class="h-3.5 w-3.5 mr-1" />
+                {{ useRealApi ? 'Mode: Real API' : 'Coba dengan Real API' }}
+              </Button>
+              <span v-if="useRealApi && config" class="text-[10px] text-muted-foreground font-mono">
+                /api/dynamic/{{ config.apiEndpoint }}
+              </span>
+            </div>
+
+            <!-- API Params (shown when real API mode) -->
+            <div v-if="useRealApi" class="rounded-lg border border-border bg-muted/50 p-3 mb-2 space-y-2">
+              <p class="text-[11px] font-medium text-muted-foreground">Parameter API</p>
+              <div v-for="(p, pi) in apiParams" :key="pi" class="flex items-center gap-2">
+                <input
+                  v-model="p.key"
+                  placeholder="key (misal: filter_column_nama)"
+                  class="h-7 flex-1 rounded-md border border-border bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+                <input
+                  v-model="p.value"
+                  placeholder="value"
+                  class="h-7 flex-1 rounded-md border border-border bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+                <button class="text-muted-foreground hover:text-destructive p-0.5" @click="removeApiParam(pi)">
+                  <X class="h-3.5 w-3.5" />
+                </button>
+              </div>
+              <div class="flex items-center gap-2">
+                <Button variant="ghost" size="sm" class="h-7 text-xs" @click="addApiParam">
+                  <Plus class="h-3 w-3 mr-1" /> Tambah Param
+                </Button>
+                <Button size="sm" class="h-7 text-xs" :disabled="realApiLoading" @click="fetchRealApiData">
+                  <Loader2 v-if="realApiLoading" class="h-3 w-3 mr-1 animate-spin" />
+                  <Search v-else class="h-3 w-3 mr-1" />
+                  Fetch Data
+                </Button>
+                <span v-if="realApiRows.length" class="text-[10px] text-muted-foreground">
+                  {{ realApiRows.length }} baris
+                </span>
+              </div>
+            </div>
+
+            <!-- AG Grid preview -->
+            <div class="rounded-lg border border-border bg-card overflow-hidden">
+              <ClientOnly>
+                <div
+                  :class="isDark ? 'ag-theme-quartz-dark' : 'ag-theme-quartz'"
+                  class="w-full"
+                  style="height: 220px"
+                >
+                  <AgGridVue
+                    class="w-full h-full"
+                    :columnDefs="landingPreviewCols"
+                    :rowData="landingPreviewRows"
+                    :defaultColDef="{ sortable: true, resizable: true, flex: 1 }"
+                    :animateRows="true"
+                    :overlayNoRowsTemplate="'<span class=&quot;text-muted-foreground text-sm&quot;>Belum ada kolom yang ditampilkan</span>'"
+                  />
+                </div>
+              </ClientOnly>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+        </TabsContent>
+      </Tabs>
 
       <!-- ================================================================ -->
       <!-- DETAIL TABS SECTION -->
