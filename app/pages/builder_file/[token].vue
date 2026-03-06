@@ -528,6 +528,57 @@ function closePanel() {
 // ============================================================================
 const { moveLandingCol, updateLandingCol, landingPreviewCols, useRealApi, realApiLoading, realApiRows, apiParams, addApiParam, removeApiParam, fetchRealApiData, sampleRows, landingPreviewRows } = useLanding(landingConfig, config);
 
+// ── API Response Viewer ────────────────────────────────────────────────────
+const showApiResponse = ref(false);
+
+// Auto-open response viewer when API data arrives
+watch(() => realApiRows.value?.length, (len) => {
+  if (len > 0) showApiResponse.value = true;
+});
+
+// Merge all rows to build a complete object (first non-null wins per key)
+function mergeRows(rows) {
+  if (!rows?.length) return null;
+  const merged = {};
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue;
+    for (const key of Object.keys(row)) {
+      if (merged[key] === undefined || merged[key] === null) {
+        merged[key] = row[key];
+      } else if (merged[key] && typeof merged[key] === 'object' && !Array.isArray(merged[key]) && row[key] && typeof row[key] === 'object' && !Array.isArray(row[key])) {
+        // Deep merge nested objects
+        merged[key] = mergeRows([merged[key], row[key]]);
+      }
+    }
+  }
+  return merged;
+}
+
+function extractFieldPaths(obj, prefix = '') {
+  const paths = [];
+  if (!obj || typeof obj !== 'object') return paths;
+  for (const key of Object.keys(obj)) {
+    const fullPath = prefix ? `${prefix}.${key}` : key;
+    const val = obj[key];
+    paths.push({ path: fullPath, type: val === null ? 'null' : Array.isArray(val) ? 'array' : typeof val, sample: val });
+    if (val && typeof val === 'object' && !Array.isArray(val)) {
+      paths.push(...extractFieldPaths(val, fullPath));
+    }
+  }
+  return paths;
+}
+
+const apiResponsePaths = computed(() => {
+  if (!realApiRows.value?.length) return [];
+  const merged = mergeRows(realApiRows.value);
+  return extractFieldPaths(merged);
+});
+
+function copyPath(path) {
+  navigator.clipboard.writeText(path);
+  toast.success(`Copied: ${path}`);
+}
+
 // ============================================================================
 // DETAIL TAB ACTIONS
 // ============================================================================
@@ -1212,6 +1263,76 @@ async function generate() {
                 <span v-if="realApiRows.length" class="text-[10px] text-muted-foreground">
                   {{ realApiRows.length }} baris
                 </span>
+              </div>
+            </div>
+
+            <!-- API Response Structure Viewer -->
+            <div v-if="realApiRows.length" class="rounded-lg border border-border bg-muted/30 mb-2 overflow-hidden">
+              <button
+                class="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                @click="showApiResponse = !showApiResponse"
+              >
+                <span class="flex items-center gap-1.5">
+                  <Database class="h-3.5 w-3.5 text-primary" />
+                  Struktur Respon API
+                  <span class="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-semibold">{{ apiResponsePaths.length }} fields</span>
+                </span>
+                <ChevronDown class="h-3.5 w-3.5 transition-transform" :class="showApiResponse ? 'rotate-180' : ''" />
+              </button>
+              <div v-if="showApiResponse" class="border-t border-border">
+                <!-- Field paths table -->
+                <div class="max-h-[280px] overflow-y-auto">
+                  <table class="w-full text-xs">
+                    <thead class="sticky top-0 bg-muted">
+                      <tr class="text-muted-foreground">
+                        <th class="text-left px-3 py-1.5 font-semibold">Path (klik untuk copy)</th>
+                        <th class="text-left px-3 py-1.5 font-semibold w-[70px]">Type</th>
+                        <th class="text-left px-3 py-1.5 font-semibold">Sample Value</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr
+                        v-for="item in apiResponsePaths"
+                        :key="item.path"
+                        class="border-t border-border/50 hover:bg-muted/50 cursor-pointer group"
+                        @click="copyPath(item.path)"
+                      >
+                        <td class="px-3 py-1 font-mono text-[11px]">
+                          <span class="group-hover:text-primary transition-colors" :class="item.type === 'object' ? 'text-muted-foreground/60 italic' : 'text-foreground'">
+                            {{ item.path }}
+                          </span>
+                          <Copy class="h-3 w-3 inline ml-1 opacity-0 group-hover:opacity-60 text-primary transition-opacity" />
+                        </td>
+                        <td class="px-3 py-1">
+                          <span
+                            class="px-1.5 py-0.5 rounded text-[10px] font-medium"
+                            :class="{
+                              'bg-blue-500/10 text-blue-600': item.type === 'string',
+                              'bg-green-500/10 text-green-600': item.type === 'number',
+                              'bg-yellow-500/10 text-yellow-600': item.type === 'object',
+                              'bg-purple-500/10 text-purple-600': item.type === 'array',
+                              'bg-orange-500/10 text-orange-600': item.type === 'boolean',
+                              'bg-red-500/10 text-red-500': item.type === 'null',
+                              'bg-muted text-muted-foreground': !['string','number','object','array','boolean','null'].includes(item.type),
+                            }"
+                          >{{ item.type }}</span>
+                        </td>
+                        <td class="px-3 py-1 text-muted-foreground font-mono text-[10px] truncate max-w-[300px]">
+                          <template v-if="item.type === 'object'">{ ... }</template>
+                          <template v-else-if="item.type === 'array'">[{{ item.sample?.length || 0 }} items]</template>
+                          <template v-else>{{ item.sample === null ? 'null' : String(item.sample).substring(0, 80) }}</template>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <!-- Raw JSON (first row) -->
+                <details class="border-t border-border">
+                  <summary class="px-3 py-1.5 text-[10px] font-medium text-muted-foreground cursor-pointer hover:text-foreground select-none">
+                    Raw JSON (row pertama)
+                  </summary>
+                  <pre class="px-3 py-2 text-[10px] font-mono text-muted-foreground bg-muted/50 max-h-[200px] overflow-auto whitespace-pre-wrap break-all">{{ JSON.stringify(realApiRows[0], null, 2) }}</pre>
+                </details>
               </div>
             </div>
 
