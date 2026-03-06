@@ -39,6 +39,7 @@ const landing = reactive({
 				const params = new URLSearchParams({
 					page: String(page),
 					paginate: String(pageSize),
+					join: "true",
 				})
 				params.set("order_by", "createdAt")
 				params.set("order_type", "DESC")
@@ -119,21 +120,10 @@ const landing = reactive({
 		},
 	],
 	columns: [
-		{ headerName: "Kode Vendor", field: "nama_supplier", minWidth: 140 },
+		{ headerName: "Kode Vendor", field: "kode_supplier", minWidth: 140 },
 		{ headerName: "Nama Vendor", field: "nama_supp", minWidth: 140 },
-		{ headerName: "Tipe Vendor", field: "tipe_supp_id", minWidth: 140 },
-		{ headerName: "Alamat Vendor", field: "alamat_supp", minWidth: 140 },
-		{
-			headerName: "Aktif",
-			field: "is_active",
-			minWidth: 110,
-			cellRenderer: (params) => {
-				const isActive = checkActive(params?.value)
-				const label = isActive ? "Aktif" : "Tidak Aktif"
-				const cls = isActive ? "font-bold text-green-600" : "font-bold text-red-600"
-				return `<span class="${cls}">${label}</span>`
-			},
-		},
+		{ headerName: "Negara", field: "negara_supp_id", minWidth: 140 },
+		{ headerName: "Kota", field: "kota_supp_id", minWidth: 140 },
 	],
 })
 
@@ -249,7 +239,7 @@ const actionIcons = { trash: Trash2, eye: Eye, edit: Edit, copy: Copy }
 						<!-- Header -->
 						<div class="flex items-start justify-between gap-2">
 							<div class="min-w-0 flex-1">
-								<p class="text-sm font-semibold truncate">{{ row.nama_supplier || '-' }}</p>
+								<p class="text-sm font-semibold truncate">{{ row.kode_supplier || '-' }}</p>
 								<p class="text-xs text-muted-foreground truncate">{{ row.nama_supp || '-' }}</p>
 							</div>
 							<span
@@ -262,8 +252,8 @@ const actionIcons = { trash: Trash2, eye: Eye, edit: Edit, copy: Copy }
 
 						<!-- Info rows -->
 						<div class="grid grid-cols-1 gap-y-0.5 text-xs">
-							<div v-if="row.tipe_supp_id"><span class="text-muted-foreground">Tipe Vendor:</span> <span class="font-medium">{{ row.tipe_supp_id }}</span></div>
-							<div v-if="row.alamat_supp"><span class="text-muted-foreground">Alamat Vendor:</span> <span class="font-medium">{{ row.alamat_supp }}</span></div>
+							<div v-if="row.negara_supp"><span class="text-muted-foreground">Negara:</span> <span class="font-medium">{{ row.negara_supp }}</span></div>
+							<div v-if="row.kota_supp"><span class="text-muted-foreground">Kota:</span> <span class="font-medium">{{ row.kota_supp }}</span></div>
 						</div>
 
 						<!-- Action buttons -->
@@ -302,7 +292,7 @@ const actionIcons = { trash: Trash2, eye: Eye, edit: Edit, copy: Copy }
 					<AlertDialogHeader>
 						<AlertDialogTitle>Hapus data?</AlertDialogTitle>
 						<AlertDialogDescription>
-							Data "{{ deleteTarget?.nama_supplier || deleteTarget?.id || '-' }}" akan dihapus permanen.
+							Data "{{ deleteTarget?.kode_supplier || deleteTarget?.id || '-' }}" akan dihapus permanen.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>

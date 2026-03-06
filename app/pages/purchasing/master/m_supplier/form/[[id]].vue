@@ -1,34 +1,37 @@
 <script setup lang="js">
-// @ts-nocheck — This is a generator template with placeholders, not runtime code
-import { nextTick } from "vue";
+// @ts-nocheck — Template builder, bukan runtime code
 import { toast } from "vue-sonner";
 import { ArrowLeft, Loader2, Save } from "lucide-vue-next";
 
 
 // ============================================================================
-// COMPOSABLES & STORES
+// COMPOSABLES & ROUTE
 // ============================================================================
-const api = useApi();
-const router = useRouter();
-const route = useRoute();
+const api = useApi();       // Helper untuk panggil API (GET, POST, PUT)
+const router = useRouter();  // Untuk navigasi antar halaman
+const route = useRoute();    // Untuk baca parameter URL (misalnya :id)
 
 // ============================================================================
-// STATE
+// STATE — variabel reaktif yang dipakai di form
 // ============================================================================
-const loading = ref(false);
-const lastLoadRequestId = ref(0);
+const loading = ref(false);  // Menampilkan spinner saat sedang request
 
+// Ambil parameter dari URL:
+// recordId = id record yang sedang diedit/dilihat (null jika mode create)
+// action   = aksi saat ini: "Edit", "View", "Copy", atau null (create)
 const recordId = computed(() => route.params.id);
 const action = computed(() => route.query.action);
 
+// Cek mode saat ini berdasarkan URL
 const isEditMode = computed(() => !!recordId.value && action.value === "Edit");
 const isViewMode = computed(
   () => !!recordId.value && (!action.value || action.value === "View"),
 );
 const isCopyMode = computed(() => !!recordId.value && action.value === "Copy");
 const isCreateMode = computed(() => !recordId.value);
-const isReadOnly = computed(() => isViewMode.value);
+const isReadOnly = computed(() => isViewMode.value);  // View mode = form readonly
 
+// Judul & deskripsi halaman dinamis sesuai mode
 const pageTitle = computed(() => {
   if (isViewMode.value) return "Detail Master Supplier";
   if (isCopyMode.value) return "Salin Master Supplier";
@@ -43,179 +46,126 @@ const pageDescription = computed(() => {
   return "Buat data master supplier baru";
 });
 
-// Reactive form values with defaults
+// Nilai-nilai form — setiap field punya default kosong
 const values = reactive({
-  nama_supplier: "",
+  kode_supplier: "",
   nama_supp: "",
-  is_active: true,
-  tipe_supp_id: "lokal",
-  alamat_supp: "",
+  negara_supp: "",
+  kota_supp: "",
 });
 
-// Errors object (manual validation)
+// Error validasi per field (string pesan error, kosong = tidak ada error)
 const errors = reactive({
-  nama_supplier: "",
+  kode_supplier: "",
   nama_supp: "",
-  tipe_supp_id: "",
-  alamat_supp: "",
+  negara_supp: "",
+  kota_supp: "",
 });
 
 
 
 
 // ============================================================================
-// API CONFIG — sesuaikan param di sini jika ada perubahan
+// API ENDPOINT — sesuaikan jika endpoint berubah
 // ============================================================================
 const API_BASE = "/api/dynamic/m_supplier";
 const API_SAVE = API_BASE;
 
-const getByIdParams = {
-  join: true,
-};
-
 // ============================================================================
-// API FUNCTIONS
+// LOAD DATA — Dipanggil saat halaman pertama kali dibuka (onBeforeMount)
+// Jika ada recordId (mode Edit/View/Copy), ambil data dari server
 // ============================================================================
-const getById = async (id) => {
-  const qs = new URLSearchParams(getByIdParams).toString();
-  return await api.get(`${API_BASE}/${id}${qs ? `?${qs}` : ''}`);
-};
+const isRead = !!recordId.value;  // true kalau mode Edit / View / Copy
 
-const createData = async (payload) => {
-  return await api.post(API_SAVE, payload);
-};
+onBeforeMount(async () => {
+  if (!isRead) return;  // Mode create, tidak perlu load data
 
-const updateData = async (id, payload) => {
-  return await api.put(`${API_SAVE}/${id}`, payload);
-};
-
-// ============================================================================
-// RESET FORM HANDLER
-// ============================================================================
-const onReset = () => {
-  Object.assign(values, {
-    nama_supplier: "",
-    nama_supp: "",
-    is_active: true,
-    tipe_supp_id: "lokal",
-    alamat_supp: "",
-  });
-  Object.keys(errors).forEach((key) => {
-    errors[key] = "";
-  });
-
-};
-
-// ============================================================================
-// LOAD DATA (watch route param — works on both navigation & refresh)
-// ============================================================================
-const loadData = async (id) => {
-  if (!id) return;
-
-  const requestId = ++lastLoadRequestId.value;
+  const params = { join: true };
+  const fixedParams = new URLSearchParams(params);
 
   loading.value = true;
   try {
-    const res = await getById(id);
+    // Panggil API untuk ambil data berdasarkan ID
+    const res = await api.get(`${API_BASE}/${recordId.value}?` + fixedParams);
 
-    const normalizedStatus =
-      res?.status === "success" ? res.status : res?.data?.status;
-    if (normalizedStatus && normalizedStatus !== "success") {
-      throw new Error("Gagal memuat data");
+    // Ambil data dari response (handle berbagai format response)
+    const data = res?.data ?? res;
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+      throw new Error("Data tidak ditemukan");
     }
 
-    const sourceData =
-      res?.status === "success"
-        ? res?.data
-        : (res?.data?.data ?? res?.data ?? null);
-
-    if (!sourceData || typeof sourceData !== "object" || Array.isArray(sourceData)) {
-      throw new Error("Format data tidak valid");
-    }
-
-    if (requestId !== lastLoadRequestId.value) {
-      return;
-    }
-
-    const data = { ...sourceData };
-
-    // Ensure boolean for switch fields
+    // Konversi boolean untuk field switch (karena dari DB bisa 0/1)
     for (const key of Object.keys(values)) {
       if (typeof values[key] === "boolean" && data[key] !== undefined) {
-        const v = data[key];
-        data[key] = v === true || v === 1 || v === "1";
+        data[key] = data[key] === true || data[key] === 1 || data[key] === "1";
       }
     }
 
-    // Mode copy: hapus id agar jadi create baru
+    // Mode Copy: hapus id supaya nanti tersimpan sebagai data baru
     if (isCopyMode.value) {
       delete data.id;
       delete data.createdAt;
       delete data.updatedAt;
     }
 
-    // Assign hanya key yang sudah ada di state reactive values
+    // Masukkan data ke form (hanya field yang sudah didefinisikan di values)
     for (const key in data) {
       if (Object.prototype.hasOwnProperty.call(values, key)) {
         values[key] = data[key] ?? "";
       }
     }
 
-
-    // Force Vue to flush DOM updates
-    await nextTick();
-
-    if (isCopyMode.value) {
-      toast.success("Data berhasil disalin", {
-        description: "Silakan edit dan simpan sebagai data baru",
-      });
-    } else {
-      toast.success("Data berhasil dimuat");
-    }
-  } catch (error) {
-    console.error("Error loading data:", error);
+  } catch (err) {
+    // Kalau gagal load data, tampilkan error dan kembali ke halaman list
     toast.error("Gagal memuat data", {
-      description: error?.message || "Terjadi kesalahan",
+      description: err?.message || "Terjadi kesalahan",
     });
     setTimeout(() => router.push("/purchasing/master/m_supplier"), 2000);
-  } finally {
-    loading.value = false;
   }
-};
-
-watch(
-  () => route.params.id,
-  (id) => {
-    const normalizedId = Array.isArray(id) ? id[0] : id;
-
-    if (!normalizedId) {
-      onReset();
-      return;
-    }
-
-    onReset();
-    loadData(normalizedId);
-  },
-  { immediate: true },
-);
+  loading.value = false;
+});
 
 // ============================================================================
-// SAVE HANDLER
+// RESET FORM — Kembalikan semua field ke nilai default
 // ============================================================================
-const onSave = async () => {
-  // Clear errors
+const onReset = () => {
+  Object.assign(values, {
+    kode_supplier: "",
+    nama_supp: "",
+    negara_supp: "",
+    kota_supp: "",
+  });
   Object.keys(errors).forEach((key) => {
     errors[key] = "";
   });
 
-  // Validasi required
+};
+
+// ============================================================================
+// SAVE — Simpan data ke server (POST untuk create, PUT untuk update)
+// ============================================================================
+const onSave = async () => {
+  // 1. Bersihkan semua pesan error sebelumnya
+  Object.keys(errors).forEach((key) => {
+    errors[key] = "";
+  });
+
+  // 2. Validasi: cek field yang wajib diisi
   let invalid = false;
-  if (!values.nama_supp?.toString().trim()) {
-    errors.nama_supp = "Nama Vendor wajib diisi";
+  if (!values.kode_supplier?.toString().trim()) {
+    errors.kode_supplier = "Isien cak!!";
     invalid = true;
   }
-  if (!values.tipe_supp_id?.toString().trim()) {
-    errors.tipe_supp_id = "Tipe Vendor wajib diisi";
+  if (!values.nama_supp?.toString().trim()) {
+    errors.nama_supp = "Ojo ksoong jal!!";
+    invalid = true;
+  }
+  if (!values.negara_supp?.toString().trim()) {
+    errors.negara_supp = "isien dul!!";
+    invalid = true;
+  }
+  if (!values.kota_supp?.toString().trim()) {
+    errors.kota_supp = "Isien le!!";
     invalid = true;
   }
 
@@ -226,42 +176,44 @@ const onSave = async () => {
     return;
   }
 
+  // 3. Konfirmasi sebelum menyimpan
+  if (!window.confirm("Simpan data?")) return;
+
+  // 4. Kirim data ke server
   loading.value = true;
   try {
-    // Clean payload
+    // Siapkan payload (data yang akan dikirim)
     const payload = {
-    nama_supplier: values.nama_supplier?.toString().trim() || null,
+    kode_supplier: values.kode_supplier?.toString().trim() || null,
     nama_supp: values.nama_supp?.toString().trim() || null,
-    is_active: values.is_active,
-    tipe_supp_id: values.tipe_supp_id?.toString().trim() || null,
-    alamat_supp: values.alamat_supp?.toString().trim() || null,
+    negara_supp: values.negara_supp?.toString().trim() || null,
+    kota_supp: values.kota_supp?.toString().trim() || null,
 
     };
 
+    // Pilih method: PUT (update) atau POST (create baru)
     if (isEditMode.value) {
-      await updateData(recordId.value, payload);
+      await api.put(`${API_SAVE}/${recordId.value}`, payload);
       toast.success("Data berhasil diperbarui");
     } else {
-      await createData(payload);
+      await api.post(API_SAVE, payload);
       toast.success("Data berhasil dibuat");
     }
 
-    // Navigate back to list
+    // Kembali ke halaman list setelah sukses simpan
     router.replace("/purchasing/master/m_supplier");
   } catch (error) {
+    // Tampilkan error dari server
     toast.error(
       isEditMode.value ? "Gagal memperbarui data" : "Gagal membuat data",
-      {
-        description: error?.message || "Terjadi kesalahan",
-      },
+      { description: error?.message || "Terjadi kesalahan" },
     );
-  } finally {
-    loading.value = false;
   }
+  loading.value = false;
 };
 
 // ============================================================================
-// CANCEL HANDLER
+// CANCEL — Kembali ke halaman list tanpa menyimpan
 // ============================================================================
 const handleCancel = () => {
   router.push("/purchasing/master/m_supplier");
@@ -302,16 +254,16 @@ const handleCancel = () => {
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div class="md:col-span-2">
             <FieldX
-              id="nama_supplier"
+              id="kode_supplier"
               label="Kode Vendor"
-              :value="values.nama_supplier"
-              :errorname="errors.nama_supplier ? 'failed' : ''"
-              @input="(v) => (values.nama_supplier = v)"
-              :hints="errors.nama_supplier"
-              :required="false"
+              :value="values.kode_supplier"
+              :errorname="errors.kode_supplier ? 'failed' : ''"
+              @input="(v) => (values.kode_supplier = v)"
+              :hints="errors.kode_supplier"
+              :required="!isReadOnly"
               :disabled="loading || isReadOnly"
               :readonly="isReadOnly"
-              placeholder="Auto Generate"
+              placeholder="Kode Vendor"
               class="w-full"
             />
             </div>
@@ -327,47 +279,45 @@ const handleCancel = () => {
               :required="!isReadOnly"
               :disabled="loading || isReadOnly"
               :readonly="isReadOnly"
-              placeholder="Input Nama Vendor"
+              placeholder="Nama Vendor"
               class="w-full"
             />
             </div>
 
-            <div class="flex items-center gap-3">
-              <Switch
-                id="is_active"
-                v-model="values.is_active"
-                :disabled="loading || isReadOnly"
-              />
-              <Label for="is_active" class="cursor-pointer">
-                {{ values.is_active ? "Aktif" : "Tidak Aktif" }}
-              </Label>
-            </div>
-
-            <FieldX
-              id="tipe_supp_id"
-              label="Tipe Vendor"
-              :value="values.tipe_supp_id"
-              :errorname="errors.tipe_supp_id ? 'failed' : ''"
-              @input="(v) => (values.tipe_supp_id = v)"
-              :hints="errors.tipe_supp_id"
-              :required="false"
+            <FieldSelect
+              id="negara_supp"
+              label="Negara"
+              :value="values.negara_supp"
+              :errorname="errors.negara_supp ? 'failed' : ''"
+              @input="(v) => { values.negara_supp = v; values.kota_supp = '' }"
+              :hints="errors.negara_supp"
+              :required="!isReadOnly"
               :disabled="loading || isReadOnly"
               :readonly="isReadOnly"
-              placeholder="In"
+              apiUrl="/api/dynamic/m_negara"
+              displayField="nama_negara"
+              valueField="id"
+              placeholder="Negara"
+              :clearable="true"
               class="w-full"
             />
 
-            <FieldX
-              id="alamat_supp"
-              label="Alamat Vendor"
-              :value="values.alamat_supp"
-              :errorname="errors.alamat_supp ? 'failed' : ''"
-              @input="(v) => (values.alamat_supp = v)"
-              :hints="errors.alamat_supp"
-              :required="false"
-              :disabled="loading || isReadOnly"
+            <FieldSelect
+              id="kota_supp"
+              label="Kota"
+              :value="values.kota_supp"
+              :errorname="errors.kota_supp ? 'failed' : ''"
+              @input="(v) => (values.kota_supp = v)"
+              :hints="errors.kota_supp"
+              :required="!isReadOnly"
+              :disabled="!values.negara_supp || loading || isReadOnly"
               :readonly="isReadOnly"
-              placeholder="Alamat Vendor"
+              apiUrl="/api/dynamic/m_kota?join=true"
+              :apiParams="{ 'filter_column_m_negara.id': values.negara_supp }"
+              displayField="nama_kota"
+              valueField="id"
+              placeholder="Kota"
+              :clearable="true"
               class="w-full"
             />
           </div>
