@@ -231,6 +231,53 @@ function genSection(f) {
             </div>`
 }
 
+// Convert uploadAccept array to accept string
+function resolveAcceptString(arr) {
+  if (!arr || !Array.isArray(arr) || arr.length === 0) return '*'
+  if (arr.includes('*')) return '*'
+  return arr.join(',')
+}
+
+function genFieldUpload(f) {
+  const readonlyAttr = f.readonly ? ':readonly="true"' : ':readonly="isReadOnly"'
+  const accept = resolveAcceptString(f.uploadAccept)
+  const maxSizeMB = Number(f.maxSizeMB) || 5
+  return `            <FieldUpload
+              id="${f.field}"
+              label="${f.label}"
+              :value="values.${f.field}"
+              @input="(v) => (values.${f.field} = v)"
+              :required="${f.required ? '!isReadOnly' : 'false'}"
+              ${getDisabledAttr(f)}
+              ${readonlyAttr}
+              accept="${accept}"
+              :maxSizeMB="${maxSizeMB}"
+              hints="Upload file (max ${maxSizeMB}MB)"
+              class="w-full"
+            />`
+}
+
+function genFieldMultiUpload(f) {
+  const readonlyAttr = f.readonly ? ':readonly="true"' : ':readonly="isReadOnly"'
+  const accept = resolveAcceptString(f.uploadAccept)
+  const maxImages = f.maxImages || 10
+  const maxSizeMB = Number(f.maxSizeMB) || 5
+  return `            <FieldMultiUpload
+              id="${f.field}"
+              label="${f.label}"
+              :value="values.${f.field}"
+              @input="(v) => (values.${f.field} = v)"
+              :required="${f.required ? '!isReadOnly' : 'false'}"
+              ${getDisabledAttr(f)}
+              ${readonlyAttr}
+              accept="${accept}"
+              :maxSizeMB="${maxSizeMB}"
+              :maxImages="${maxImages}"
+              hints="Upload file (max ${maxSizeMB}MB per file, maksimal ${maxImages} file)"
+              class="w-full"
+            />`
+}
+
 // ── Conditional visibility wrapper ─────────────────────────────────────────
 function wrapVisibleWhen(tpl, f) {
   // New format: separate fields
@@ -287,8 +334,36 @@ export const FIELD_REGISTRY = [
     generateReset: () => null,
     generatePayload: () => null,
   },
+  {
+    value: 'fieldgroup', searchable: false, showInMobile: false, hasError: false, isFieldGroup: true,
+    generateTemplate: () => null,
+    generateDefault: () => null,
+    generateReset: () => null,
+    generatePayload: () => null,
+  },
+  {
+    value: 'fieldgroup_end', searchable: false, showInMobile: false, hasError: false, isFieldGroupEnd: true,
+    generateTemplate: () => null,
+    generateDefault: () => null,
+    generateReset: () => null,
+    generatePayload: () => null,
+  },
   { value: 'currency',           searchable: false, showInMobile: false, hasError: true,  isSwitch: false, generateTemplate: genFieldCurrency },
   { value: 'slider',             searchable: false, showInMobile: false, hasError: false, isSwitch: false, generateTemplate: genFieldSlider },
+  {
+    value: 'upload', searchable: false, showInMobile: false, hasError: true, isSwitch: false,
+    generateTemplate: genFieldUpload,
+    generateDefault: (f) => `  ${f.field}: "",`,
+    generateReset: (f) => `    ${f.field}: "",`,
+    generatePayload: (f) => `    ${f.field}: values.${f.field} || null,`,
+  },
+  {
+    value: 'multi_upload', searchable: false, showInMobile: false, hasError: true, isSwitch: false,
+    generateTemplate: genFieldMultiUpload,
+    generateDefault: (f) => `  ${f.field}: [],`,
+    generateReset: (f) => `    ${f.field}: [],`,
+    generatePayload: (f) => `    ${f.field}: values.${f.field} || [],`,
+  },
 ]
 
 // ── Lookup helper ──────────────────────────────────────────────────────────

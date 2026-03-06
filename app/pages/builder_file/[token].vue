@@ -19,6 +19,14 @@ import {
   Copy,
   Download,
   Upload,
+  Undo2,
+  Redo2,
+  AlertTriangle,
+  Package,
+  CheckSquare,
+  Square,
+  ListChecks,
+  Footprints,
 } from "lucide-vue-next";
 import { createBlankField, createBlankDetail, getComponentBadge, getRegistryEntry } from "~/utils/builder/fieldRegistry";
 import { Layers } from "lucide-vue-next";
@@ -66,6 +74,273 @@ function onPreviewChange(fieldName, value) {
 
 // Detail tabs state
 const detailPanelOpen = ref(false);
+
+// ── Drag & Drop state ──────────────────────────────────────────────────────
+const dragIndex = ref(-1);
+const dragOverIndex = ref(-1);
+
+function onDragStart(idx, event) {
+  dragIndex.value = idx;
+  event.dataTransfer.effectAllowed = 'move';
+  event.dataTransfer.setData('text/plain', String(idx));
+}
+function onDragOver(idx, event) {
+  event.preventDefault();
+  event.dataTransfer.dropEffect = 'move';
+  dragOverIndex.value = idx;
+}
+function onDragLeave() { dragOverIndex.value = -1; }
+function onDrop(idx, event) {
+  event.preventDefault();
+  const from = dragIndex.value;
+  if (from < 0 || from === idx) { dragIndex.value = -1; dragOverIndex.value = -1; return; }
+  pushUndo();
+  const [item] = fields.value.splice(from, 1);
+  fields.value.splice(idx, 0, item);
+  // Adjust panel index
+  if (panelIndex.value === from) panelIndex.value = idx;
+  else if (from < panelIndex.value && idx >= panelIndex.value) panelIndex.value--;
+  else if (from > panelIndex.value && idx <= panelIndex.value) panelIndex.value++;
+  dragIndex.value = -1;
+  dragOverIndex.value = -1;
+}
+function onDragEnd() { dragIndex.value = -1; dragOverIndex.value = -1; }
+
+// ── Undo / Redo ────────────────────────────────────────────────────────────
+const undoStack = ref([]);
+const redoStack = ref([]);
+const MAX_HISTORY = 50;
+
+function pushUndo() {
+  undoStack.value.push(JSON.stringify(fields.value));
+  if (undoStack.value.length > MAX_HISTORY) undoStack.value.shift();
+  redoStack.value = []; // new action clears redo
+}
+
+function undo() {
+  if (!undoStack.value.length) return;
+  redoStack.value.push(JSON.stringify(fields.value));
+  const prev = undoStack.value.pop();
+  fields.value = JSON.parse(prev);
+  closePanel();
+  toast.info('Undo');
+}
+
+function redo() {
+  if (!redoStack.value.length) return;
+  undoStack.value.push(JSON.stringify(fields.value));
+  const next = redoStack.value.pop();
+  fields.value = JSON.parse(next);
+  closePanel();
+  toast.info('Redo');
+}
+
+// Ctrl+Z / Ctrl+Y keyboard shortcut
+onMounted(() => {
+  const handler = (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); redo(); }
+  };
+  window.addEventListener('keydown', handler);
+  onUnmounted(() => window.removeEventListener('keydown', handler));
+});
+
+// ── Search / Filter Fields ─────────────────────────────────────────────────
+const searchQuery = ref('');
+const filteredFieldIndices = computed(() => {
+  const q = searchQuery.value.toLowerCase().trim();
+  if (!q) return fields.value.map((_, i) => i);
+  return fields.value.reduce((acc, f, i) => {
+    const match = (f.label || '').toLowerCase().includes(q) ||
+                  (f.field || '').toLowerCase().includes(q) ||
+                  (f.type || '').toLowerCase().includes(q);
+    if (match) acc.push(i);
+    return acc;
+  }, []);
+});
+
+// ── Duplicate Field Detection ──────────────────────────────────────────────
+const duplicateFieldNames = computed(() => {
+  const counts = {};
+  const dupes = new Set();
+  fields.value.forEach(f => {
+    const entry = getRegistryEntry(f.type);
+    if (entry?.isSpace || entry?.isSection || entry?.isFieldGroup || entry?.isFieldGroupEnd) return;
+    const name = (f.field || '').trim();
+    if (!name) return;
+    if (counts[name]) dupes.add(name);
+    else counts[name] = true;
+  });
+  return dupes;
+});
+
+// ── Bulk Select ────────────────────────────────────────────────────────────
+const bulkMode = ref(false);
+const selectedFields = ref(new Set());
+
+function toggleBulkMode() {
+  bulkMode.value = !bulkMode.value;
+  if (!bulkMode.value) selectedFields.value = new Set();
+}
+
+function toggleFieldSelect(idx) {
+  const s = new Set(selectedFields.value);
+  if (s.has(idx)) s.delete(idx);
+  else s.add(idx);
+  selectedFields.value = s;
+}
+
+function selectAllFields() {
+  selectedFields.value = new Set(fields.value.map((_, i) => i));
+}
+
+function deselectAllFields() {
+  selectedFields.value = new Set();
+}
+
+function bulkDelete() {
+  if (!selectedFields.value.size) return;
+  pushUndo();
+  const indices = [...selectedFields.value].sort((a, b) => b - a);
+  indices.forEach(i => fields.value.splice(i, 1));
+  selectedFields.value = new Set();
+  closePanel();
+  toast.success(`${indices.length} field dihapus`);
+}
+
+function bulkSetReadonly(val) {
+  if (!selectedFields.value.size) return;
+  pushUndo();
+  selectedFields.value.forEach(i => {
+    if (fields.value[i]) fields.value[i].readonly = val;
+  });
+  toast.success(`${selectedFields.value.size} field di-set ${val ? 'readonly' : 'editable'}`);
+}
+
+function bulkSetRequired(val) {
+  if (!selectedFields.value.size) return;
+  pushUndo();
+  selectedFields.value.forEach(i => {
+    if (fields.value[i]) fields.value[i].required = val;
+  });
+  toast.success(`${selectedFields.value.size} field di-set ${val ? 'required' : 'optional'}`);
+}
+
+// ── Wizard Steps ───────────────────────────────────────────────────────────
+const savedWizardSteps = useCookie('builder_wizard_steps', { default: () => null, maxAge: 60 * 60 * 24 });
+const wizardSteps = ref(savedWizardSteps.value || []);
+watch(wizardSteps, (v) => { savedWizardSteps.value = v; }, { deep: true });
+
+function addWizardStep() {
+  wizardSteps.value.push({ label: `Step ${wizardSteps.value.length + 1}` });
+}
+
+function removeWizardStep(idx) {
+  wizardSteps.value.splice(idx, 1);
+  fields.value.forEach(f => {
+    if (f.step === idx) f.step = 0;
+    else if (f.step > idx) f.step--;
+  });
+}
+
+// ── Field Group Helpers ────────────────────────────────────────────────────
+function isInsideGroup(idx) {
+  let depth = 0;
+  for (let i = 0; i < idx; i++) {
+    const entry = getRegistryEntry(fields.value[i].type);
+    if (entry?.isFieldGroup) depth++;
+    if (entry?.isFieldGroupEnd) depth--;
+  }
+  return depth > 0;
+}
+
+// ── Preset Templates ───────────────────────────────────────────────────────
+const showPresetMenu = ref(false);
+const PRESET_TEMPLATES = [
+  {
+    name: 'Alamat Set',
+    icon: '🏠',
+    fields: [
+      {
+        field: 'provinsi', label: 'Provinsi', type: 'select', required: true,
+        sourceType: 'api',
+        apiUrl: 'https://backend.qqltech.com/kodepos/region/provinsi',
+        displayField: 'name', valueField: 'name',
+        placeholder: 'Pilih Provinsi',
+      },
+      {
+        field: 'kota', label: 'Kota', type: 'select', required: true,
+        sourceType: 'api',
+        apiUrl: 'https://backend.qqltech.com/kodepos/region/kabupaten-kota',
+        displayField: 'name', valueField: 'name',
+        dependsOn: 'provinsi', dependsOnParam: 'provinsi',
+        placeholder: 'Pilih Kota',
+      },
+      {
+        field: 'kecamatan', label: 'Kecamatan', type: 'select', required: true,
+        sourceType: 'api',
+        apiUrl: 'https://backend.qqltech.com/kodepos/region/kecamatan',
+        displayField: 'name', valueField: 'name',
+        dependsOn: 'kota', dependsOnParam: 'kota',
+        placeholder: 'Pilih Kecamatan',
+      },
+      { field: 'kode_pos', label: 'Kode Pos', type: 'text', placeholder: 'Isi Kode Pos' },
+      { field: 'alamat', label: 'Alamat', type: 'textarea', required: true, fullWidth: true, placeholder: 'Masukan Alamat Lengkap' },
+    ],
+  },
+  {
+    name: 'Contact Info',
+    icon: '📞',
+    fields: [
+      { field: 'nama', label: 'Nama Lengkap', type: 'text', required: true },
+      { field: 'email', label: 'Email', type: 'email', required: true },
+      { field: 'telepon', label: 'No. Telepon', type: 'tel', required: true },
+      { field: 'hp', label: 'No. HP', type: 'tel' },
+    ],
+  },
+  {
+    name: 'Perusahaan',
+    icon: '🏢',
+    fields: [
+      { field: 'nama_perusahaan', label: 'Nama Perusahaan', type: 'text', required: true },
+      { field: 'npwp', label: 'NPWP', type: 'text' },
+      { field: 'alamat_perusahaan', label: 'Alamat Perusahaan', type: 'textarea', required: true },
+      { field: 'telepon_perusahaan', label: 'Telepon', type: 'tel' },
+      { field: 'email_perusahaan', label: 'Email', type: 'email' },
+    ],
+  },
+  {
+    name: 'Rekening Bank',
+    icon: '🏦',
+    fields: [
+      { field: 'nama_bank', label: 'Nama Bank', type: 'text', required: true },
+      { field: 'no_rekening', label: 'No. Rekening', type: 'text', required: true },
+      { field: 'atas_nama', label: 'Atas Nama', type: 'text', required: true },
+      { field: 'cabang', label: 'Cabang', type: 'text' },
+    ],
+  },
+  {
+    name: 'Harga & Diskon',
+    icon: '💰',
+    fields: [
+      { field: 'harga', label: 'Harga', type: 'currency', required: true, currencyPrefix: 'Rp', allowDecimal: true },
+      { field: 'diskon_persen', label: 'Diskon (%)', type: 'fieldnumber_decimal' },
+      { field: 'diskon_nominal', label: 'Diskon (Rp)', type: 'currency', currencyPrefix: 'Rp', allowDecimal: true },
+      { field: 'total', label: 'Total', type: 'currency', currencyPrefix: 'Rp', allowDecimal: true, readonly: true },
+    ],
+  },
+];
+
+function addPreset(preset) {
+  pushUndo();
+  const blankBase = createBlankField();
+  preset.fields.forEach(pf => {
+    fields.value.push({ ...blankBase, ...pf });
+  });
+  showPresetMenu.value = false;
+  toast.success(`${preset.name}: ${preset.fields.length} field ditambahkan`);
+}
+
 const detailPanelIndex = ref(-1);
 
 // ── Cookie-backed state (survives refresh) ─────────────────────────────────
@@ -124,6 +399,7 @@ function clearBuilderCookies() {
   savedDetails.value = null;
   savedLandingConfig.value = null;
   savedColumnLayout.value = null;
+  savedWizardSteps.value = null;
 }
 
 // Dynamic grid class for column layout
@@ -169,11 +445,32 @@ onMounted(async () => {
 // FIELD ACTIONS
 // ============================================================================
 function addField() {
+  pushUndo();
   fields.value.push(createBlankField());
   openPanel(fields.value.length - 1);
 }
 
 function removeField(idx) {
+  pushUndo();
+  const entry = getRegistryEntry(fields.value[idx]?.type);
+  // If removing a fieldgroup start, also remove its matching end
+  if (entry?.isFieldGroup) {
+    let depth = 1;
+    for (let i = idx + 1; i < fields.value.length; i++) {
+      const e = getRegistryEntry(fields.value[i].type);
+      if (e?.isFieldGroup) depth++;
+      if (e?.isFieldGroupEnd) { depth--; if (depth === 0) { fields.value.splice(i, 1); break; } }
+    }
+  }
+  // If removing a fieldgroup end, also remove its matching start
+  if (entry?.isFieldGroupEnd) {
+    let depth = 1;
+    for (let i = idx - 1; i >= 0; i--) {
+      const e = getRegistryEntry(fields.value[i].type);
+      if (e?.isFieldGroupEnd) depth++;
+      if (e?.isFieldGroup) { depth--; if (depth === 0) { fields.value.splice(i, 1); idx--; break; } }
+    }
+  }
   fields.value.splice(idx, 1);
   if (panelIndex.value === idx) closePanel();
 }
@@ -181,6 +478,7 @@ function removeField(idx) {
 function moveField(idx, dir) {
   const to = idx + dir;
   if (to < 0 || to >= fields.value.length) return;
+  pushUndo();
   const tmp = fields.value[idx];
   fields.value[idx] = fields.value[to];
   fields.value[to] = tmp;
@@ -188,7 +486,15 @@ function moveField(idx, dir) {
   else if (panelIndex.value === to) panelIndex.value = idx;
 }
 
+function addFieldInsideGroup(groupIdx) {
+  pushUndo();
+  const blank = createBlankField();
+  fields.value.splice(groupIdx + 1, 0, blank);
+  openPanel(groupIdx + 1);
+}
+
 function cloneField(idx) {
+  pushUndo();
   const src = fields.value[idx];
   const copy = JSON.parse(JSON.stringify(src));
   copy.field = src.field ? src.field + '_copy' : '';
@@ -225,6 +531,7 @@ function importConfig() {
     try {
       const text = await file.text();
       const data = JSON.parse(text);
+      pushUndo();
       if (Array.isArray(data.fields)) fields.value = data.fields;
       if (Array.isArray(data.details)) details.value = data.details;
       if (Array.isArray(data.landingConfig)) landingConfig.value = data.landingConfig;
@@ -392,7 +699,25 @@ function updateDetailAtIndex(updated) {
 }
 
 function updateFieldAtIndex(updated) {
-  fields.value[panelIndex.value] = updated;
+  const idx = panelIndex.value;
+  const oldType = fields.value[idx]?.type;
+  fields.value[idx] = updated;
+
+  // Auto-insert fieldgroup_end when changing type TO fieldgroup
+  if (updated.type === 'fieldgroup' && oldType !== 'fieldgroup') {
+    const endMarker = { ...createBlankField(), type: 'fieldgroup_end', label: '', field: '' };
+    fields.value.splice(idx + 1, 0, endMarker);
+  }
+  // Auto-remove orphan fieldgroup_end when changing type FROM fieldgroup
+  if (oldType === 'fieldgroup' && updated.type !== 'fieldgroup') {
+    // Find matching end marker
+    let depth = 1;
+    for (let i = idx + 1; i < fields.value.length; i++) {
+      const e = getRegistryEntry(fields.value[i].type);
+      if (e?.isFieldGroup) depth++;
+      if (e?.isFieldGroupEnd) { depth--; if (depth === 0) { fields.value.splice(i, 1); break; } }
+    }
+  }
 }
 
 // ============================================================================
@@ -567,11 +892,16 @@ const detailDefaultColDef = {
 async function generate() {
   const empty = fields.value.filter((f) => {
     const entry = getRegistryEntry(f.type)
-    if (entry?.isSpace || entry?.isSection) return false
+    if (entry?.isSpace || entry?.isSection || entry?.isFieldGroup || entry?.isFieldGroupEnd) return false
     return !f.field?.trim()
   });
   if (empty.length) {
     toast.error("Ada field yang belum memiliki Field Name!");
+    return;
+  }
+  // Check duplicate field names
+  if (duplicateFieldNames.value.size) {
+    toast.error(`Field name duplikat: ${[...duplicateFieldNames.value].join(', ')}`);
     return;
   }
   generating.value = true;
@@ -589,6 +919,7 @@ async function generate() {
         details: details.value,
         landingConfig: landingConfig.value,
         columnLayout: columnLayout.value,
+        wizardSteps: wizardSteps.value.length ? wizardSteps.value : null,
       },
     });
     if (result.success) {
@@ -676,6 +1007,13 @@ async function generate() {
 
       <!-- Theme toggles + docs (matches default layout) -->
       <div class="ml-auto flex items-center gap-2">
+        <Button variant="ghost" size="sm" class="h-8 gap-1 text-xs" :disabled="!undoStack.length" title="Undo (Ctrl+Z)" @click="undo">
+          <Undo2 class="h-3.5 w-3.5" />
+        </Button>
+        <Button variant="ghost" size="sm" class="h-8 gap-1 text-xs" :disabled="!redoStack.length" title="Redo (Ctrl+Y)" @click="redo">
+          <Redo2 class="h-3.5 w-3.5" />
+        </Button>
+        <div class="w-px h-5 bg-border" />
         <Button variant="ghost" size="sm" class="h-8 gap-1 text-xs" title="Import Config" @click="importConfig">
           <Upload class="h-3.5 w-3.5" />
         </Button>
@@ -737,34 +1075,154 @@ async function generate() {
         </div>
       </div>
 
+      <!-- Duplicate Warning Banner -->
+      <div v-if="duplicateFieldNames.size" class="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive text-sm">
+        <AlertTriangle class="h-4 w-4 shrink-0" />
+        <span><strong>Field name duplikat:</strong> {{ [...duplicateFieldNames].join(', ') }} — perbaiki sebelum generate!</span>
+      </div>
+
+      <!-- Wizard Steps Editor -->
+      <Card v-if="wizardSteps.length > 0 || true" class="border-dashed">
+        <CardHeader class="py-3 px-4">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <Footprints class="h-4 w-4 text-primary" />
+              <span class="text-sm font-semibold">Form Wizard / Multi-Step</span>
+              <span class="text-xs text-muted-foreground">({{ wizardSteps.length }} step)</span>
+            </div>
+            <Button variant="outline" size="sm" class="h-7 text-xs gap-1" @click="addWizardStep">
+              <Plus class="h-3 w-3" /> Tambah Step
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent v-if="wizardSteps.length > 0" class="pt-0 pb-3 px-4">
+          <div class="flex flex-wrap gap-2">
+            <div
+              v-for="(step, si) in wizardSteps"
+              :key="si"
+              class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border bg-muted text-sm"
+            >
+              <span class="flex items-center justify-center w-5 h-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold">{{ si + 1 }}</span>
+              <input
+                type="text"
+                :value="step.label"
+                class="bg-transparent border-none outline-none text-xs w-24 focus:ring-0"
+                @input="wizardSteps[si].label = $event.target.value"
+              />
+              <button class="text-muted-foreground hover:text-destructive" @click="removeWizardStep(si)">
+                <X class="h-3 w-3" />
+              </button>
+            </div>
+          </div>
+          <p class="text-[10px] text-muted-foreground mt-2">Assign step ke tiap field via dropdown pada card field.</p>
+        </CardContent>
+      </Card>
+
       <!-- Form Card (preview with real components) -->
       <Card>
         <CardHeader>
-          <CardTitle>Informasi {{ config?.readableName || '' }}</CardTitle>
-          <CardDescription>
-            Isi data {{ (config?.readableName || '').toLowerCase() }} dengan lengkap
-            dan benar
-          </CardDescription>
+          <div class="flex items-center justify-between">
+            <div>
+              <CardTitle>Informasi {{ config?.readableName || '' }}</CardTitle>
+              <CardDescription>
+                Isi data {{ (config?.readableName || '').toLowerCase() }} dengan lengkap dan benar
+              </CardDescription>
+            </div>
+          </div>
+          <!-- Search + Preset + Bulk toolbar -->
+          <div class="flex items-center gap-2 mt-3 flex-wrap">
+            <!-- Search bar -->
+            <div class="relative flex-1 min-w-[200px] max-w-sm">
+              <Search class="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <input
+                type="text"
+                v-model="searchQuery"
+                placeholder="Cari field... (label, nama, tipe)"
+                class="w-full h-8 pl-8 pr-3 rounded-md border border-border bg-muted text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+              <button v-if="searchQuery" class="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" @click="searchQuery = ''">
+                <X class="h-3 w-3" />
+              </button>
+            </div>
+            <!-- Preset button -->
+            <div class="relative">
+              <Button variant="outline" size="sm" class="h-8 gap-1 text-xs" @click="showPresetMenu = !showPresetMenu">
+                <Package class="h-3.5 w-3.5" /> Preset
+              </Button>
+              <div v-if="showPresetMenu" class="absolute top-full left-0 mt-1 z-50 bg-card border border-border rounded-lg shadow-lg p-1 min-w-[200px]">
+                <button
+                  v-for="preset in PRESET_TEMPLATES"
+                  :key="preset.name"
+                  class="w-full text-left px-3 py-2 rounded-md text-sm hover:bg-accent flex items-center gap-2"
+                  @click="addPreset(preset)"
+                >
+                  <span>{{ preset.icon }}</span>
+                  <div>
+                    <div class="font-medium text-xs">{{ preset.name }}</div>
+                    <div class="text-[10px] text-muted-foreground">{{ preset.fields.length }} field</div>
+                  </div>
+                </button>
+              </div>
+            </div>
+            <!-- Bulk toggle -->
+            <Button
+              :variant="bulkMode ? 'default' : 'outline'"
+              size="sm"
+              class="h-8 gap-1 text-xs"
+              @click="toggleBulkMode"
+            >
+              <ListChecks class="h-3.5 w-3.5" /> Bulk
+            </Button>
+          </div>
+          <!-- Bulk action bar -->
+          <div v-if="bulkMode" class="flex items-center gap-2 mt-2 px-3 py-2 rounded-lg bg-muted border border-border text-xs">
+            <span class="text-muted-foreground font-medium">{{ selectedFields.size }} dipilih</span>
+            <button class="text-primary hover:underline" @click="selectAllFields">Pilih Semua</button>
+            <button class="text-primary hover:underline" @click="deselectAllFields">Batal Pilih</button>
+            <div class="w-px h-4 bg-border" />
+            <button class="text-destructive hover:underline" @click="bulkDelete" :disabled="!selectedFields.size">Hapus</button>
+            <button class="hover:underline" @click="bulkSetReadonly(true)" :disabled="!selectedFields.size">Set Readonly</button>
+            <button class="hover:underline" @click="bulkSetReadonly(false)" :disabled="!selectedFields.size">Set Editable</button>
+            <button class="hover:underline" @click="bulkSetRequired(true)" :disabled="!selectedFields.size">Set Required</button>
+            <button class="hover:underline" @click="bulkSetRequired(false)" :disabled="!selectedFields.size">Set Optional</button>
+          </div>
         </CardHeader>
         <CardContent>
           <div :class="gridClass">
             <!-- Render each field with real components -->
+            <template v-for="idx in filteredFieldIndices" :key="idx">
             <div
-              v-for="(f, idx) in fields"
-              :key="idx"
+              :draggable="!bulkMode"
+              @dragstart="onDragStart(idx, $event)"
+              @dragover="onDragOver(idx, $event)"
+              @dragleave="onDragLeave"
+              @drop="onDrop(idx, $event)"
+              @dragend="onDragEnd"
               class="relative group rounded-lg pt-4 pb-2 px-2 transition-all"
               :class="[
-                f.fullWidth || getRegistryEntry(f.type)?.isSection ? colSpanFull : '',
+                fields[idx].fullWidth || getRegistryEntry(fields[idx].type)?.isSection || getRegistryEntry(fields[idx].type)?.isFieldGroup || getRegistryEntry(fields[idx].type)?.isFieldGroupEnd ? colSpanFull : '',
                 panelIndex === idx
                   ? 'ring-2 ring-ring ring-offset-2 ring-offset-background bg-accent/50'
                   : 'hover:ring-2 hover:ring-ring/40 hover:ring-offset-2 hover:ring-offset-background hover:bg-accent/30',
-                f.visibleWhenField && String(previewValues[f.visibleWhenField] ?? '') !== String(f.visibleWhenValue ?? '')
+                fields[idx].visibleWhenField && String(previewValues[fields[idx].visibleWhenField] ?? '') !== String(fields[idx].visibleWhenValue ?? '')
                   ? 'opacity-30 pointer-events-none'
                   : '',
+                dragIndex === idx ? 'opacity-40 scale-95' : '',
+                dragOverIndex === idx && dragIndex !== idx ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : '',
+                isInsideGroup(idx) ? 'border-l-2 border-l-primary/40 ml-2' : '',
+                !bulkMode ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer',
+                selectedFields.has(idx) ? 'ring-2 ring-primary bg-primary/5' : '',
               ]"
+              @click="bulkMode ? toggleFieldSelect(idx) : null"
             >
-              <!-- Action buttons (show on hover) -->
+              <!-- Bulk checkbox -->
+              <div v-if="bulkMode" class="absolute top-1 left-1 z-10">
+                <component :is="selectedFields.has(idx) ? CheckSquare : Square" class="h-4 w-4 text-primary" />
+              </div>
+
+              <!-- Action buttons (show on hover, hidden in bulk mode) -->
               <div
+                v-if="!bulkMode"
                 class="absolute -top-2.5 -right-1.5 hidden group-hover:flex gap-1 z-10"
               >
                 <button
@@ -780,6 +1238,14 @@ async function generate() {
                   title="Duplikasi field"
                 >
                   <Copy class="h-3 w-3" />
+                </button>
+                <button
+                  v-if="getRegistryEntry(fields[idx].type)?.isFieldGroup"
+                  class="h-6 w-6 rounded-full border bg-background text-muted-foreground hover:text-green-500 hover:border-green-500 flex items-center justify-center shadow-sm"
+                  @click.stop="addFieldInsideGroup(idx)"
+                  title="Tambah field di dalam group"
+                >
+                  <Plus class="h-3 w-3" />
                 </button>
                 <button
                   v-if="idx > 0"
@@ -807,27 +1273,67 @@ async function generate() {
               <span
                 class="absolute top-0 left-2 -translate-y-1/2 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300"
               >
-                {{ getComponentBadge(f.type) }}
+                {{ getComponentBadge(fields[idx].type) }}
+              </span>
+
+              <!-- Duplicate warning badge -->
+              <span
+                v-if="fields[idx].field && duplicateFieldNames.has(fields[idx].field)"
+                class="absolute top-0 right-2 -translate-y-1/2 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-destructive/10 text-destructive flex items-center gap-0.5"
+              >
+                <AlertTriangle class="w-3 h-3" /> Duplikat
               </span>
 
               <!-- VisibleWhen indicator badge -->
               <span
-                v-if="f.visibleWhenField"
+                v-if="fields[idx].visibleWhenField"
                 class="absolute top-0 -translate-y-1/2 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 flex items-center gap-0.5"
-                :style="{ left: `${(getComponentBadge(f.type)?.length || 5) * 7 + 24}px` }"
-                :title="`Tampil jika ${f.visibleWhenField} = ${f.visibleWhenValue}`"
+                :style="{ left: `${(getComponentBadge(fields[idx].type)?.length || 5) * 7 + 24}px` }"
+                :title="`Tampil jika ${fields[idx].visibleWhenField} = ${fields[idx].visibleWhenValue}`"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>
                 Kondisional
               </span>
 
+              <!-- RequiredWhen badge -->
+              <span
+                v-if="fields[idx].requiredWhenField"
+                class="absolute bottom-0.5 left-2 text-[9px] font-medium px-1 py-0.5 rounded bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400"
+                :title="`Required jika ${fields[idx].requiredWhenField} = ${fields[idx].requiredWhenValue}`"
+              >
+                Req. Kondisional
+              </span>
+
+              <!-- Wizard step selector -->
+              <div v-if="wizardSteps.length > 0 && !getRegistryEntry(fields[idx].type)?.isSpace && !getRegistryEntry(fields[idx].type)?.isFieldGroupEnd" class="absolute bottom-0.5 right-2">
+                <select
+                  :value="fields[idx].step || 0"
+                  class="text-[10px] bg-muted border border-border rounded px-1 py-0.5 focus:ring-0 focus:border-primary cursor-pointer"
+                  @click.stop
+                  @change.stop="fields[idx].step = Number($event.target.value)"
+                >
+                  <option v-for="(step, si) in wizardSteps" :key="si" :value="si">S{{ si + 1 }}: {{ step.label }}</option>
+                </select>
+              </div>
+
               <!-- Dynamic preview from registry -->
               <BuilderFieldPreview
-                :field="f"
+                :field="fields[idx]"
                 :previewValues="previewValues"
                 @previewChange="(fieldName, val) => onPreviewChange(fieldName, val)"
               />
+
+              <!-- Add field inside group button -->
+              <div
+                v-if="getRegistryEntry(fields[idx].type)?.isFieldGroup && !bulkMode"
+                class="mt-2 border border-dashed border-primary/40 rounded-md p-1.5 flex items-center justify-center cursor-pointer text-primary/70 hover:text-primary hover:border-primary hover:bg-primary/5 transition-all"
+                @click.stop="addFieldInsideGroup(idx)"
+              >
+                <Plus class="h-3.5 w-3.5 mr-1" />
+                <span class="text-xs font-medium">Tambah Field di Group ini</span>
+              </div>
             </div>
+            </template>
 
             <!-- Add field zone -->
             <div

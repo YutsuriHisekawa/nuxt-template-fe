@@ -84,7 +84,9 @@ const open = defineModel('open', { type: Boolean, default: false })
                   <tr class="border-b border-border/50"><td class="py-1.5 pr-2 font-medium text-foreground">Uang</td><td class="py-1.5 pr-2"><code class="bg-muted px-1 rounded">currency</code></td><td class="py-1.5">Input mata uang dengan prefix (Rp) & formatting ribuan</td></tr>
                   <tr class="border-b border-border/50"><td class="py-1.5 pr-2 font-medium text-foreground">Slider</td><td class="py-1.5 pr-2"><code class="bg-muted px-1 rounded">slider</code></td><td class="py-1.5">Slider range (min/max/step + unit label)</td></tr>
                   <tr class="border-b border-border/50"><td class="py-1.5 pr-2 font-medium text-foreground">Layout</td><td class="py-1.5 pr-2"><code class="bg-muted px-1 rounded">section</code></td><td class="py-1.5">Section divider — judul pemisah antar grup field</td></tr>
-                  <tr><td class="py-1.5 pr-2"></td><td class="py-1.5 pr-2"><code class="bg-muted px-1 rounded">space</code></td><td class="py-1.5">Pemisah / spacer (tidak ada input)</td></tr>
+                  <tr class="border-b border-border/50"><td class="py-1.5 pr-2"></td><td class="py-1.5 pr-2"><code class="bg-muted px-1 rounded">space</code></td><td class="py-1.5">Pemisah / spacer (tidak ada input)</td></tr>
+                  <tr class="border-b border-border/50"><td class="py-1.5 pr-2 font-medium text-foreground">Upload</td><td class="py-1.5 pr-2"><code class="bg-muted px-1 rounded">upload</code></td><td class="py-1.5">Upload file tunggal (gambar/dokumen) dengan preview & kompresi otomatis</td></tr>
+                  <tr><td class="py-1.5 pr-2"></td><td class="py-1.5 pr-2"><code class="bg-muted px-1 rounded">multi_upload</code></td><td class="py-1.5">Upload banyak file (thumbnail grid, carousel preview, PDF support)</td></tr>
                 </tbody>
               </table>
             </div>
@@ -227,6 +229,50 @@ const open = defineModel('open', { type: Boolean, default: false })
                 <div><strong>Import</strong> — Upload file JSON untuk memuat konfigurasi. Field, detail, landing, dan kolom layout langsung ter-restore.</div>
               </div>
             </div>
+
+            <!-- 1.10 File Upload -->
+            <h3 class="font-semibold text-[13px] text-foreground mt-4">1.10 File / Image Upload</h3>
+            <p class="text-muted-foreground text-xs">Dua tipe upload tersedia:</p>
+            <div class="overflow-x-auto">
+              <table class="w-full text-xs border-collapse">
+                <thead>
+                  <tr class="border-b border-border">
+                    <th class="text-left py-1.5 pr-2 font-semibold">Tipe</th>
+                    <th class="text-left py-1.5 pr-2 font-semibold">Opsi</th>
+                    <th class="text-left py-1.5 font-semibold">Keterangan</th>
+                  </tr>
+                </thead>
+                <tbody class="text-muted-foreground">
+                  <tr class="border-b border-border/50"><td class="py-1.5 pr-2 font-medium text-foreground"><code class="bg-muted px-1 rounded">upload</code></td><td class="py-1.5 pr-2">Accept Types</td><td class="py-1.5">Filter file yang bisa dipilih, misal <code class="bg-muted px-1 rounded">image/*</code>, <code class="bg-muted px-1 rounded">.pdf,.doc</code></td></tr>
+                  <tr class="border-b border-border/50"><td class="py-1.5 pr-2 font-medium text-foreground"><code class="bg-muted px-1 rounded">multi_upload</code></td><td class="py-1.5 pr-2">Accept Types</td><td class="py-1.5">Sama seperti upload tunggal</td></tr>
+                  <tr><td class="py-1.5 pr-2"></td><td class="py-1.5 pr-2">Max Images</td><td class="py-1.5">Jumlah maksimal file yang bisa di-upload (default: 10)</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="text-muted-foreground text-xs mt-1">Fitur: kompresi gambar otomatis (max 1920px), preview popup, thumbnail grid, carousel untuk multi upload, support PDF preview.</p>
+
+            <!-- 1.11 Drag & Drop Reorder -->
+            <h3 class="font-semibold text-[13px] text-foreground mt-4">1.11 Drag & Drop Reorder</h3>
+            <p class="text-muted-foreground text-xs">Urutan field bisa diubah dengan <strong>drag & drop</strong> — klik tahan pada card field, lalu seret ke posisi yang diinginkan. Drop indicator berupa border biru akan muncul pada posisi tujuan.</p>
+
+            <!-- 1.12 Undo / Redo -->
+            <h3 class="font-semibold text-[13px] text-foreground mt-4">1.12 Undo / Redo</h3>
+            <p class="text-muted-foreground text-xs">Aksi yang mengubah struktur field (tambah, hapus, pindah, clone, import, drag reorder) bisa di-undo/redo:</p>
+            <div class="overflow-x-auto">
+              <table class="w-full text-xs border-collapse">
+                <thead>
+                  <tr class="border-b border-border">
+                    <th class="text-left py-1.5 pr-2 font-semibold">Shortcut</th>
+                    <th class="text-left py-1.5 font-semibold">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody class="text-muted-foreground">
+                  <tr class="border-b border-border/50"><td class="py-1.5 pr-2"><kbd class="bg-muted px-1.5 py-0.5 rounded text-[11px] font-mono">Ctrl+Z</kbd></td><td class="py-1.5">Undo — batalkan perubahan terakhir</td></tr>
+                  <tr class="border-b border-border/50"><td class="py-1.5 pr-2"><kbd class="bg-muted px-1.5 py-0.5 rounded text-[11px] font-mono">Ctrl+Y</kbd> / <kbd class="bg-muted px-1.5 py-0.5 rounded text-[11px] font-mono">Ctrl+Shift+Z</kbd></td><td class="py-1.5">Redo — ulangi perubahan yang di-undo</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="text-muted-foreground text-xs mt-1">Tombol Undo/Redo juga tersedia di toolbar atas. Maksimal 50 history tersimpan.</p>
           </section>
 
           <!-- ============================================================ -->

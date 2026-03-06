@@ -12,7 +12,7 @@ function getReadableName(text) {
 function buildValuesDefaults(fields) {
   return fields.filter(f => {
     const entry = getRegistryEntry(f.type)
-    return !entry?.isSpace && !entry?.isSection
+    return !entry?.isSpace && !entry?.isSection && !entry?.isFieldGroup && !entry?.isFieldGroupEnd
   }).map(f => {
     const entry = getRegistryEntry(f.type)
     if (entry?.generateDefault) return entry.generateDefault(f)
@@ -24,7 +24,7 @@ function buildValuesDefaults(fields) {
 function buildErrorsDefaults(fields) {
   return fields.filter(f => {
     const entry = getRegistryEntry(f.type)
-    return entry?.hasError !== false && !entry?.isSpace && !entry?.isSection
+    return entry?.hasError !== false && !entry?.isSpace && !entry?.isSection && !entry?.isFieldGroup && !entry?.isFieldGroupEnd
   }).map(f => `  ${f.field}: "",`).join('\n')
 }
 
@@ -37,7 +37,11 @@ function buildValidation(fields) {
     // Required
     if (f.required) {
       const msg = f.errorMessage?.trim() || `${f.label} Wajib Di isi`
-      lines.push(`  if (!values.${f.field}?.toString().trim()) {\n    errors.${f.field} = "${msg}";\n    invalid = true;\n  }`)
+      if (f.requiredWhenField && f.requiredWhenValue !== undefined && f.requiredWhenValue !== '') {
+        lines.push(`  if (values.${f.requiredWhenField}?.toString() === '${f.requiredWhenValue}' && !values.${f.field}?.toString().trim()) {\n    errors.${f.field} = "${msg}";\n    invalid = true;\n  }`)
+      } else {
+        lines.push(`  if (!values.${f.field}?.toString().trim()) {\n    errors.${f.field} = "${msg}";\n    invalid = true;\n  }`)
+      }
     }
 
     // Min length
@@ -84,7 +88,7 @@ function buildValidation(fields) {
 function buildPayload(fields) {
   return fields.filter(f => {
     const entry = getRegistryEntry(f.type)
-    return !entry?.isSpace && !entry?.isSection
+    return !entry?.isSpace && !entry?.isSection && !entry?.isFieldGroup && !entry?.isFieldGroupEnd
   }).map(f => {
     const entry = getRegistryEntry(f.type)
     if (entry?.generatePayload) return entry.generatePayload(f)
@@ -96,7 +100,7 @@ function buildPayload(fields) {
 function buildResetValues(fields) {
   return fields.filter(f => {
     const entry = getRegistryEntry(f.type)
-    return !entry?.isSpace && !entry?.isSection
+    return !entry?.isSpace && !entry?.isSection && !entry?.isFieldGroup && !entry?.isFieldGroupEnd
   }).map(f => {
     const entry = getRegistryEntry(f.type)
     if (entry?.generateReset) return entry.generateReset(f)
@@ -105,17 +109,13 @@ function buildResetValues(fields) {
   }).join('\n')
 }
 
-function buildFormFields(fields, columnLayout) {
-  const colsFull = { 1: '', 2: 'md:col-span-2', 3: 'md:col-span-3' }
-  const fullClass = colsFull[columnLayout] || colsFull[2]
-  return fields.map(f => {
-    const entry = getRegistryEntry(f.type)
-    let tpl
-    if (entry?.generateTemplate) {
-      tpl = entry.generateTemplate(f, fields)
-    } else {
-      // Fallback: plain FieldX
-      tpl = `            <FieldX
+function buildFieldTemplate(f, fields, fullClass) {
+  const entry = getRegistryEntry(f.type)
+  let tpl
+  if (entry?.generateTemplate) {
+    tpl = entry.generateTemplate(f, fields)
+  } else {
+    tpl = `            <FieldX
               id="${f.field}"
               label="${f.label}"
               :value="values.${f.field}"
@@ -128,19 +128,79 @@ function buildFormFields(fields, columnLayout) {
               placeholder="${f.placeholder || f.label}"
               class="w-full"
             />`
+  }
+  // Post-process: conditional required
+  if (f.required && f.requiredWhenField && f.requiredWhenValue !== undefined && f.requiredWhenValue !== '') {
+    tpl = tpl.replace(':required="!isReadOnly"', `:required="!isReadOnly && values.${f.requiredWhenField}?.toString() === '${f.requiredWhenValue}'"`)
+  }
+  tpl = wrapVisibleWhen(tpl, f)
+  if (entry?.isSection) {
+    return fullClass ? `            <div class="${fullClass}">\n${tpl}\n            </div>` : tpl
+  }
+  if (f.fullWidth && fullClass) {
+    return `            <div class="${fullClass}">\n${tpl}\n            </div>`
+  }
+  return tpl
+}
+
+function buildFormFields(fields, columnLayout) {
+  const colsFull = { 1: '', 2: 'md:col-span-2', 3: 'md:col-span-3' }
+  const fullClass = colsFull[columnLayout] || colsFull[2]
+  const gridCols = { 1: 'grid grid-cols-1 gap-6', 2: 'grid grid-cols-1 md:grid-cols-2 gap-6', 3: 'grid grid-cols-1 md:grid-cols-3 gap-6' }
+  const gridClass = gridCols[columnLayout] || gridCols[2]
+
+  const lines = []
+  fields.forEach(f => {
+    const entry = getRegistryEntry(f.type)
+    // Field Group Start
+    if (entry?.isFieldGroup) {
+      let groupDiv = `            <div class="${fullClass ? fullClass + ' ' : ''}rounded-lg border border-border bg-card/50 p-5 space-y-1">`
+      groupDiv += `\n              <h3 class="text-sm font-semibold text-foreground mb-3">${f.label || 'Group'}</h3>`
+      groupDiv += `\n              <div class="${gridClass}">`
+      groupDiv = wrapVisibleWhen(groupDiv, f)
+      lines.push(groupDiv)
+      return
     }
-    // Wrap with conditional visibility (v-if)
-    tpl = wrapVisibleWhen(tpl, f)
-    // Section dividers always span full width
-    if (entry?.isSection) {
-      return fullClass ? `            <div class="${fullClass}">\n${tpl}\n            </div>` : tpl
+    // Field Group End
+    if (entry?.isFieldGroupEnd) {
+      lines.push(`              </div>\n            </div>`)
+      return
     }
-    // Wrap with col-span-full if fullWidth
-    if (f.fullWidth && fullClass) {
-      return `            <div class="${fullClass}">\n${tpl}\n            </div>`
-    }
-    return tpl
+    lines.push(buildFieldTemplate(f, fields, fullClass))
+  })
+  return lines.join('\n\n')
+}
+
+function buildFormContent(fields, columnLayout, wizardSteps) {
+  const gridCols = { 1: 'grid grid-cols-1 gap-6', 2: 'grid grid-cols-1 md:grid-cols-2 gap-6', 3: 'grid grid-cols-1 md:grid-cols-3 gap-6' }
+  const gridClass = gridCols[columnLayout] || gridCols[2]
+
+  if (!wizardSteps || !wizardSteps.length) {
+    // No wizard — single grid
+    const fieldsHtml = buildFormFields(fields, columnLayout)
+    return `          <div class="${gridClass}">\n${fieldsHtml}\n          </div>`
+  }
+
+  // Wizard mode — group fields by step
+  const stepGroups = wizardSteps.map(() => [])
+  fields.forEach(f => {
+    const si = Math.min(f.step || 0, wizardSteps.length - 1)
+    stepGroups[si].push(f)
+  })
+
+  const tabs = wizardSteps.map((step, i) =>
+    `              <button\n                @click="wizardStep = ${i}"\n                class="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors"\n                :class="wizardStep === ${i} ? 'bg-primary text-primary-foreground shadow-sm' : 'bg-muted text-muted-foreground hover:text-foreground'"\n              >\n                <span class="flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold" :class="wizardStep === ${i} ? 'bg-primary-foreground text-primary' : 'bg-muted-foreground/20'">${i + 1}</span>\n                ${step.label}\n              </button>`
+  ).join('\n')
+
+  const stepContents = stepGroups.map((sf, i) => {
+    const fieldsHtml = buildFormFields(sf, columnLayout)
+    return `          <div v-show="wizardStep === ${i}" class="${gridClass}">\n${fieldsHtml}\n          </div>`
   }).join('\n\n')
+
+  const lastStep = wizardSteps.length - 1
+  const nav = `          <div class="flex justify-between mt-4">\n            <Button variant="outline" v-if="wizardStep > 0" @click="wizardStep--">Sebelumnya</Button>\n            <div v-else />\n            <Button v-if="wizardStep < ${lastStep}" @click="wizardStep++">Selanjutnya</Button>\n          </div>`
+
+  return `          <!-- Wizard Steps -->\n          <div class="flex gap-2 mb-6 flex-wrap">\n${tabs}\n          </div>\n\n${stepContents}\n\n${nav}`
 }
 
 function buildColumns(fields, landingConfig) {
@@ -686,7 +746,7 @@ ${tabContents}
 // ── Handler ────────────────────────────────────────────────────────────────
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
-  const { modulePath, moduleName, apiEndpoint, routePath, pageTitle, fields, details, landingConfig, columnLayout } = body
+  const { modulePath, moduleName, apiEndpoint, routePath, pageTitle, fields, details, landingConfig, columnLayout, wizardSteps } = body
 
   if (!modulePath || !fields?.length) {
     throw createError({ statusCode: 400, statusMessage: 'modulePath and fields are required' })
@@ -726,7 +786,8 @@ export default defineEventHandler(async (event) => {
     __VALIDATION__: buildValidation(fields),
     __PAYLOAD__: buildPayload(fields),
     __RESET_VALUES__: buildResetValues(fields),
-    __FORM_FIELDS__: buildFormFields(fields, columnLayout || 2),
+    __FORM_CONTENT__: buildFormContent(fields, columnLayout || 2, wizardSteps || []),
+    __WIZARD_STATE__: (wizardSteps && wizardSteps.length > 0) ? `const wizardStep = ref(0);` : '',
     __COLUMN_LAYOUT__: String(columnLayout || 2),
     __COLUMNS__: buildColumns(fields, landingConfig),
     __SEARCH_FIELDS__: buildSearchFields(fields, landingConfig),

@@ -148,6 +148,12 @@ const PANEL = {
     placeholder: '%',
     hint: 'Satuan yang ditampilkan (%, pcs, kg, dll)',
   },
+  // ── Conditional Required ──
+  requiredWhen: {
+    key: 'requiredWhenField', label: 'Required When (Kondisional)', type: 'requiredWhenCombo',
+    hint: 'Wajib diisi hanya kalau field lain bernilai tertentu. Kosongkan untuk selalu wajib.',
+    hideWhen: (f) => !f.required || f.type === 'switch',
+  },
   // ── Conditional Visibility ──
   visibleWhen: {
     key: 'visibleWhenField', label: 'Visible When (Kondisional)', type: 'visibleWhenCombo',
@@ -188,19 +194,52 @@ const PANEL = {
     hint: 'Pesan error jika regex tidak cocok',
     hideWhen: (f) => !f.pattern,
   },
+  // ── Upload-specific ──
+  uploadAccept: {
+    key: 'uploadAccept', label: 'Tipe File', type: 'checkboxGroup',
+    options: [
+      { value: '*', label: 'Semua File' },
+      { value: 'image/png', label: 'PNG' },
+      { value: 'image/jpeg', label: 'JPG / JPEG' },
+      { value: 'image/webp', label: 'WebP' },
+      { value: 'application/pdf', label: 'PDF' },
+      { value: '.xlsx,.xls', label: 'Excel' },
+      { value: '.doc,.docx', label: 'Word' },
+    ],
+    hint: 'Pilih tipe file yang diterima',
+  },
+  maxSizeMB: {
+    key: 'maxSizeMB', label: 'Ukuran Maksimal File', type: 'select',
+    options: [
+      { value: '1', label: '1 MB' },
+      { value: '2', label: '2 MB' },
+      { value: '5', label: '5 MB' },
+      { value: '10', label: '10 MB' },
+      { value: '25', label: '25 MB' },
+      { value: '50', label: '50 MB' },
+    ],
+    hint: 'File yang melebihi ukuran ini akan ditolak',
+  },
+  maxImages: {
+    key: 'maxImages', label: 'Jumlah Maksimal File', type: 'text',
+    placeholder: '10',
+    hint: 'Jumlah maksimal file yang bisa diupload',
+  },
 }
 
 // ── Common panel sets ──────────────────────────────────────────────────────
-const COMMON_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.defaultValue, PANEL.required, PANEL.errorMessage, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.minLength, PANEL.maxLength, PANEL.minValue, PANEL.maxValue, PANEL.pattern, PANEL.patternMessage]
+const COMMON_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.defaultValue, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.minLength, PANEL.maxLength, PANEL.minValue, PANEL.maxValue, PANEL.pattern, PANEL.patternMessage]
 const SELECT_PANELS = [...COMMON_PANELS, PANEL.sourceType, PANEL.apiUrl, PANEL.apiParams, PANEL.dependsOnParam, PANEL.displayField, PANEL.valueField, PANEL.staticOptions]
 const SWITCH_PANELS = [PANEL.fieldName, PANEL.label, PANEL.defaultValue, PANEL.labelTrue, PANEL.labelFalse, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen]
 const BOX_PANELS = [PANEL.fieldName, PANEL.label, PANEL.defaultValue, PANEL.labelTrue, PANEL.labelFalse, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen]
-const DATE_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.dateDefaultValue, PANEL.required, PANEL.errorMessage, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen]
-const RADIO_PANELS = [PANEL.fieldName, PANEL.label, PANEL.required, PANEL.errorMessage, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.radioOptions]
-const POPUP_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.required, PANEL.errorMessage, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.apiUrl, PANEL.apiParams, PANEL.dependsOnParam, PANEL.displayField, PANEL.valueField, PANEL.popupColumns, PANEL.searchFields, PANEL.dialogTitle]
-const CURRENCY_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.defaultValue, PANEL.required, PANEL.errorMessage, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.currencyPrefix, PANEL.allowDecimal, PANEL.minValue, PANEL.maxValue]
+const DATE_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.dateDefaultValue, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen]
+const RADIO_PANELS = [PANEL.fieldName, PANEL.label, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.radioOptions]
+const POPUP_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.apiUrl, PANEL.apiParams, PANEL.dependsOnParam, PANEL.displayField, PANEL.valueField, PANEL.popupColumns, PANEL.searchFields, PANEL.dialogTitle]
+const CURRENCY_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.defaultValue, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.currencyPrefix, PANEL.allowDecimal, PANEL.minValue, PANEL.maxValue]
 const SLIDER_PANELS = [PANEL.fieldName, PANEL.label, PANEL.defaultValue, PANEL.required, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.sliderMin, PANEL.sliderMax, PANEL.sliderStep, PANEL.sliderUnit]
 const SECTION_PANELS = [PANEL.sectionTitle, PANEL.visibleWhen]
+const UPLOAD_PANELS = [PANEL.fieldName, PANEL.label, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.uploadAccept, PANEL.maxSizeMB]
+const MULTI_UPLOAD_PANELS = [PANEL.fieldName, PANEL.label, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.uploadAccept, PANEL.maxSizeMB, PANEL.maxImages]
 
 // ── Static options helpers ────────────────────────────────────────────────
 // Returns a JS array literal string for code generation (from array of {value, label, parentValue?})
@@ -563,6 +602,53 @@ function genSection(f) {
             </div>`
 }
 
+// Convert uploadAccept array (e.g. ['image/png', 'image/jpeg', '.pdf']) to accept string for <input>
+function resolveAcceptString(arr) {
+  if (!arr || !Array.isArray(arr) || arr.length === 0) return '*'
+  if (arr.includes('*')) return '*'
+  return arr.join(',')
+}
+
+function genFieldUpload(f) {
+  const readonlyAttr = f.readonly ? ':readonly="true"' : ':readonly="isReadOnly"'
+  const accept = resolveAcceptString(f.uploadAccept)
+  const maxSizeMB = Number(f.maxSizeMB) || 5
+  return `            <FieldUpload
+              id="${f.field}"
+              label="${f.label}"
+              :value="values.${f.field}"
+              @input="(v) => (values.${f.field} = v)"
+              :required="${f.required ? '!isReadOnly' : 'false'}"
+              ${getDisabledAttr(f)}
+              ${readonlyAttr}
+              accept="${accept}"
+              :maxSizeMB="${maxSizeMB}"
+              hints="Upload file (max ${maxSizeMB}MB)"
+              class="w-full"
+            />`
+}
+
+function genFieldMultiUpload(f) {
+  const readonlyAttr = f.readonly ? ':readonly="true"' : ':readonly="isReadOnly"'
+  const accept = resolveAcceptString(f.uploadAccept)
+  const maxImages = f.maxImages || 10
+  const maxSizeMB = Number(f.maxSizeMB) || 5
+  return `            <FieldMultiUpload
+              id="${f.field}"
+              label="${f.label}"
+              :value="values.${f.field}"
+              @input="(v) => (values.${f.field} = v)"
+              :required="${f.required ? '!isReadOnly' : 'false'}"
+              ${getDisabledAttr(f)}
+              ${readonlyAttr}
+              accept="${accept}"
+              :maxSizeMB="${maxSizeMB}"
+              :maxImages="${maxImages}"
+              hints="Upload file (max ${maxSizeMB}MB per file, maksimal ${maxImages} file)"
+              class="w-full"
+            />`
+}
+
 // ── Conditional visibility wrapper ─────────────────────────────────────────
 function wrapVisibleWhen(tpl, f) {
   // New format: separate fields
@@ -798,6 +884,34 @@ export const FIELD_REGISTRY = [
     generatePayload: () => null,
   },
 
+  // ── Field Group (Start) ────────────────────────────────────
+  {
+    value: 'fieldgroup', label: 'Field Group (Start)', component: null, category: 'layout',
+    searchable: false, showInMobile: false, hasError: false,
+    isFieldGroup: true,
+    defaultMeta: { label: 'Group Title' },
+    panelFields: [{ key: 'label', label: 'Judul Group', type: 'text', placeholder: 'Informasi Pribadi' }, PANEL.visibleWhen],
+    previewProps: () => ({}),
+    generateTemplate: () => null,
+    generateDefault: () => null,
+    generateReset: () => null,
+    generatePayload: () => null,
+  },
+
+  // ── Field Group (End) ──────────────────────────────────────
+  {
+    value: 'fieldgroup_end', label: 'Field Group (End)', component: null, category: 'layout',
+    searchable: false, showInMobile: false, hasError: false,
+    isFieldGroupEnd: true,
+    defaultMeta: {},
+    panelFields: [],
+    previewProps: () => ({}),
+    generateTemplate: () => null,
+    generateDefault: () => null,
+    generateReset: () => null,
+    generatePayload: () => null,
+  },
+
   // ── FieldCurrency ──────────────────────────────────────────
   {
     value: 'currency', label: 'FieldCurrency', component: 'FieldCurrency', category: 'number',
@@ -823,6 +937,32 @@ export const FIELD_REGISTRY = [
       step: Number(f.sliderStep) || 1, unit: f.sliderUnit || '',
     }),
     generateTemplate: genFieldSlider,
+  },
+
+  // ── FieldUpload (Single) ────────────────────────────────────
+  {
+    value: 'upload', label: 'FieldUpload', component: 'FieldUpload', category: 'input',
+    searchable: false, showInMobile: false, hasError: true,
+    defaultMeta: { uploadAccept: ['*'], maxSizeMB: '5' },
+    panelFields: UPLOAD_PANELS,
+    previewProps: (f) => ({ label: f.label || 'Upload', value: '', accept: resolveAcceptString(f.uploadAccept), maxSizeMB: Number(f.maxSizeMB) || 5, required: f.required }),
+    generateTemplate: genFieldUpload,
+    generateDefault: (f) => `  ${f.field}: "",`,
+    generateReset: (f) => `    ${f.field}: "",`,
+    generatePayload: (f) => `    ${f.field}: values.${f.field} || null,`,
+  },
+
+  // ── FieldMultiUpload ────────────────────────────────────────
+  {
+    value: 'multi_upload', label: 'FieldMultiUpload', component: 'FieldMultiUpload', category: 'input',
+    searchable: false, showInMobile: false, hasError: true,
+    defaultMeta: { uploadAccept: ['*'], maxSizeMB: '5', maxImages: 10 },
+    panelFields: MULTI_UPLOAD_PANELS,
+    previewProps: (f) => ({ label: f.label || 'Upload', value: [], accept: resolveAcceptString(f.uploadAccept), maxSizeMB: Number(f.maxSizeMB) || 5, maxImages: Number(f.maxImages) || 10, required: f.required }),
+    generateTemplate: genFieldMultiUpload,
+    generateDefault: (f) => `  ${f.field}: [],`,
+    generateReset: (f) => `    ${f.field}: [],`,
+    generatePayload: (f) => `    ${f.field}: values.${f.field} || [],`,
   },
 
   // ── FieldSelect ────────────────────────────────────────────
@@ -939,6 +1079,9 @@ export function createBlankField() {
     maxValue: '',
     pattern: '',
     patternMessage: '',
+    requiredWhenField: '',
+    requiredWhenValue: '',
+    step: 0,
     ...allMetaKeys,
     defaultValue: '', // always blank for new fields; boolean fields get their default when type is selected
   }
@@ -949,6 +1092,8 @@ export function getComponentBadge(type) {
   const entry = getRegistryEntry(type)
   if (entry?.isSpace) return 'Space'
   if (entry?.isSection) return 'Section'
+  if (entry?.isFieldGroup) return 'Group Start'
+  if (entry?.isFieldGroupEnd) return 'Group End'
   return entry?.component || 'FieldX'
 }
 

@@ -17,6 +17,8 @@ import FieldRadio from '~/components/field/FieldRadio.vue'
 import FieldPopUp from '~/components/field/FieldPopUp.vue'
 import FieldCurrency from '~/components/field/FieldCurrency.vue'
 import FieldSlider from '~/components/field/FieldSlider.vue'
+import FieldUpload from '~/components/field/FieldUpload.vue'
+import FieldMultiUpload from '~/components/field/FieldMultiUpload.vue'
 
 const COMPONENT_MAP = {
   FieldX,
@@ -31,6 +33,8 @@ const COMPONENT_MAP = {
   FieldPopUp,
   FieldCurrency,
   FieldSlider,
+  FieldUpload,
+  FieldMultiUpload,
 }
 
 const props = defineProps({
@@ -111,6 +115,8 @@ const isSwitch = computed(() => entry.value?.isSwitch === true)
 const isFieldBox = computed(() => entry.value?.isFieldBox === true)
 const isSpace = computed(() => entry.value?.isSpace === true)
 const isSection = computed(() => entry.value?.isSection === true)
+const isFieldGroup = computed(() => entry.value?.isFieldGroup === true)
+const isFieldGroupEnd = computed(() => entry.value?.isFieldGroupEnd === true)
 
 // Interactive switch state
 const switchValue = ref(props.field.defaultValue !== 'false')
@@ -130,8 +136,20 @@ const switchDisabled = computed(() => {
     <h3 class="text-base font-semibold text-foreground">{{ field.label || 'Section Title' }}</h3>
   </div>
 
+  <!-- Field Group Start -->
+  <div v-else-if="isFieldGroup" class="w-full rounded-lg border-2 border-primary/30 bg-primary/5 p-3 flex items-center gap-2">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
+    <span class="text-sm font-semibold text-primary">{{ field.label || 'Group Title' }}</span>
+    <span class="text-[10px] text-primary/60 ml-auto">▼ GROUP START</span>
+  </div>
+
+  <!-- Field Group End -->
+  <div v-else-if="isFieldGroupEnd" class="w-full rounded-lg border-2 border-primary/30 bg-primary/5 p-2 flex items-center justify-center">
+    <span class="text-[10px] text-primary/60">▲ GROUP END</span>
+  </div>
+
   <!-- Switch memerlukan layout khusus -->
-  <div v-if="isSwitch" class="flex items-center gap-3 pt-2">
+  <div v-else-if="isSwitch" class="flex items-center gap-3 pt-2">
     <Switch :id="field.field || 'switch-preview'" v-model="switchValue" :disabled="switchDisabled" />
     <Label :for="field.field || 'switch-preview'" class="cursor-pointer" :class="{ 'opacity-50': switchDisabled }">
       {{ switchValue ? (field.labelTrue || 'Aktif') : (field.labelFalse || 'Tidak Aktif') }}
