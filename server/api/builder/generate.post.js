@@ -488,6 +488,7 @@ function buildDetailLoadData(details) {
   details.forEach((d, i) => {
     const varName = i === 0 ? 'detailArr' : `detailArr${i + 1}`
     const rk = d.responseKey || ''
+    const dataExpr = rk ? `data.${rk}` : 'data'
     const detailFields = d.detailFields || []
 
     if (d.mode === 'add_to_list') {
@@ -499,9 +500,9 @@ function buildDetailLoadData(details) {
       }).join('\n')
 
       blocks.push(`
-    // Load detail: ${rk}
-    if (data.${rk}) {
-      ${varName}.value = data.${rk}.map((detail) => ({
+    // Load detail: ${rk || varName}
+    if (${dataExpr}) {
+      ${varName}.value = ${dataExpr}.map((detail) => ({
 ${fieldMappings}
       }));
     }`)
@@ -516,9 +517,9 @@ ${fieldMappings}
       }).join('\n')
 
       blocks.push(`
-    // Load detail: ${rk}
-    if (data.${rk}) {
-      ${varName}.value = data.${rk}.map((detail) => ({
+    // Load detail: ${rk || varName}
+    if (${dataExpr}) {
+      ${varName}.value = ${dataExpr}.map((detail) => ({
         ${fk}: detail.${fk},${fkDisplay ? `\n        ${fkDisplay}: detail.${fkDisplay} || null,` : ''}
 ${fieldMappings}
       }));
@@ -533,7 +534,7 @@ function buildDetailPayload(details) {
   const lines = []
   details.forEach((d, i) => {
     const varName = i === 0 ? 'detailArr' : `detailArr${i + 1}`
-    const pk = d.payloadKey || ''
+    const pk = d.payloadKey || `detail${i > 0 ? i + 1 : ''}`
     const detailFields = d.detailFields || []
 
     if (d.mode === 'add_to_list') {

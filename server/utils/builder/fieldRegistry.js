@@ -26,9 +26,18 @@ function getDisabledAttr(f) {
   return ':disabled="loading || isReadOnly"'
 }
 
+function getReadonlyAttr(f) {
+  if (f.readonly) return ':readonly="true"'
+  if (f.readonlyWhenField && f.readonlyWhenValue !== undefined && f.readonlyWhenValue !== '') {
+    const val = String(f.readonlyWhenValue).replace(/'/g, "\\'")
+    return `:readonly="isReadOnly || String(values.${f.readonlyWhenField}) === '${val}'"`
+  }
+  return ':readonly="isReadOnly"'
+}
+
 function genFieldX(f) {
   const typeAttr = f.type !== 'text' ? `\n              type="${f.type}"` : ''
-  const readonlyAttr = f.readonly ? ':readonly="true"' : ':readonly="isReadOnly"'
+  const readonlyAttr = getReadonlyAttr(f)
   return `            <FieldX
               id="${f.field}"
               label="${f.label}"${typeAttr}
@@ -45,7 +54,7 @@ function genFieldX(f) {
 }
 
 function genTextarea(f) {
-  const readonlyAttr = f.readonly ? ':readonly="true"' : ':readonly="isReadOnly"'
+  const readonlyAttr = getReadonlyAttr(f)
   return `            <FieldTextarea
               id="${f.field}"
               label="${f.label}"
@@ -63,7 +72,7 @@ function genTextarea(f) {
 
 function genFieldNumber(f) {
   const fnType = f.type === 'fieldnumber_decimal' ? 'decimal' : 'integer'
-  const readonlyAttr = f.readonly ? ':readonly="true"' : ':readonly="isReadOnly"'
+  const readonlyAttr = getReadonlyAttr(f)
   return `            <FieldNumber
               id="${f.field}"
               label="${f.label}"
@@ -104,7 +113,7 @@ function genFieldBox(f) {
 }
 
 function genSelect(f, component = 'FieldSelect', allFields = []) {
-  const readonlyAttr = f.readonly ? ':readonly="true"' : ':readonly="isReadOnly"'
+  const readonlyAttr = getReadonlyAttr(f)
   const isStatic = f.sourceType === 'static'
   const vf = isStatic ? 'value' : (f.valueField || 'id')
   const df = isStatic ? 'label' : (f.displayField || 'name')
@@ -185,7 +194,7 @@ function genSelect(f, component = 'FieldSelect', allFields = []) {
 }
 
 function genFieldCurrency(f) {
-  const readonlyAttr = f.readonly ? ':readonly="true"' : ':readonly="isReadOnly"'
+  const readonlyAttr = getReadonlyAttr(f)
   const prefix = f.currencyPrefix || 'Rp'
   const allowDecimal = f.allowDecimal !== false
   return `            <FieldCurrency
@@ -239,7 +248,7 @@ function resolveAcceptString(arr) {
 }
 
 function genFieldUpload(f) {
-  const readonlyAttr = f.readonly ? ':readonly="true"' : ':readonly="isReadOnly"'
+  const readonlyAttr = getReadonlyAttr(f)
   const accept = resolveAcceptString(f.uploadAccept)
   const maxSizeMB = Number(f.maxSizeMB) || 5
   return `            <FieldUpload
@@ -258,7 +267,7 @@ function genFieldUpload(f) {
 }
 
 function genFieldMultiUpload(f) {
-  const readonlyAttr = f.readonly ? ':readonly="true"' : ':readonly="isReadOnly"'
+  const readonlyAttr = getReadonlyAttr(f)
   const accept = resolveAcceptString(f.uploadAccept)
   const maxImages = f.maxImages || 10
   const maxSizeMB = Number(f.maxSizeMB) || 5
