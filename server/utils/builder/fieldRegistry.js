@@ -86,16 +86,17 @@ function genFieldNumber(f) {
 }
 
 function genSwitch(f) {
-  return `            <div class="flex items-center gap-3">
-              <Switch
-                id="${f.field}"
-                v-model="values.${f.field}"
-                ${getDisabledAttr(f)}
-              />
-              <Label for="${f.field}" class="cursor-pointer">
-                {{ values.${f.field} ? "${f.labelTrue || 'Aktif'}" : "${f.labelFalse || 'Tidak Aktif'}" }}
-              </Label>
-            </div>`
+  const disabledExpr = f.readonly
+    ? ':disabled="true"'
+    : getDisabledAttr(f)
+  const readonlyAttr = getReadonlyAttr(f)
+  return `            <FieldStatus
+              v-model="values.${f.field}"
+              ${disabledExpr}
+              ${readonlyAttr}
+              active-text="${f.labelTrue || 'Aktif'}"
+              inactive-text="${f.labelFalse || 'Tidak Aktif'}"
+            />`
 }
 
 function genFieldBox(f) {
@@ -240,6 +241,137 @@ function genSection(f) {
             </div>`
 }
 
+function genFieldDate(f) {
+  const readonlyAttr = getReadonlyAttr(f)
+  return `            <FieldDate
+              id="${f.field}"
+              label="${f.label}"
+              :value="values.${f.field}"
+              :errorname="errors.${f.field} ? 'failed' : ''"
+              @input="(v) => (values.${f.field} = v)"
+              :hints="errors.${f.field}"
+              :required="${f.required ? '!isReadOnly' : 'false'}"
+              ${getDisabledAttr(f)}
+              ${readonlyAttr}
+              placeholder="${f.placeholder || f.label}"
+              :clearable="true"
+              class="w-full"
+            />`
+}
+
+function genFieldDateTime(f) {
+  const readonlyAttr = getReadonlyAttr(f)
+  return `            <FieldDateTime
+              id="${f.field}"
+              label="${f.label}"
+              :value="values.${f.field}"
+              :errorname="errors.${f.field} ? 'failed' : ''"
+              @input="(v) => (values.${f.field} = v)"
+              :hints="errors.${f.field}"
+              :required="${f.required ? '!isReadOnly' : 'false'}"
+              ${getDisabledAttr(f)}
+              ${readonlyAttr}
+              placeholder="${f.placeholder || f.label}"
+              :clearable="true"
+              class="w-full"
+            />`
+}
+
+function genPopup(f, allFields = []) {
+  const readonlyAttr = getReadonlyAttr(f)
+  const vf = f.valueField || 'id'
+  const df = f.displayField || 'name'
+
+  // ── Chain / cascading logic ──
+  const hasDependsOn = f.dependsOn && f.dependsOnParam
+
+  // Build API params
+  const paramsArr = Array.isArray(f.apiParams)
+    ? f.apiParams.filter(p => p.key && !(hasDependsOn && p.key === f.dependsOnParam))
+    : []
+  const qs = paramsArr.map(p => `${p.key}=${p.value || ''}`).join('&')
+  const params = qs ? `?${qs}` : ''
+
+  // Build columns literal
+  const cols = Array.isArray(f.popupColumns) && f.popupColumns.length
+    ? f.popupColumns.filter(c => c.field)
+    : []
+  const colsLiteral = cols.length
+    ? '[' + cols.map(c => {
+        const parts = [`field: '${c.field}'`]
+        if (c.headerName) parts.push(`headerName: '${c.headerName}'`)
+        if (c.width) parts.push(`width: '${c.width}'`)
+        if (c.flex) parts.push(`flex: ${c.flex}`)
+        return `{ ${parts.join(', ')} }`
+      }).join(', ') + ']'
+    : '[]'
+
+  // Find descendants for cascade clear
+  function getDescendants(fieldName) {
+    const direct = allFields.filter(c => c.dependsOn === fieldName && c.field)
+    let result = []
+    for (const child of direct) {
+      result.push(child.field)
+      result = result.concat(getDescendants(child.field))
+    }
+    return result
+  }
+  const descendantFields = getDescendants(f.field)
+
+  let inputHandler
+  if (descendantFields.length > 0) {
+    const clears = descendantFields.map(cf => `values.${cf} = ''`).join('; ')
+    inputHandler = `@input="(v) => { values.${f.field} = v; ${clears} }"`
+  } else {
+    inputHandler = `@input="(v) => (values.${f.field} = v)"`
+  }
+
+  let apiParamsAttr = ''
+  if (hasDependsOn) {
+    apiParamsAttr = `\n              :apiParams="{ ${f.dependsOnParam}: values.${f.dependsOn} }"`
+  }
+
+  const searchFieldsAttr = f.searchFields ? `\n              searchFields="${f.searchFields}"` : ''
+  const dialogTitleAttr = f.dialogTitle ? `\n              dialogTitle="${f.dialogTitle}"` : ''
+
+  return `            <FieldPopUp
+              id="${f.field}"
+              label="${f.label}"
+              :value="values.${f.field}"
+              :errorname="errors.${f.field} ? 'failed' : ''"
+              ${inputHandler}
+              :hints="errors.${f.field}"
+              :required="${f.required ? '!isReadOnly' : 'false'}"
+              ${getDisabledAttr(f)}
+              ${readonlyAttr}
+              apiUrl="${f.apiUrl || ''}${params}"${apiParamsAttr}
+              displayField="${df}"
+              valueField="${vf}"
+              :columns="${colsLiteral}"${searchFieldsAttr}${dialogTitleAttr}
+              placeholder="${f.placeholder || f.label}"
+              :clearable="true"
+              class="w-full"
+            />`
+}
+
+function genFieldRadio(f) {
+  const readonlyAttr = getReadonlyAttr(f)
+  const optionsLiteral = parseStaticOptionsLiteral(f.staticOptions || [])
+  return `            <FieldRadio
+              id="${f.field}"
+              label="${f.label}"
+              :value="values.${f.field}"
+              :errorname="errors.${f.field} ? 'failed' : ''"
+              @input="(v) => (values.${f.field} = v)"
+              :hints="errors.${f.field}"
+              :required="${f.required ? '!isReadOnly' : 'false'}"
+              ${getDisabledAttr(f)}
+              ${readonlyAttr}
+              :options="${optionsLiteral}"
+              class="w-full"
+            />`
+}
+
 // Convert uploadAccept array to accept string
 function resolveAcceptString(arr) {
   if (!arr || !Array.isArray(arr) || arr.length === 0) return '*'
@@ -329,6 +461,43 @@ export const FIELD_REGISTRY = [
   },
   { value: 'select',             searchable: false, showInMobile: false, hasError: true,  isSwitch: false, generateTemplate: (f, allFields) => genSelect(f, 'FieldSelect', allFields) },
   { value: 'select_creatable',   searchable: false, showInMobile: false, hasError: true,  isSwitch: false, generateTemplate: (f, allFields) => genSelect(f, 'FieldSelectCreatable', allFields) },
+  {
+    value: 'date', searchable: false, showInMobile: true, hasError: true, isSwitch: false,
+    generateTemplate: genFieldDate,
+    generateDefault: (f) => {
+      if (f.defaultValue === 'NOW') return `  ${f.field}: new Date().toISOString().slice(0, 10),`
+      return `  ${f.field}: '',`
+    },
+    generateReset: (f) => {
+      if (f.defaultValue === 'NOW') return `    ${f.field}: new Date().toISOString().slice(0, 10),`
+      return `    ${f.field}: '',`
+    },
+    generatePayload: (f) => `    ${f.field}: values.${f.field},`,
+  },
+  {
+    value: 'datetime', searchable: false, showInMobile: true, hasError: true, isSwitch: false,
+    generateTemplate: genFieldDateTime,
+    generateDefault: (f) => {
+      if (f.defaultValue === 'NOW') return `  ${f.field}: (() => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0') + 'T' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0') })(),`
+      return `  ${f.field}: '',`
+    },
+    generateReset: (f) => {
+      if (f.defaultValue === 'NOW') return `    ${f.field}: (() => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0') + 'T' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0') })(),`
+      return `    ${f.field}: '',`
+    },
+    generatePayload: (f) => `    ${f.field}: values.${f.field},`,
+  },
+  {
+    value: 'radio', searchable: false, showInMobile: true, hasError: true, isSwitch: false,
+    generateTemplate: genFieldRadio,
+    generateDefault: (f) => `  ${f.field}: '${f.defaultValue || ''}',`,
+    generateReset: (f) => `    ${f.field}: '${f.defaultValue || ''}',`,
+    generatePayload: (f) => `    ${f.field}: values.${f.field},`,
+  },
+  {
+    value: 'popup', searchable: false, showInMobile: false, hasError: true, isSwitch: false,
+    generateTemplate: (f, allFields) => genPopup(f, allFields),
+  },
   {
     value: 'space', searchable: false, showInMobile: false, hasError: false, isSpace: true,
     generateTemplate: () => `            <div></div>`,

@@ -25,6 +25,17 @@ export default defineNuxtRouteMiddleware(async (to) => {
     }
   }
 
+  // Client-side: restore data dari sessionStorage setelah SSR hydration
+  // SSR tidak bisa akses sessionStorage, jadi userDefault & selectRespo bisa null setelah hydration
+  if (import.meta.client && authStore.sessionVerified && !authStore.selectRespo) {
+    authStore.restoreClientSession()
+  }
+
+  // Ensure selectRespo is initialized before menu-based guard checks.
+  if (!authStore.isSuperAdmin && authStore.userDefault && !authStore.selectRespo) {
+    authStore.initializeSelectRespo()
+  }
+
   if (!authStore.isLoggedIn && !isPublicPage) {
     // Belum login & bukan halaman publik → redirect ke login
     return navigateTo('/login', { replace: true })
@@ -33,5 +44,40 @@ export default defineNuxtRouteMiddleware(async (to) => {
   if (authStore.isLoggedIn && isPublicPage) {
     // Sudah login & akses halaman publik (login) → redirect ke home
     return navigateTo('/', { replace: true })
+  }
+
+  // ============================================================================
+  // ROUTE GUARD — Cek apakah user punya akses ke halaman ini
+  // Super admin bisa akses semua. Non-super-admin hanya bisa akses menu yang ada di respo-nya.
+  // ============================================================================
+  if (authStore.isLoggedIn && !isPublicPage && !authStore.isSuperAdmin) {
+    const alwaysAllowed = ['/', '/dashboard', '/notifikasi']
+    const currentPath = to.path
+
+    // Skip guard untuk halaman yang selalu boleh diakses
+    if (!alwaysAllowed.some(p => currentPath === p)) {
+      let sr = authStore.getSelectRespo() as any
+      if (!sr && authStore.userDefault) {
+        authStore.initializeSelectRespo()
+        sr = authStore.getSelectRespo() as any
+      }
+
+      if (!sr) {
+        return navigateTo('/dashboard', { replace: true })
+      }
+
+      const srAny = sr as any
+      const menuPaths: string[] = srAny?.menus?.map((m: any) => m.path)?.filter(Boolean) || []
+
+      // Cek apakah current path match dengan salah satu menu path
+      const hasAccess = menuPaths.some((menuPath: string) => {
+        const normalized = menuPath.startsWith('/') ? menuPath : `/${menuPath}`
+        return currentPath === normalized || currentPath.startsWith(normalized + '/')
+      })
+
+      if (!hasAccess) {
+        return navigateTo('/dashboard', { replace: true })
+      }
+    }
   }
 })

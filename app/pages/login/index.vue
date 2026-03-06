@@ -12,6 +12,7 @@ useHead({
 const router = useRouter()
 const authStore = useAuthStore()
 const config = useRuntimeConfig()
+const USER_DEFAULT_INCLUDE_QUERY = 'include=user_detail%3Em_respo%3Em_unit_bisnis%2Cuser_detail%3Em_respo%3Em_respo_d%3Em_role%3Em_role_d%3Em_menu%2Cm_general%2Cm_approval_d%3Em_general%2Cm_approval_d%3Em_approval%3Em_menu&no_pagination=true'
 
 const form = ref({
   username: '',
@@ -53,7 +54,7 @@ async function handleLogin() {
       if (userId) {
         try {
           const userDefault = await $fetch(
-            `${config.public.baseUrl}/api/dynamic/user_default/${userId}?join=subhead%2Cdetail%2Csub`,
+            `${config.public.baseUrl}/api/dynamic/user_default/${userId}?${USER_DEFAULT_INCLUDE_QUERY}`,
             {
               method: 'GET',
               credentials: 'include',

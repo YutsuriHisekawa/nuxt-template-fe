@@ -12,7 +12,19 @@ const emit = defineEmits(['update:detail', 'remove', 'close'])
 const isMultiSelect = computed(() => props.detail.mode !== 'add_to_list')
 
 function update(key, value) {
-  emit('update:detail', { ...props.detail, [key]: value })
+  const updated = { ...props.detail, [key]: value }
+
+  // Auto-derive foreignKey & foreignDisplay from apiUrl when user types apiUrl
+  if (key === 'apiUrl' && value) {
+    const match = value.match(/\/([^/?]+)(?:\?|$)/)
+    if (match) {
+      const tableName = match[1] // e.g. "m_role"
+      if (!props.detail.foreignKey) updated.foreignKey = tableName + '_id'
+      if (!props.detail.foreignDisplay) updated.foreignDisplay = tableName
+    }
+  }
+
+  emit('update:detail', updated)
 }
 
 // ── Column helpers ──────────────────────────────────────────────────
@@ -48,7 +60,20 @@ function addDisplayCol() {
 // ── Detail fields helpers ───────────────────────────────────────────
 function updateDetailField(index, prop, val) {
   const arr = [...(props.detail.detailFields || [])]
-  arr[index] = { ...arr[index], [prop]: val }
+  const updated = { ...arr[index], [prop]: val }
+  // When type changes, reset default value to match new type
+  if (prop === 'type') {
+    if (val === 'checkbox' || val === 'status') {
+      updated.default = true
+    } else if (['number', 'fieldnumber', 'fieldnumber_decimal', 'currency', 'slider'].includes(val)) {
+      updated.default = 0
+    } else {
+      updated.default = ''
+    }
+    // Reset sourceType for select
+    if (val === 'select') updated.sourceType = updated.sourceType || 'api'
+  }
+  arr[index] = updated
   update('detailFields', arr)
 }
 function removeDetailField(index) {
@@ -68,6 +93,33 @@ function duplicateDetailField(index) {
 
 function getFieldTypeLabel(type) {
   return DETAIL_FIELD_TYPES.find(t => t.value === type)?.label || type
+}
+
+// ── Detail field option helpers (for static select / radio) ─────────
+function addDetailOptionItem(fieldIndex, key) {
+  const arr = [...(props.detail.detailFields || [])]
+  const field = { ...arr[fieldIndex] }
+  field[key] = [...(field[key] || []), { value: '', label: '' }]
+  arr[fieldIndex] = field
+  update('detailFields', arr)
+}
+function removeDetailOptionItem(fieldIndex, key, optIndex) {
+  const arr = [...(props.detail.detailFields || [])]
+  const field = { ...arr[fieldIndex] }
+  const opts = [...(field[key] || [])]
+  opts.splice(optIndex, 1)
+  field[key] = opts
+  arr[fieldIndex] = field
+  update('detailFields', arr)
+}
+function updateDetailOptionItem(fieldIndex, key, optIndex, prop, val) {
+  const arr = [...(props.detail.detailFields || [])]
+  const field = { ...arr[fieldIndex] }
+  const opts = [...(field[key] || [])]
+  opts[optIndex] = { ...opts[optIndex], [prop]: val }
+  field[key] = opts
+  arr[fieldIndex] = field
+  update('detailFields', arr)
 }
 </script>
 
@@ -286,6 +338,144 @@ function getFieldTypeLabel(type) {
                   @click="updateDetailField(i, 'default', false)"
                 >False</button>
               </div>
+            </div>
+          </div>
+
+          <!-- Status (Switch): labelTrue / labelFalse / default -->
+          <div v-else-if="df.type === 'status'" class="grid grid-cols-3 gap-2">
+            <div>
+              <label class="block mb-0.5 text-xs text-muted-foreground">Label True</label>
+              <input type="text" :value="df.labelTrue || 'Aktif'" placeholder="Aktif" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'labelTrue', $event.target.value)" />
+            </div>
+            <div>
+              <label class="block mb-0.5 text-xs text-muted-foreground">Label False</label>
+              <input type="text" :value="df.labelFalse || 'Tidak Aktif'" placeholder="Tidak Aktif" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'labelFalse', $event.target.value)" />
+            </div>
+            <div>
+              <label class="block mb-0.5 text-xs text-muted-foreground">Default</label>
+              <div class="flex rounded border border-border overflow-hidden h-[26px]">
+                <button class="flex-1 text-xs transition-colors" :class="df.default !== false ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'" @click="updateDetailField(i, 'default', true)">True</button>
+                <button class="flex-1 text-xs transition-colors border-l border-border" :class="df.default === false ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'" @click="updateDetailField(i, 'default', false)">False</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Select: sourceType, apiUrl/staticOptions, displayField, valueField -->
+          <div v-else-if="df.type === 'select'" class="space-y-2">
+            <div>
+              <label class="block mb-0.5 text-xs text-muted-foreground">Source Type</label>
+              <div class="flex rounded border border-border overflow-hidden h-[26px]">
+                <button class="flex-1 text-xs transition-colors" :class="(df.sourceType || 'api') === 'api' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'" @click="updateDetailField(i, 'sourceType', 'api')">API</button>
+                <button class="flex-1 text-xs transition-colors border-l border-border" :class="df.sourceType === 'static' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'" @click="updateDetailField(i, 'sourceType', 'static')">Static</button>
+              </div>
+            </div>
+            <template v-if="(df.sourceType || 'api') === 'api'">
+              <div>
+                <label class="block mb-0.5 text-xs text-muted-foreground">API URL</label>
+                <input type="text" :value="df.apiUrl || ''" placeholder="/api/dynamic/m_xxx" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'apiUrl', $event.target.value)" />
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <label class="block mb-0.5 text-xs text-muted-foreground">Display Field</label>
+                  <input type="text" :value="df.displayField || 'name'" placeholder="name" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'displayField', $event.target.value)" />
+                </div>
+                <div>
+                  <label class="block mb-0.5 text-xs text-muted-foreground">Value Field</label>
+                  <input type="text" :value="df.valueField || 'id'" placeholder="id" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'valueField', $event.target.value)" />
+                </div>
+              </div>
+            </template>
+            <template v-else>
+              <div>
+                <label class="block mb-0.5 text-xs text-muted-foreground">Static Options</label>
+                <div class="flex flex-col gap-1.5">
+                  <div class="flex gap-1.5 items-center text-[10px] text-muted-foreground px-0.5">
+                    <span class="w-4 shrink-0 text-center">Def</span>
+                    <span class="flex-1">Value</span>
+                    <span class="flex-1">Label</span>
+                    <span class="w-5 shrink-0"></span>
+                  </div>
+                  <div v-for="(opt, oi) in (Array.isArray(df.staticOptions) ? df.staticOptions : [])" :key="oi" class="flex gap-1.5 items-center">
+                    <button
+                      type="button"
+                      class="w-4 h-4 shrink-0 rounded-full border-2 flex items-center justify-center cursor-pointer transition-colors"
+                      :class="df.default === opt.value && opt.value !== '' ? 'border-primary bg-primary' : 'border-muted-foreground/40 bg-transparent hover:border-primary/60'"
+                      @click="updateDetailField(i, 'default', df.default === opt.value ? '' : opt.value)"
+                    >
+                      <span v-if="df.default === opt.value && opt.value !== ''" class="w-1.5 h-1.5 rounded-full bg-primary-foreground"></span>
+                    </button>
+                    <input type="text" :value="opt.value" placeholder="Value" class="flex-1 min-w-0 rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailOptionItem(i, 'staticOptions', oi, 'value', $event.target.value)" />
+                    <input type="text" :value="opt.label" placeholder="Label" class="flex-1 min-w-0 rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailOptionItem(i, 'staticOptions', oi, 'label', $event.target.value)" />
+                    <button class="text-muted-foreground hover:text-destructive transition-colors p-0.5 shrink-0" @click="removeDetailOptionItem(i, 'staticOptions', oi)">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                  </div>
+                  <button class="flex items-center gap-1 text-[11px] text-primary hover:text-primary/80 transition-colors py-0.5" @click="addDetailOptionItem(i, 'staticOptions')">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    Tambah Option
+                  </button>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <!-- PopUp: apiUrl, columns, searchKey, displayKey -->
+          <div v-else-if="df.type === 'popup'" class="space-y-2">
+            <div>
+              <label class="block mb-0.5 text-xs text-muted-foreground">API URL</label>
+              <input type="text" :value="df.apiUrl || ''" placeholder="/api/dynamic/m_xxx" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'apiUrl', $event.target.value)" />
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block mb-0.5 text-xs text-muted-foreground">Display Field</label>
+                <input type="text" :value="df.displayField || 'name'" placeholder="name" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'displayField', $event.target.value)" />
+              </div>
+              <div>
+                <label class="block mb-0.5 text-xs text-muted-foreground">Value Field</label>
+                <input type="text" :value="df.valueField || 'id'" placeholder="id" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'valueField', $event.target.value)" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Radio: options -->
+          <div v-else-if="df.type === 'radio'" class="space-y-2">
+            <div>
+              <label class="block mb-0.5 text-xs text-muted-foreground">Radio Options</label>
+              <div class="flex flex-col gap-1.5">
+                <div class="flex gap-1.5 items-center text-[10px] text-muted-foreground px-0.5">
+                  <span class="w-4 shrink-0 text-center">Def</span>
+                  <span class="flex-1">Value</span>
+                  <span class="flex-1">Label</span>
+                  <span class="w-5 shrink-0"></span>
+                </div>
+                <div v-for="(opt, oi) in (Array.isArray(df.radioOptions) ? df.radioOptions : [])" :key="oi" class="flex gap-1.5 items-center">
+                  <button
+                    type="button"
+                    class="w-4 h-4 shrink-0 rounded-full border-2 flex items-center justify-center cursor-pointer transition-colors"
+                    :class="df.default === opt.value && opt.value !== '' ? 'border-primary bg-primary' : 'border-muted-foreground/40 bg-transparent hover:border-primary/60'"
+                    @click="updateDetailField(i, 'default', df.default === opt.value ? '' : opt.value)"
+                  >
+                    <span v-if="df.default === opt.value && opt.value !== ''" class="w-1.5 h-1.5 rounded-full bg-primary-foreground"></span>
+                  </button>
+                  <input type="text" :value="opt.value" placeholder="Value" class="flex-1 min-w-0 rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailOptionItem(i, 'radioOptions', oi, 'value', $event.target.value)" />
+                  <input type="text" :value="opt.label" placeholder="Label" class="flex-1 min-w-0 rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailOptionItem(i, 'radioOptions', oi, 'label', $event.target.value)" />
+                  <button class="text-muted-foreground hover:text-destructive transition-colors p-0.5 shrink-0" @click="removeDetailOptionItem(i, 'radioOptions', oi)">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  </button>
+                </div>
+                <button class="flex items-center gap-1 text-[11px] text-primary hover:text-primary/80 transition-colors py-0.5" @click="addDetailOptionItem(i, 'radioOptions')">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  Tambah Option
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Currency: default value -->
+          <div v-else-if="df.type === 'currency'" class="flex gap-2">
+            <div class="flex-1">
+              <label class="block mb-0.5 text-xs text-muted-foreground">Default Value</label>
+              <input type="number" :value="df.default || 0" placeholder="0" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'default', Number($event.target.value))" />
             </div>
           </div>
 

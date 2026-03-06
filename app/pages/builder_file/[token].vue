@@ -27,6 +27,7 @@ import {
   Square,
   ListChecks,
   Footprints,
+  ExternalLink,
 } from "lucide-vue-next";
 import { createBlankField, createBlankDetail, getComponentBadge, getRegistryEntry } from "~/utils/builder/fieldRegistry";
 import { Layers } from "lucide-vue-next";
@@ -631,7 +632,15 @@ function updateFieldAtIndex(updated) {
 // ============================================================================
 // DETAIL PREVIEW (composable)
 // ============================================================================
-const { detailPreviewData, getPreviewArr, getPreviewExcludeIds, handlePreviewMultiSelectAdd, handlePreviewAddRow, removePreviewRow, getDetailColumnDefs, detailDefaultColDef } = useDetailPreview(details);
+const { detailPreviewData, getPreviewArr, getPreviewExcludeIds, handlePreviewMultiSelectAdd, handlePreviewAddRow, removePreviewRow, updatePreviewCell, clearPreviewData } = useDetailPreview(details);
+
+// Watch detail field config changes → clear stale preview rows
+watch(
+  () => details.value.map(d => (d.detailFields || []).map(f => f.type + ':' + f.key).join(',')).join('|'),
+  () => {
+    details.value.forEach((_, i) => clearPreviewData(i))
+  }
+)
 
 // ============================================================================
 // GENERATE
@@ -725,6 +734,10 @@ async function generate() {
         <p class="text-xs text-muted-foreground">
           Tab ini bisa ditutup. Nuxt akan auto-reload halaman baru.
         </p>
+        <NuxtLink :to="config?.routePath || '/'" class="inline-flex items-center gap-2 mt-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors">
+          <ExternalLink class="h-4 w-4" />
+          Lihat Halaman
+        </NuxtLink>
       </CardContent>
     </Card>
   </div>
@@ -1434,25 +1447,50 @@ async function generate() {
                 <span v-else class="text-xs text-muted-foreground italic">Isi API Endpoint dulu untuk test ButtonMultiSelect</span>
               </div>
 
-              <!-- AG Grid Detail Table -->
-              <ClientOnly>
-                <div
-                  :class="isDark ? 'ag-theme-quartz-dark' : 'ag-theme-quartz'"
-                  class="w-full rounded-lg overflow-hidden"
-                  :style="{ height: Math.max(150, Math.min(400, (getPreviewArr(dIdx).length + 1) * 42 + 10)) + 'px' }"
-                >
-                  <AgGridVue
-                    class="w-full h-full"
-                    :columnDefs="getDetailColumnDefs(dIdx)"
-                    :rowData="getPreviewArr(dIdx)"
-                    :defaultColDef="detailDefaultColDef"
-                    :animateRows="true"
-                    :singleClickEdit="true"
-                    :stopEditingWhenCellsLoseFocus="true"
-                    :overlayNoRowsTemplate="'<span class=&quot;text-muted-foreground text-sm&quot;>Belum ada item ditambahkan</span>'"
-                  />
-                </div>
-              </ClientOnly>
+              <!-- Detail Table with real field components -->
+              <div class="w-full border border-border rounded-lg overflow-x-auto">
+                <table class="w-full text-sm">
+                  <thead class="bg-muted/60">
+                    <tr>
+                      <th class="px-2 py-2 text-center font-medium text-xs w-12">No</th>
+                      <th v-if="detail.mode !== 'add_to_list'" v-for="dc in (detail.displayColumns || [])" :key="'dch-' + dc.key" class="px-2 py-2 text-left font-medium text-xs">{{ dc.label || dc.key }}</th>
+                      <th v-for="df in (detail.detailFields || [])" :key="'dfh-' + df.key" class="px-2 py-2 text-center font-medium text-xs">{{ df.label || df.key }}</th>
+                      <th class="px-2 py-2 text-center font-medium text-xs w-16">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-if="!getPreviewArr(dIdx).length">
+                      <td :colspan="1 + (detail.mode !== 'add_to_list' ? (detail.displayColumns || []).length : 0) + (detail.detailFields || []).length + 1" class="px-4 py-6 text-center text-muted-foreground text-sm">
+                        Belum ada item ditambahkan
+                      </td>
+                    </tr>
+                    <tr v-for="(row, rIdx) in getPreviewArr(dIdx)" :key="rIdx" class="border-t border-border hover:bg-muted/30">
+                      <td class="px-2 py-2 text-center text-muted-foreground text-xs">{{ rIdx + 1 }}</td>
+                      <td v-if="detail.mode !== 'add_to_list'" v-for="dc in (detail.displayColumns || [])" :key="'dcv-' + dc.key" class="px-2 py-2 text-sm text-muted-foreground">
+                        {{ detail.foreignDisplay ? (row[detail.foreignDisplay]?.[dc.key] || '-') : (row[dc.key] || '-') }}
+                      </td>
+                      <td v-for="df in (detail.detailFields || [])" :key="'dfv-' + df.key" class="px-2 py-1.5">
+                        <FieldBox v-if="df.type === 'checkbox'" :value="row[df.key]" @input="(v) => updatePreviewCell(dIdx, rIdx, df.key, v)" :labelTrue="df.labelTrue || 'Ya'" :labelFalse="df.labelFalse || 'Tidak'" />
+                        <FieldStatus v-else-if="df.type === 'status'" :modelValue="row[df.key]" @update:modelValue="(v) => updatePreviewCell(dIdx, rIdx, df.key, v)" :activeText="df.labelTrue || 'Aktif'" :inactiveText="df.labelFalse || 'Tidak Aktif'" />
+                        <FieldSelect v-else-if="df.type === 'select'" :value="row[df.key]" @input="(v) => updatePreviewCell(dIdx, rIdx, df.key, v)" :sourceType="df.sourceType || 'api'" :apiUrl="df.apiUrl || ''" :displayField="df.displayField || 'name'" :valueField="df.valueField || 'id'" :staticOptions="df.staticOptions || []" class="w-full min-w-[140px]" />
+                        <FieldPopUp v-else-if="df.type === 'popup'" :value="row[df.key]" @input="(v) => updatePreviewCell(dIdx, rIdx, df.key, v)" :apiUrl="df.apiUrl || ''" :displayField="df.displayField || 'name'" :valueField="df.valueField || 'id'" class="w-full min-w-[140px]" />
+                        <FieldNumber v-else-if="df.type === 'fieldnumber' || df.type === 'fieldnumber_decimal'" :value="row[df.key]" @input="(v) => updatePreviewCell(dIdx, rIdx, df.key, v)" :type="df.type === 'fieldnumber_decimal' ? 'decimal' : 'integer'" class="w-full min-w-[100px]" />
+                        <FieldX v-else-if="df.type === 'number'" :value="row[df.key]" @input="(v) => updatePreviewCell(dIdx, rIdx, df.key, v)" type="number" class="w-full min-w-[100px]" />
+                        <FieldDate v-else-if="df.type === 'date'" :value="row[df.key]" @input="(v) => updatePreviewCell(dIdx, rIdx, df.key, v)" class="w-full min-w-[140px]" />
+                        <FieldDateTime v-else-if="df.type === 'datetime'" :value="row[df.key]" @input="(v) => updatePreviewCell(dIdx, rIdx, df.key, v)" class="w-full min-w-[140px]" />
+                        <FieldRadio v-else-if="df.type === 'radio'" :value="row[df.key]" @input="(v) => updatePreviewCell(dIdx, rIdx, df.key, v)" :options="(df.radioOptions || []).map(o => ({ value: o.value, label: o.label || o.value }))" />
+                        <FieldCurrency v-else-if="df.type === 'currency'" :value="row[df.key]" @input="(v) => updatePreviewCell(dIdx, rIdx, df.key, v)" class="w-full min-w-[120px]" />
+                        <FieldSlider v-else-if="df.type === 'slider'" :value="row[df.key]" @input="(v) => updatePreviewCell(dIdx, rIdx, df.key, v)" class="w-full min-w-[120px]" />
+                        <FieldTextarea v-else-if="df.type === 'textarea'" :value="row[df.key]" @input="(v) => updatePreviewCell(dIdx, rIdx, df.key, v)" class="w-full min-w-[140px]" />
+                        <FieldX v-else :value="row[df.key]" @input="(v) => updatePreviewCell(dIdx, rIdx, df.key, v)" :placeholder="df.label || df.key" class="w-full min-w-[120px]" />
+                      </td>
+                      <td class="px-2 py-2 text-center">
+                        <button class="text-destructive hover:text-destructive/80 text-xs font-medium" @click="removePreviewRow(dIdx, rIdx)">Hapus</button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </CardContent>
           </Card>
         </div>

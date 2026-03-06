@@ -1,11 +1,12 @@
 <script setup lang="ts">
 const route = useRoute()
 const api = useApi()
+const authStore = useAuthStore()
 
 const appName = "Endfield"
 type MenuItem = { name?: string; path?: string }
 type MenuCache = { items: MenuItem[]; loaded: boolean; loading: boolean }
-const menuCache = useState<MenuCache>("menu-cache", () => ({ items: [], loaded: false, loading: false }))
+const menuCache = useState<MenuCache>("menu-label-cache", () => ({ items: [], loaded: false, loading: false }))
 
 const toTitleCase = (value: string) => {
   return value
@@ -15,21 +16,40 @@ const toTitleCase = (value: string) => {
 
 const loadMenuLabels = async () => {
   if (menuCache.value.loaded || menuCache.value.loading) return
+  if (!authStore.isSuperAdmin) {
+    const sr = authStore.getSelectRespo() as any
+    if (!sr) return
+    menuCache.value.items = Array.isArray(sr.menus) ? sr.menus : []
+    menuCache.value.loaded = true
+    menuCache.value.loading = false
+    return
+  }
+
   menuCache.value.loading = true
   try {
     const response = await api.get("/api/dynamic/m_menu?no_pagination=true")
     if (response?.status === "success" && Array.isArray(response.data)) {
       menuCache.value.items = response.data
+      menuCache.value.loaded = true
     }
   } catch (error) {
     // Silent fail, fallback labels will handle
   } finally {
-    menuCache.value.loaded = true
     menuCache.value.loading = false
   }
 }
 
 onMounted(loadMenuLabels)
+
+watch(() => authStore.selectRespo, (newVal, oldVal) => {
+  if (!newVal) return
+  if (newVal !== oldVal) {
+    menuCache.value.items = []
+    menuCache.value.loaded = false
+    menuCache.value.loading = false
+    loadMenuLabels()
+  }
+})
 
 const pageLabel = computed(() => {
   if (route.path.startsWith("/dashboard")) {

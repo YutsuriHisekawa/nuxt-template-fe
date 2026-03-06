@@ -44,7 +44,7 @@ const isParentOpen = (title: string) => {
 </script>
 
 <template>
-  <SidebarGroup>
+  <SidebarGroup v-if="items && items.length > 0">
     <SidebarGroupLabel>Menu</SidebarGroupLabel>
     <SidebarMenu>
       <template v-for="item in items" :key="item.title">

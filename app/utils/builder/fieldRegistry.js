@@ -51,6 +51,11 @@ const PANEL = {
     key: 'readonly', label: 'Readonly', type: 'checkbox',
     hideWhen: (f) => f.type === 'switch',
   },
+  disabled: {
+    key: 'readonly', label: 'Disabled', type: 'checkbox',
+    hint: 'Field tidak bisa diubah (disabled)',
+    hideWhen: (f) => f.type !== 'switch',
+  },
   labelTrue: {
     key: 'labelTrue', label: 'Label True', type: 'text', placeholder: 'Aktif',
   },
@@ -242,7 +247,7 @@ const PANEL = {
 // ── Common panel sets ──────────────────────────────────────────────────────
 const COMMON_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.defaultValue, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.readonlyWhen, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.computedFormula, PANEL.minLength, PANEL.maxLength, PANEL.minValue, PANEL.maxValue, PANEL.pattern, PANEL.patternMessage]
 const SELECT_PANELS = [...COMMON_PANELS, PANEL.sourceType, PANEL.apiUrl, PANEL.apiParams, PANEL.dependsOnParam, PANEL.displayField, PANEL.valueField, PANEL.staticOptions]
-const SWITCH_PANELS = [PANEL.fieldName, PANEL.label, PANEL.defaultValue, PANEL.labelTrue, PANEL.labelFalse, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen]
+const SWITCH_PANELS = [PANEL.fieldName, PANEL.label, PANEL.defaultValue, PANEL.labelTrue, PANEL.labelFalse, PANEL.disabled, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen]
 const BOX_PANELS = [PANEL.fieldName, PANEL.label, PANEL.defaultValue, PANEL.labelTrue, PANEL.labelFalse, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen]
 const DATE_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.dateDefaultValue, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.readonlyWhen, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen]
 const RADIO_PANELS = [PANEL.fieldName, PANEL.label, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.readonlyWhen, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.radioOptions]
@@ -334,16 +339,17 @@ function genFieldNumber(f) {
 }
 
 function genSwitch(f) {
-  return `            <div class="flex items-center gap-3">
-              <Switch
-                id="${f.field}"
-                v-model="values.${f.field}"
-                ${getDisabledAttr(f)}
-              />
-              <Label for="${f.field}" class="cursor-pointer">
-                {{ values.${f.field} ? "${f.labelTrue || 'Aktif'}" : "${f.labelFalse || 'Tidak Aktif'}" }}
-              </Label>
-            </div>`
+  const disabledExpr = f.readonly
+    ? ':disabled="true"'
+    : getDisabledAttr(f)
+  const readonlyAttr = getReadonlyAttr(f)
+  return `            <FieldStatus
+              v-model="values.${f.field}"
+              ${disabledExpr}
+              ${readonlyAttr}
+              active-text="${f.labelTrue || 'Aktif'}"
+              inactive-text="${f.labelFalse || 'Tidak Aktif'}"
+            />`
 }
 
 function genFieldBox(f) {
@@ -1125,12 +1131,14 @@ export function getComponentBadge(type) {
 // Subset of field types available for detail row fields
 export const DETAIL_FIELD_TYPES = [
   { value: 'checkbox', label: 'FieldBox (Checkbox)', component: 'FieldBox', defaultValue: true },
+  { value: 'status', label: 'FieldStatus (Switch)', component: 'FieldStatus', defaultValue: true },
   { value: 'text', label: 'FieldX (Text)', component: 'FieldX', defaultValue: '' },
   { value: 'number', label: 'FieldX (Number)', component: 'FieldX', defaultValue: 0 },
   { value: 'fieldnumber', label: 'FieldNumber (Integer)', component: 'FieldNumber', defaultValue: 0 },
   { value: 'fieldnumber_decimal', label: 'FieldNumber (Decimal)', component: 'FieldNumber', defaultValue: 0 },
   { value: 'textarea', label: 'FieldTextarea', component: 'FieldTextarea', defaultValue: '' },
   { value: 'select', label: 'FieldSelect', component: 'FieldSelect', defaultValue: '' },
+  { value: 'popup', label: 'FieldPopUp', component: 'FieldPopUp', defaultValue: '' },
   { value: 'date', label: 'FieldDate', component: 'FieldDate', defaultValue: '' },
   { value: 'datetime', label: 'FieldDateTime', component: 'FieldDateTime', defaultValue: '' },
   { value: 'radio', label: 'FieldRadio', component: 'FieldRadio', defaultValue: '' },
@@ -1179,5 +1187,13 @@ export function createBlankDisplayColumn() {
 
 /** Create a blank detail field entry */
 export function createBlankDetailField() {
-  return { key: '', label: '', type: 'checkbox', default: true, labelTrue: 'Ya', labelFalse: 'Tidak', summaryType: '' }
+  return {
+    key: '', label: '', type: 'checkbox', default: true,
+    labelTrue: 'Ya', labelFalse: 'Tidak', summaryType: '',
+    // Select / PopUp / Radio fields
+    sourceType: 'api', apiUrl: '', displayField: 'name', valueField: 'id',
+    staticOptions: [], radioOptions: [],
+    // PopUp specific
+    popupColumns: [], popupSearchKey: 'name', popupDisplayKey: 'name',
+  }
 }

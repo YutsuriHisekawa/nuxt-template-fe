@@ -57,21 +57,43 @@ const getModuleIcon = (moduleName: string): any => {
   return iconMap[moduleName.toUpperCase()] || LucideIcons.Box
 }
 
-// Load menus from API (shared cache)
-const loadMenus = async () => {
-  if (menuCache.value.loaded || menuCache.value.loading) return
+const resetMenuCache = () => {
+  menuCache.value.items = []
+  menuCache.value.loaded = false
+  menuCache.value.loading = false
+}
+
+// Load menus from cache source (role-based or API)
+const loadMenus = async (force = false) => {
+  if (!force && (menuCache.value.loaded || menuCache.value.loading)) return
+
+  // Non-super-admin menus come from selectRespo; if not ready yet, wait.
+  if (!authStore.isSuperAdmin) {
+    let sr = authStore.getSelectRespo() as any
+    if (!sr) return
+
+    if ((!Array.isArray(sr.menus) || sr.menus.length === 0) && authStore.userDefault) {
+      authStore.initializeSelectRespo()
+      sr = authStore.getSelectRespo() as any
+    }
+
+    menuCache.value.items = Array.isArray(sr.menus) ? sr.menus : []
+    menuCache.value.loaded = true
+    menuCache.value.loading = false
+    return
+  }
+
   menuCache.value.loading = true
   try {
     const api = useApi()
     const response = await api.get('/api/dynamic/m_menu?no_pagination=true')
-
     if (response.status === 'success' && Array.isArray(response.data)) {
       menuCache.value.items = response.data
+      menuCache.value.loaded = true
     }
   } catch (error) {
     console.error('Failed to load menus:', error)
   } finally {
-    menuCache.value.loaded = true
     menuCache.value.loading = false
   }
 }
@@ -166,7 +188,7 @@ const buildMenuStructure = computed(() => {
       }
     })
 
-    if (modulName === 'SETUP') {
+    if (modulName === 'SETUP' && authStore.isSuperAdmin) {
       moduleItems.unshift({
         title: 'Menu',
         url: '/setup/menu',
@@ -191,7 +213,7 @@ const buildMenuStructure = computed(() => {
 const allMenuItems = computed(() => {
   const items: any[] = []
   const hasSetupModule = dynamicMenus.value.some(menu => menu.modul === 'SETUP')
-  if (hasSetupModule) {
+  if (hasSetupModule && authStore.isSuperAdmin) {
     items.push({
       title: 'Master Menu',
       url: '/setup/menu',
@@ -302,27 +324,40 @@ const data = computed(() => {
   }
 })
 
-// Load menus on mount
-onMounted(loadMenus)
+// Reload menus whenever selected responsibility changes or gets restored.
+watch(() => authStore.selectRespo, (newVal, oldVal) => {
+  if (!newVal) return
+  if (newVal !== oldVal) {
+    resetMenuCache()
+    loadMenus(true)
+  }
+})
+
+// Load menus on mount + listen for respo changes (TeamSwitcher)
+const handleRespoChanged = () => {
+  // Force reload menus after explicit respo switch event.
+  resetMenuCache()
+  loadMenus(true)
+}
+
+onMounted(() => {
+  loadMenus()
+  if (import.meta.client) {
+    window.addEventListener('respoChanged', handleRespoChanged)
+  }
+})
+
+onUnmounted(() => {
+  if (import.meta.client) {
+    window.removeEventListener('respoChanged', handleRespoChanged)
+  }
+})
 </script>
 
 <template>
   <Sidebar v-bind="props">
     <SidebarHeader>
-      <SidebarMenu>
-        <SidebarMenuItem>
-          <SidebarMenuButton size="lg" as-child>
-            <NuxtLink to="/">
-              <div class="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary dark:bg-sidebar-primary/20">
-                <img src="/logo.webp" alt="Endfield" class="h-5 w-5" />
-              </div>
-              <div class="grid flex-1 text-left text-sm leading-tight">
-                <span class="truncate font-semibold">Endfield</span>
-              </div>
-            </NuxtLink>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-      </SidebarMenu>
+      <TeamSwitcher />
       <div class="px-2 pt-2">
         <SidebarInput v-model="searchQuery" placeholder="Search menu..." />
       </div>

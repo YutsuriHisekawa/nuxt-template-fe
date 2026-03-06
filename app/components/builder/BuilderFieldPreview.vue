@@ -126,8 +126,15 @@ const isFieldGroupEnd = computed(() => entry.value?.isFieldGroupEnd === true)
 // Interactive switch state
 const switchValue = ref(props.field.defaultValue !== 'false')
 const switchDisabled = computed(() => {
+  if (props.field.readonly) return true
   return props.field.dependsOn && props.previewValues && !props.previewValues[props.field.dependsOn]
 })
+function toggleSwitch(e) {
+  e.stopPropagation()
+  e.preventDefault()
+  if (switchDisabled.value) return
+  switchValue.value = !switchValue.value
+}
 </script>
 
 <template>
@@ -153,12 +160,29 @@ const switchDisabled = computed(() => {
     <span class="text-[10px] text-primary/60">▲ GROUP END</span>
   </div>
 
-  <!-- Switch memerlukan layout khusus -->
-  <div v-else-if="isSwitch" class="flex items-center gap-3 pt-2">
-    <Switch :id="field.field || 'switch-preview'" v-model="switchValue" :disabled="switchDisabled" />
-    <Label :for="field.field || 'switch-preview'" class="cursor-pointer" :class="{ 'opacity-50': switchDisabled }">
+  <!-- Switch preview (inline native button) -->
+  <div v-else-if="isSwitch" class="flex items-center gap-3 pt-2 cursor-pointer select-none" draggable="false" @mousedown.stop @click="toggleSwitch">
+    <button
+      type="button"
+      role="switch"
+      :aria-checked="switchValue"
+      tabindex="-1"
+      :class="[
+        'relative inline-flex h-6 w-11 items-center rounded-full transition-colors shadow-sm border-2 border-transparent',
+        switchValue ? 'bg-primary' : 'bg-input',
+        switchDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+      ]"
+    >
+      <span
+        :class="[
+          'inline-block h-5 w-5 transform rounded-full bg-background shadow-lg transition-transform',
+          switchValue ? 'translate-x-5' : 'translate-x-0'
+        ]"
+      />
+    </button>
+    <span class="text-sm font-semibold" :class="switchValue ? 'text-green-600' : 'text-red-600'">
       {{ switchValue ? (field.labelTrue || 'Aktif') : (field.labelFalse || 'Tidak Aktif') }}
-    </Label>
+    </span>
   </div>
 
   <!-- FieldBox uses its own component -->
