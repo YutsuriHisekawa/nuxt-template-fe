@@ -225,17 +225,23 @@ const PANEL = {
     placeholder: '10',
     hint: 'Jumlah maksimal file yang bisa diupload',
   },
+  // ── Computed / Auto-Fill ──
+  computedFormula: {
+    key: 'computedFormula', label: 'Formula (Computed)', type: 'computedFormula',
+    hint: 'Pilih field & operator untuk auto-hitung. Field ini otomatis disabled.',
+    hideWhen: (f) => ['switch', 'fieldbox', 'upload', 'multi_upload', 'select', 'select_creatable', 'popup', 'radio', 'date', 'datetime', 'slider'].includes(f.type),
+  },
 }
 
 // ── Common panel sets ──────────────────────────────────────────────────────
-const COMMON_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.defaultValue, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.minLength, PANEL.maxLength, PANEL.minValue, PANEL.maxValue, PANEL.pattern, PANEL.patternMessage]
+const COMMON_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.defaultValue, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.computedFormula, PANEL.minLength, PANEL.maxLength, PANEL.minValue, PANEL.maxValue, PANEL.pattern, PANEL.patternMessage]
 const SELECT_PANELS = [...COMMON_PANELS, PANEL.sourceType, PANEL.apiUrl, PANEL.apiParams, PANEL.dependsOnParam, PANEL.displayField, PANEL.valueField, PANEL.staticOptions]
 const SWITCH_PANELS = [PANEL.fieldName, PANEL.label, PANEL.defaultValue, PANEL.labelTrue, PANEL.labelFalse, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen]
 const BOX_PANELS = [PANEL.fieldName, PANEL.label, PANEL.defaultValue, PANEL.labelTrue, PANEL.labelFalse, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen]
 const DATE_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.dateDefaultValue, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen]
 const RADIO_PANELS = [PANEL.fieldName, PANEL.label, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.radioOptions]
 const POPUP_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.apiUrl, PANEL.apiParams, PANEL.dependsOnParam, PANEL.displayField, PANEL.valueField, PANEL.popupColumns, PANEL.searchFields, PANEL.dialogTitle]
-const CURRENCY_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.defaultValue, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.currencyPrefix, PANEL.allowDecimal, PANEL.minValue, PANEL.maxValue]
+const CURRENCY_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.defaultValue, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.computedFormula, PANEL.currencyPrefix, PANEL.allowDecimal, PANEL.minValue, PANEL.maxValue]
 const SLIDER_PANELS = [PANEL.fieldName, PANEL.label, PANEL.defaultValue, PANEL.required, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.sliderMin, PANEL.sliderMax, PANEL.sliderStep, PANEL.sliderUnit]
 const SECTION_PANELS = [PANEL.sectionTitle, PANEL.visibleWhen]
 const UPLOAD_PANELS = [PANEL.fieldName, PANEL.label, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.uploadAccept, PANEL.maxSizeMB]
@@ -1081,6 +1087,7 @@ export function createBlankField() {
     patternMessage: '',
     requiredWhenField: '',
     requiredWhenValue: '',
+    computedFormula: [],
     step: 0,
     ...allMetaKeys,
     defaultValue: '', // always blank for new fields; boolean fields get their default when type is selected
@@ -1155,5 +1162,5 @@ export function createBlankDisplayColumn() {
 
 /** Create a blank detail field entry */
 export function createBlankDetailField() {
-  return { key: '', label: '', type: 'checkbox', default: true, labelTrue: 'Ya', labelFalse: 'Tidak' }
+  return { key: '', label: '', type: 'checkbox', default: true, labelTrue: 'Ya', labelFalse: 'Tidak', summaryType: '' }
 }

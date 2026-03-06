@@ -297,8 +297,24 @@ function getFieldTypeLabel(type) {
             </div>
           </div>
 
-          <!-- Type badge -->
-          <div class="flex items-center justify-end">
+          <!-- Type badge + Summary selector -->
+          <div class="flex items-center justify-between gap-2">
+            <div v-if="['number', 'fieldnumber', 'fieldnumber_decimal', 'currency'].includes(df.type)" class="flex items-center gap-1.5">
+              <label class="text-[10px] text-muted-foreground shrink-0">Footer:</label>
+              <div class="flex gap-1">
+                <button
+                  v-for="st in ['', 'SUM', 'AVG', 'COUNT']"
+                  :key="st"
+                  class="px-1.5 py-0.5 text-[10px] rounded border transition-colors"
+                  :class="(df.summaryType || '') === st
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-muted text-muted-foreground border-border hover:border-primary hover:text-primary'"
+                  @click="updateDetailField(i, 'summaryType', st)"
+                >
+                  {{ st || 'None' }}
+                </button>
+              </div>
+            </div>
             <span class="text-[10px] px-1.5 py-0.5 rounded bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300 font-semibold">
               {{ getFieldTypeLabel(df.type) }}
             </span>

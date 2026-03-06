@@ -31,6 +31,9 @@ import {
 import { createBlankField, createBlankDetail, getComponentBadge, getRegistryEntry } from "~/utils/builder/fieldRegistry";
 import { Layers } from "lucide-vue-next";
 import { AgGridVue } from "ag-grid-vue3";
+import { PRESET_TEMPLATES } from './_presets';
+import { useLanding } from './_useLanding';
+import { useDetailPreview } from './_useDetailPreview';
 
 // Theme for AG Grid
 const themeCookie = useCookie('theme');
@@ -70,6 +73,44 @@ function onPreviewChange(fieldName, value) {
     });
   }
   clearDescendants(fieldName);
+  // Recompute all formula fields that depend on this changed field
+  computeAllFormulas();
+}
+
+// ── Live formula computation for builder preview ───────────────────────────
+function computeAllFormulas() {
+  // Multi-pass to handle chained formulas (field A → field B → field C)
+  const formulaFields = fields.value.filter(f => {
+    const tokens = Array.isArray(f.computedFormula) ? f.computedFormula : []
+    return tokens.length && f.field
+  })
+  if (!formulaFields.length) return
+  // Up to N passes (N = number of formula fields) to resolve chains
+  for (let pass = 0; pass < formulaFields.length; pass++) {
+    let changed = false
+    formulaFields.forEach(f => {
+      const tokens = f.computedFormula
+      try {
+        const expr = tokens.map(t => {
+          if (t.type === 'field') return `(Number(${JSON.stringify(previewValues[t.value] ?? '')}) || 0)`
+          if (t.type === 'op') return t.value
+          if (t.type === 'number') return t.value
+          if (t.type === 'paren') return t.value
+          return ''
+        }).join(' ')
+        const result = new Function(`"use strict"; return (${expr})`)()
+        const val = isFinite(result) ? result : 0
+        const strVal = String(val)
+        if (previewValues[f.field] !== strVal) {
+          previewValues[f.field] = strVal
+          changed = true
+        }
+      } catch {
+        // formula invalid — skip
+      }
+    })
+    if (!changed) break // converged
+  }
 }
 
 // Detail tabs state
@@ -256,81 +297,7 @@ function isInsideGroup(idx) {
 
 // ── Preset Templates ───────────────────────────────────────────────────────
 const showPresetMenu = ref(false);
-const PRESET_TEMPLATES = [
-  {
-    name: 'Alamat Set',
-    icon: '🏠',
-    fields: [
-      {
-        field: 'provinsi', label: 'Provinsi', type: 'select', required: true,
-        sourceType: 'api',
-        apiUrl: 'https://backend.qqltech.com/kodepos/region/provinsi',
-        displayField: 'name', valueField: 'name',
-        placeholder: 'Pilih Provinsi',
-      },
-      {
-        field: 'kota', label: 'Kota', type: 'select', required: true,
-        sourceType: 'api',
-        apiUrl: 'https://backend.qqltech.com/kodepos/region/kabupaten-kota',
-        displayField: 'name', valueField: 'name',
-        dependsOn: 'provinsi', dependsOnParam: 'provinsi',
-        placeholder: 'Pilih Kota',
-      },
-      {
-        field: 'kecamatan', label: 'Kecamatan', type: 'select', required: true,
-        sourceType: 'api',
-        apiUrl: 'https://backend.qqltech.com/kodepos/region/kecamatan',
-        displayField: 'name', valueField: 'name',
-        dependsOn: 'kota', dependsOnParam: 'kota',
-        placeholder: 'Pilih Kecamatan',
-      },
-      { field: 'kode_pos', label: 'Kode Pos', type: 'text', placeholder: 'Isi Kode Pos' },
-      { field: 'alamat', label: 'Alamat', type: 'textarea', required: true, fullWidth: true, placeholder: 'Masukan Alamat Lengkap' },
-    ],
-  },
-  {
-    name: 'Contact Info',
-    icon: '📞',
-    fields: [
-      { field: 'nama', label: 'Nama Lengkap', type: 'text', required: true },
-      { field: 'email', label: 'Email', type: 'email', required: true },
-      { field: 'telepon', label: 'No. Telepon', type: 'tel', required: true },
-      { field: 'hp', label: 'No. HP', type: 'tel' },
-    ],
-  },
-  {
-    name: 'Perusahaan',
-    icon: '🏢',
-    fields: [
-      { field: 'nama_perusahaan', label: 'Nama Perusahaan', type: 'text', required: true },
-      { field: 'npwp', label: 'NPWP', type: 'text' },
-      { field: 'alamat_perusahaan', label: 'Alamat Perusahaan', type: 'textarea', required: true },
-      { field: 'telepon_perusahaan', label: 'Telepon', type: 'tel' },
-      { field: 'email_perusahaan', label: 'Email', type: 'email' },
-    ],
-  },
-  {
-    name: 'Rekening Bank',
-    icon: '🏦',
-    fields: [
-      { field: 'nama_bank', label: 'Nama Bank', type: 'text', required: true },
-      { field: 'no_rekening', label: 'No. Rekening', type: 'text', required: true },
-      { field: 'atas_nama', label: 'Atas Nama', type: 'text', required: true },
-      { field: 'cabang', label: 'Cabang', type: 'text' },
-    ],
-  },
-  {
-    name: 'Harga & Diskon',
-    icon: '💰',
-    fields: [
-      { field: 'harga', label: 'Harga', type: 'currency', required: true, currencyPrefix: 'Rp', allowDecimal: true },
-      { field: 'diskon_persen', label: 'Diskon (%)', type: 'fieldnumber_decimal' },
-      { field: 'diskon_nominal', label: 'Diskon (Rp)', type: 'currency', currencyPrefix: 'Rp', allowDecimal: true },
-      { field: 'total', label: 'Total', type: 'currency', currencyPrefix: 'Rp', allowDecimal: true, readonly: true },
-    ],
-  },
-];
-
+// PRESET_TEMPLATES imported from ./_presets.js
 function addPreset(preset) {
   pushUndo();
   const blankBase = createBlankField();
@@ -510,6 +477,7 @@ function exportConfig() {
     details: details.value,
     landingConfig: landingConfig.value,
     columnLayout: columnLayout.value,
+    wizardSteps: wizardSteps.value,
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -536,6 +504,7 @@ function importConfig() {
       if (Array.isArray(data.details)) details.value = data.details;
       if (Array.isArray(data.landingConfig)) landingConfig.value = data.landingConfig;
       if (data.columnLayout) columnLayout.value = data.columnLayout;
+      if (Array.isArray(data.wizardSteps)) wizardSteps.value = data.wizardSteps;
       toast.success(`Config imported: ${data.fields?.length || 0} fields`);
     } catch (err) {
       toast.error('Gagal import: file JSON tidak valid');
@@ -555,121 +524,60 @@ function closePanel() {
 }
 
 // ============================================================================
-// LANDING CONFIG ACTIONS
+// LANDING CONFIG (composable)
 // ============================================================================
-function moveLandingCol(idx, dir) {
-  const to = idx + dir;
-  if (to < 0 || to >= landingConfig.value.length) return;
-  const arr = [...landingConfig.value];
-  const tmp = arr[idx];
-  arr[idx] = arr[to];
-  arr[to] = tmp;
-  landingConfig.value = arr;
-}
+const { moveLandingCol, updateLandingCol, landingPreviewCols, useRealApi, realApiLoading, realApiRows, apiParams, addApiParam, removeApiParam, fetchRealApiData, sampleRows, landingPreviewRows } = useLanding(landingConfig, config);
 
-function updateLandingCol(idx, key, val) {
-  const arr = [...landingConfig.value];
-  arr[idx] = { ...arr[idx], [key]: val };
-  landingConfig.value = arr;
-}
+// ── API Response Viewer ────────────────────────────────────────────────────
+const showApiResponse = ref(false);
 
-// Computed: kolom AG Grid untuk preview landing
-const landingPreviewCols = computed(() => {
-  const cols = [
-    {
-      headerName: 'No',
-      valueGetter: (params) => (params.node?.rowIndex ?? 0) + 1,
-      width: 60,
-      minWidth: 60,
-      maxWidth: 80,
-      pinned: 'left',
-      sortable: false,
-      filter: false,
-      suppressMovable: true,
-    },
-  ];
-  landingConfig.value
-    .filter(c => c.visible)
-    .forEach(c => {
-      const df = c.displayField?.trim();
-      const colDef = {
-        headerName: c.label || c.field,
-        minWidth: c.minWidth || 140,
-        filter: true,
-        floatingFilter: true,
-        floatingFilterComponentParams: { suppressFilterButton: true },
-        suppressMenu: true,
-      };
-      if (df && df.includes('.')) {
-        colDef.valueGetter = (params) => {
-          return df.split('.').reduce((obj, k) => obj?.[k], params.data);
-        };
-      } else {
-        colDef.field = df || c.field;
+// Auto-open response viewer when API data arrives
+watch(() => realApiRows.value?.length, (len) => {
+  if (len > 0) showApiResponse.value = true;
+});
+
+// Merge all rows to build a complete object (first non-null wins per key)
+function mergeRows(rows) {
+  if (!rows?.length) return null;
+  const merged = {};
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue;
+    for (const key of Object.keys(row)) {
+      if (merged[key] === undefined || merged[key] === null) {
+        merged[key] = row[key];
+      } else if (merged[key] && typeof merged[key] === 'object' && !Array.isArray(merged[key]) && row[key] && typeof row[key] === 'object' && !Array.isArray(row[key])) {
+        // Deep merge nested objects
+        merged[key] = mergeRows([merged[key], row[key]]);
       }
-      cols.push(colDef);
-    });
-  return cols;
-});
-
-// ── Landing Preview: sample vs real API data ──
-const useRealApi = ref(false);
-const realApiLoading = ref(false);
-const realApiRows = ref([]);
-const apiParams = ref([{ key: '', value: '' }]);
-
-function addApiParam() {
-  apiParams.value.push({ key: '', value: '' });
-}
-function removeApiParam(idx) {
-  apiParams.value.splice(idx, 1);
-  if (!apiParams.value.length) apiParams.value.push({ key: '', value: '' });
+    }
+  }
+  return merged;
 }
 
-async function fetchRealApiData() {
-  if (!config.value?.apiEndpoint) {
-    toast.error('API endpoint belum tersedia');
-    return;
+function extractFieldPaths(obj, prefix = '') {
+  const paths = [];
+  if (!obj || typeof obj !== 'object') return paths;
+  for (const key of Object.keys(obj)) {
+    const fullPath = prefix ? `${prefix}.${key}` : key;
+    const val = obj[key];
+    paths.push({ path: fullPath, type: val === null ? 'null' : Array.isArray(val) ? 'array' : typeof val, sample: val });
+    if (val && typeof val === 'object' && !Array.isArray(val)) {
+      paths.push(...extractFieldPaths(val, fullPath));
+    }
   }
-  realApiLoading.value = true;
-  try {
-    const qp = new URLSearchParams();
-    qp.set('join', 'true');
-    apiParams.value.forEach(p => {
-      if (p.key?.trim() && p.value?.trim()) qp.set(p.key.trim(), p.value.trim());
-    });
-    const api = useApi();
-    const res = await api.get(`/api/dynamic/${config.value.apiEndpoint}?${qp.toString()}`);
-    const list = Array.isArray(res) ? res : (res?.data || res?.rows || []);
-    realApiRows.value = list;
-    toast.success(`${list.length} baris data diterima`);
-  } catch (e) {
-    toast.error('Gagal fetch: ' + (e?.data?.message || e?.message || 'Error'));
-    realApiRows.value = [];
-  } finally {
-    realApiLoading.value = false;
-  }
+  return paths;
 }
 
-// Dummy rows untuk preview landing (sample data)
-const sampleRows = computed(() => {
-  const visible = landingConfig.value.filter(c => c.visible);
-  if (!visible.length) return [];
-  const rows = [];
-  for (let r = 1; r <= 3; r++) {
-    const row = { id: r };
-    visible.forEach(c => {
-      row[c.field] = `Sample ${c.label || c.field} ${r}`;
-    });
-    rows.push(row);
-  }
-  return rows;
+const apiResponsePaths = computed(() => {
+  if (!realApiRows.value?.length) return [];
+  const merged = mergeRows(realApiRows.value);
+  return extractFieldPaths(merged);
 });
 
-const landingPreviewRows = computed(() => {
-  if (useRealApi.value && realApiRows.value.length) return realApiRows.value;
-  return sampleRows.value;
-});
+function copyPath(path) {
+  navigator.clipboard.writeText(path);
+  toast.success(`Copied: ${path}`);
+}
 
 // ============================================================================
 // DETAIL TAB ACTIONS
@@ -721,170 +629,9 @@ function updateFieldAtIndex(updated) {
 }
 
 // ============================================================================
-// DETAIL PREVIEW — interactive test data
+// DETAIL PREVIEW (composable)
 // ============================================================================
-const detailPreviewData = reactive({});
-
-function getPreviewArr(dIdx) {
-  if (!detailPreviewData[dIdx]) detailPreviewData[dIdx] = [];
-  return detailPreviewData[dIdx];
-}
-
-function getPreviewExcludeIds(dIdx) {
-  const detail = details.value[dIdx];
-  const fk = detail?.foreignKey || 'id';
-  const arr = getPreviewArr(dIdx);
-  return arr.map(d => d[fk]);
-}
-
-function handlePreviewMultiSelectAdd(dIdx, selectedItems) {
-  const detail = details.value[dIdx];
-  const fk = detail?.foreignKey || 'id';
-  const fkDisplay = detail?.foreignDisplay || '';
-  const uk = detail?.uniqueKey || 'id';
-  const arr = getPreviewArr(dIdx);
-  let added = 0;
-  selectedItems.forEach(item => {
-    if (arr.some(d => d[fk] === item[uk])) return;
-    const row = { [fk]: item[uk] };
-    if (fkDisplay) row[fkDisplay] = item;
-    (detail.detailFields || []).forEach(df => {
-      if (df.type === 'checkbox') row[df.key] = df.default !== false;
-      else if (['number', 'fieldnumber', 'fieldnumber_decimal'].includes(df.type)) row[df.key] = df.default || 0;
-      else row[df.key] = df.default || '';
-    });
-    arr.push(row);
-    added++;
-  });
-  if (added) {
-    detailPreviewData[dIdx] = [...arr];
-    toast.success(`${added} item ditambahkan (preview)`);
-  }
-}
-
-function handlePreviewAddRow(dIdx) {
-  const detail = details.value[dIdx];
-  const arr = getPreviewArr(dIdx);
-  const row = {};
-  (detail.detailFields || []).forEach(df => {
-    if (df.type === 'checkbox') row[df.key] = df.default !== false;
-    else if (['number', 'fieldnumber', 'fieldnumber_decimal'].includes(df.type)) row[df.key] = df.default || 0;
-    else row[df.key] = df.default || '';
-  });
-  arr.push(row);
-  detailPreviewData[dIdx] = [...arr];
-}
-
-function removePreviewRow(dIdx, rowIdx) {
-  const arr = getPreviewArr(dIdx);
-  arr.splice(rowIdx, 1);
-  detailPreviewData[dIdx] = [...arr];
-}
-
-// ============================================================================
-// DETAIL AG GRID HELPERS
-// ============================================================================
-function getDetailColumnDefs(dIdx) {
-  const detail = details.value[dIdx];
-  const cols = [];
-
-  // No column
-  cols.push({
-    headerName: 'No',
-    valueGetter: (params) => params.node.rowIndex + 1,
-    width: 60,
-    pinned: 'left',
-    sortable: false,
-    filter: false,
-    suppressMovable: true,
-  });
-
-  // Display columns (ButtonMultiSelect mode only)
-  if (detail.mode !== 'add_to_list') {
-    (detail.displayColumns || []).forEach(dc => {
-      cols.push({
-        headerName: dc.label || dc.key,
-        field: dc.key,
-        flex: 1,
-        minWidth: 100,
-        valueGetter: (params) => {
-          if (detail.foreignDisplay) {
-            return params.data?.[detail.foreignDisplay]?.[dc.key] || '-';
-          }
-          return params.data?.[dc.key] || '-';
-        },
-      });
-    });
-  }
-
-  // Detail fields (editable)
-  (detail.detailFields || []).forEach(df => {
-    if (df.type === 'checkbox') {
-      cols.push({
-        headerName: df.label || df.key,
-        field: df.key,
-        width: 100,
-        minWidth: 80,
-        cellRenderer: (params) => {
-          const val = params.value;
-          const label = val ? (df.labelTrue || 'Ya') : (df.labelFalse || 'Tidak');
-          const cls = val ? 'text-green-600 font-semibold' : 'text-red-500';
-          return `<span class="cursor-pointer select-none ${cls}">${label}</span>`;
-        },
-        onCellClicked: (params) => {
-          params.data[df.key] = !params.data[df.key];
-          params.api.refreshCells({ rowNodes: [params.node], columns: [df.key], force: true });
-        },
-      });
-    } else if (['fieldnumber', 'fieldnumber_decimal', 'number'].includes(df.type)) {
-      cols.push({
-        headerName: df.label || df.key,
-        field: df.key,
-        flex: 1,
-        minWidth: 100,
-        editable: true,
-        cellEditor: 'agNumberCellEditor',
-        valueSetter: (params) => {
-          params.data[df.key] = Number(params.newValue) || 0;
-          return true;
-        },
-      });
-    } else {
-      cols.push({
-        headerName: df.label || df.key,
-        field: df.key,
-        flex: 1,
-        minWidth: 120,
-        editable: true,
-        valueSetter: (params) => {
-          params.data[df.key] = params.newValue;
-          return true;
-        },
-      });
-    }
-  });
-
-  // Aksi column
-  cols.push({
-    headerName: 'Aksi',
-    width: 70,
-    pinned: 'right',
-    sortable: false,
-    filter: false,
-    suppressMovable: true,
-    cellRenderer: () => `<button class="text-destructive hover:text-destructive/80 text-xs font-medium">Hapus</button>`,
-    onCellClicked: (params) => {
-      removePreviewRow(dIdx, params.node.rowIndex);
-    },
-  });
-
-  return cols;
-}
-
-const detailDefaultColDef = {
-  sortable: true,
-  resizable: true,
-};
+const { detailPreviewData, getPreviewArr, getPreviewExcludeIds, handlePreviewMultiSelectAdd, handlePreviewAddRow, removePreviewRow, getDetailColumnDefs, detailDefaultColDef } = useDetailPreview(details);
 
 // ============================================================================
 // GENERATE
@@ -1149,19 +896,25 @@ async function generate() {
               <Button variant="outline" size="sm" class="h-8 gap-1 text-xs" @click="showPresetMenu = !showPresetMenu">
                 <Package class="h-3.5 w-3.5" /> Preset
               </Button>
-              <div v-if="showPresetMenu" class="absolute top-full left-0 mt-1 z-50 bg-card border border-border rounded-lg shadow-lg p-1 min-w-[200px]">
-                <button
-                  v-for="preset in PRESET_TEMPLATES"
-                  :key="preset.name"
-                  class="w-full text-left px-3 py-2 rounded-md text-sm hover:bg-accent flex items-center gap-2"
-                  @click="addPreset(preset)"
-                >
-                  <span>{{ preset.icon }}</span>
-                  <div>
-                    <div class="font-medium text-xs">{{ preset.name }}</div>
-                    <div class="text-[10px] text-muted-foreground">{{ preset.fields.length }} field</div>
-                  </div>
-                </button>
+              <div v-if="showPresetMenu" class="absolute top-full left-0 mt-1 z-50 bg-card border border-border rounded-lg shadow-lg p-1 min-w-[260px] max-h-[420px] overflow-y-auto">
+                <div v-for="(group, gIdx) in [
+                  { title: 'Data', items: PRESET_TEMPLATES.filter(p => !p.desc) },
+                  { title: 'Perhitungan', items: PRESET_TEMPLATES.filter(p => p.desc) },
+                ].filter(g => g.items.length)" :key="gIdx">
+                  <div class="px-3 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide" :class="gIdx > 0 ? 'border-t border-border mt-1 pt-2' : ''">{{ group.title }}</div>
+                  <button
+                    v-for="preset in group.items"
+                    :key="preset.name"
+                    class="w-full text-left px-3 py-2 rounded-md text-sm hover:bg-accent flex items-center gap-2"
+                    @click="addPreset(preset)"
+                  >
+                    <span class="text-base">{{ preset.icon }}</span>
+                    <div class="min-w-0">
+                      <div class="font-medium text-xs">{{ preset.name }}</div>
+                      <div class="text-[10px] text-muted-foreground truncate">{{ preset.desc || preset.fields.length + ' field' }}</div>
+                    </div>
+                  </button>
+                </div>
               </div>
             </div>
             <!-- Bulk toggle -->
@@ -1198,7 +951,7 @@ async function generate() {
               @dragleave="onDragLeave"
               @drop="onDrop(idx, $event)"
               @dragend="onDragEnd"
-              class="relative group rounded-lg pt-4 pb-2 px-2 transition-all"
+              class="relative group rounded-lg pt-4 pb-3 px-3 transition-all"
               :class="[
                 fields[idx].fullWidth || getRegistryEntry(fields[idx].type)?.isSection || getRegistryEntry(fields[idx].type)?.isFieldGroup || getRegistryEntry(fields[idx].type)?.isFieldGroupEnd ? colSpanFull : '',
                 panelIndex === idx
@@ -1296,25 +1049,13 @@ async function generate() {
               </span>
 
               <!-- RequiredWhen badge -->
-              <span
-                v-if="fields[idx].requiredWhenField"
-                class="absolute bottom-0.5 left-2 text-[9px] font-medium px-1 py-0.5 rounded bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400"
-                :title="`Required jika ${fields[idx].requiredWhenField} = ${fields[idx].requiredWhenValue}`"
-              >
-                Req. Kondisional
-              </span>
+              <!-- (moved to footer row below preview) -->
+
+              <!-- Computed formula badge -->
+              <!-- (moved to footer row below preview) -->
 
               <!-- Wizard step selector -->
-              <div v-if="wizardSteps.length > 0 && !getRegistryEntry(fields[idx].type)?.isSpace && !getRegistryEntry(fields[idx].type)?.isFieldGroupEnd" class="absolute bottom-0.5 right-2">
-                <select
-                  :value="fields[idx].step || 0"
-                  class="text-[10px] bg-muted border border-border rounded px-1 py-0.5 focus:ring-0 focus:border-primary cursor-pointer"
-                  @click.stop
-                  @change.stop="fields[idx].step = Number($event.target.value)"
-                >
-                  <option v-for="(step, si) in wizardSteps" :key="si" :value="si">S{{ si + 1 }}: {{ step.label }}</option>
-                </select>
-              </div>
+              <!-- (moved to footer row below preview) -->
 
               <!-- Dynamic preview from registry -->
               <BuilderFieldPreview
@@ -1322,6 +1063,37 @@ async function generate() {
                 :previewValues="previewValues"
                 @previewChange="(fieldName, val) => onPreviewChange(fieldName, val)"
               />
+
+              <!-- Footer row: badges + wizard step (below preview, normal flow) -->
+              <div
+                v-if="fields[idx].requiredWhenField || (Array.isArray(fields[idx].computedFormula) ? fields[idx].computedFormula.length : fields[idx].computedFormula) || (wizardSteps.length > 0 && !getRegistryEntry(fields[idx].type)?.isSpace && !getRegistryEntry(fields[idx].type)?.isFieldGroupEnd)"
+                class="flex items-center gap-1.5 flex-wrap mt-2 pt-1.5 border-t border-border/50"
+              >
+                <span
+                  v-if="fields[idx].requiredWhenField"
+                  class="text-[9px] font-medium px-1.5 py-0.5 rounded bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400"
+                  :title="`Required jika ${fields[idx].requiredWhenField} = ${fields[idx].requiredWhenValue}`"
+                >
+                  Req. Kondisional
+                </span>
+                <span
+                  v-if="Array.isArray(fields[idx].computedFormula) ? fields[idx].computedFormula.length : fields[idx].computedFormula"
+                  class="text-[9px] font-medium px-1.5 py-0.5 rounded bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400 font-mono truncate max-w-[60%]"
+                  :title="`Formula: ${Array.isArray(fields[idx].computedFormula) ? fields[idx].computedFormula.map(t => t.value).join(' ') : fields[idx].computedFormula}`"
+                >
+                  ƒ {{ Array.isArray(fields[idx].computedFormula) ? fields[idx].computedFormula.map(t => t.type === 'field' ? t.value : (t.value === '*' ? '×' : t.value === '/' ? '÷' : t.value)).join(' ') : fields[idx].computedFormula }}
+                </span>
+                <div class="ml-auto" v-if="wizardSteps.length > 0 && !getRegistryEntry(fields[idx].type)?.isSpace && !getRegistryEntry(fields[idx].type)?.isFieldGroupEnd">
+                  <select
+                    :value="fields[idx].step || 0"
+                    class="text-[10px] bg-muted border border-border rounded px-1.5 py-0.5 focus:ring-0 focus:border-primary cursor-pointer"
+                    @click.stop
+                    @change.stop="fields[idx].step = Number($event.target.value)"
+                  >
+                    <option v-for="(step, si) in wizardSteps" :key="si" :value="si">S{{ si + 1 }}: {{ step.label }}</option>
+                  </select>
+                </div>
+              </div>
 
               <!-- Add field inside group button -->
               <div
@@ -1491,6 +1263,76 @@ async function generate() {
                 <span v-if="realApiRows.length" class="text-[10px] text-muted-foreground">
                   {{ realApiRows.length }} baris
                 </span>
+              </div>
+            </div>
+
+            <!-- API Response Structure Viewer -->
+            <div v-if="realApiRows.length" class="rounded-lg border border-border bg-muted/30 mb-2 overflow-hidden">
+              <button
+                class="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                @click="showApiResponse = !showApiResponse"
+              >
+                <span class="flex items-center gap-1.5">
+                  <Database class="h-3.5 w-3.5 text-primary" />
+                  Struktur Respon API
+                  <span class="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-semibold">{{ apiResponsePaths.length }} fields</span>
+                </span>
+                <ChevronDown class="h-3.5 w-3.5 transition-transform" :class="showApiResponse ? 'rotate-180' : ''" />
+              </button>
+              <div v-if="showApiResponse" class="border-t border-border">
+                <!-- Field paths table -->
+                <div class="max-h-[280px] overflow-y-auto">
+                  <table class="w-full text-xs">
+                    <thead class="sticky top-0 bg-muted">
+                      <tr class="text-muted-foreground">
+                        <th class="text-left px-3 py-1.5 font-semibold">Path (klik untuk copy)</th>
+                        <th class="text-left px-3 py-1.5 font-semibold w-[70px]">Type</th>
+                        <th class="text-left px-3 py-1.5 font-semibold">Sample Value</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr
+                        v-for="item in apiResponsePaths"
+                        :key="item.path"
+                        class="border-t border-border/50 hover:bg-muted/50 cursor-pointer group"
+                        @click="copyPath(item.path)"
+                      >
+                        <td class="px-3 py-1 font-mono text-[11px]">
+                          <span class="group-hover:text-primary transition-colors" :class="item.type === 'object' ? 'text-muted-foreground/60 italic' : 'text-foreground'">
+                            {{ item.path }}
+                          </span>
+                          <Copy class="h-3 w-3 inline ml-1 opacity-0 group-hover:opacity-60 text-primary transition-opacity" />
+                        </td>
+                        <td class="px-3 py-1">
+                          <span
+                            class="px-1.5 py-0.5 rounded text-[10px] font-medium"
+                            :class="{
+                              'bg-blue-500/10 text-blue-600': item.type === 'string',
+                              'bg-green-500/10 text-green-600': item.type === 'number',
+                              'bg-yellow-500/10 text-yellow-600': item.type === 'object',
+                              'bg-purple-500/10 text-purple-600': item.type === 'array',
+                              'bg-orange-500/10 text-orange-600': item.type === 'boolean',
+                              'bg-red-500/10 text-red-500': item.type === 'null',
+                              'bg-muted text-muted-foreground': !['string','number','object','array','boolean','null'].includes(item.type),
+                            }"
+                          >{{ item.type }}</span>
+                        </td>
+                        <td class="px-3 py-1 text-muted-foreground font-mono text-[10px] truncate max-w-[300px]">
+                          <template v-if="item.type === 'object'">{ ... }</template>
+                          <template v-else-if="item.type === 'array'">[{{ item.sample?.length || 0 }} items]</template>
+                          <template v-else>{{ item.sample === null ? 'null' : String(item.sample).substring(0, 80) }}</template>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <!-- Raw JSON (first row) -->
+                <details class="border-t border-border">
+                  <summary class="px-3 py-1.5 text-[10px] font-medium text-muted-foreground cursor-pointer hover:text-foreground select-none">
+                    Raw JSON (row pertama)
+                  </summary>
+                  <pre class="px-3 py-2 text-[10px] font-mono text-muted-foreground bg-muted/50 max-h-[200px] overflow-auto whitespace-pre-wrap break-all">{{ JSON.stringify(realApiRows[0], null, 2) }}</pre>
+                </details>
               </div>
             </div>
 

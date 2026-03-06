@@ -12,6 +12,216 @@ const emit = defineEmits(['update:field', 'remove', 'close'])
 
 const entry = computed(() => getRegistryEntry(props.field.type))
 
+// ── Computed formula visual builder ──────────────────────────────────────
+const formulaFieldSelect = ref('')
+const formulaNumberInput = ref('')
+
+// Available fields for formula (exclude current field, non-data fields)
+const formulaAvailableFields = computed(() => {
+  return props.allFields.filter(f =>
+    f.field && f.field !== props.field.field &&
+    !['section', 'divider', 'fieldgroup', 'fieldgroup_end'].includes(f.type)
+  )
+})
+
+function getFormulaTokens() {
+  const raw = props.field.computedFormula
+  if (Array.isArray(raw)) return raw
+  // Backward compat: if string, convert to empty array (old format ignored)
+  return []
+}
+
+function setFormulaTokens(tokens) {
+  updateField('computedFormula', [...tokens])
+}
+
+function addFormulaField() {
+  if (!formulaFieldSelect.value) return
+  const tokens = getFormulaTokens()
+  tokens.push({ type: 'field', value: formulaFieldSelect.value })
+  setFormulaTokens(tokens)
+  formulaFieldSelect.value = ''
+}
+
+function addFormulaOp(op) {
+  const tokens = getFormulaTokens()
+  tokens.push({ type: 'op', value: op })
+  setFormulaTokens(tokens)
+}
+
+function addFormulaNumber() {
+  const num = formulaNumberInput.value?.trim()
+  if (!num || isNaN(Number(num))) return
+  const tokens = getFormulaTokens()
+  tokens.push({ type: 'number', value: num })
+  setFormulaTokens(tokens)
+  formulaNumberInput.value = ''
+}
+
+function addFormulaParen(p) {
+  const tokens = getFormulaTokens()
+  tokens.push({ type: 'paren', value: p })
+  setFormulaTokens(tokens)
+}
+
+function removeFormulaToken(index) {
+  const tokens = getFormulaTokens()
+  tokens.splice(index, 1)
+  setFormulaTokens(tokens)
+}
+
+function clearFormula() {
+  setFormulaTokens([])
+}
+
+function formulaPreview(tokens) {
+  if (!tokens?.length) return ''
+  return tokens.map(t => {
+    if (t.type === 'field') return t.value
+    if (t.type === 'op') return t.value === '*' ? '×' : t.value === '/' ? '÷' : t.value
+    return t.value
+  }).join(' ')
+}
+
+// ── Formula Quick Templates ─────────────────────────────────────────────
+const FORMULA_TEMPLATES = [
+  // ── Dasar (2 field) ──
+  { id: 'tambah', label: 'A + B', icon: '➕', cat: 'Dasar', fields: 2,
+    desc: 'A + B', hint: 'Penjumlahan. Misal: Harga + Ongkir',
+    build: (a, b) => [
+      { type: 'field', value: a }, { type: 'op', value: '+' }, { type: 'field', value: b },
+    ],
+  },
+  { id: 'kurang', label: 'A − B', icon: '➖', cat: 'Dasar', fields: 2,
+    desc: 'A - B', hint: 'Pengurangan. Misal: Pemasukan - Pengeluaran',
+    build: (a, b) => [
+      { type: 'field', value: a }, { type: 'op', value: '-' }, { type: 'field', value: b },
+    ],
+  },
+  { id: 'kali', label: 'A × B', icon: '✖️', cat: 'Dasar', fields: 2,
+    desc: 'A × B', hint: 'Perkalian. Misal: Qty × Harga Satuan',
+    build: (a, b) => [
+      { type: 'field', value: a }, { type: 'op', value: '*' }, { type: 'field', value: b },
+    ],
+  },
+  { id: 'bagi', label: 'A ÷ B', icon: '➗', cat: 'Dasar', fields: 2,
+    desc: 'A ÷ B', hint: 'Pembagian. Misal: Total ÷ Qty',
+    build: (a, b) => [
+      { type: 'field', value: a }, { type: 'op', value: '/' }, { type: 'field', value: b },
+    ],
+  },
+  // ── Persentase (2 field) ──
+  { id: 'diskon_persen', label: 'Diskon %', icon: '🏷️', cat: 'Persentase', fields: 2,
+    desc: 'A - (A × B ÷ 100)', hint: 'Harga setelah diskon. 100 diskon 50% = 50',
+    labelA: 'Harga', labelB: 'Diskon (%)',
+    build: (a, b) => [
+      { type: 'field', value: a }, { type: 'op', value: '-' }, { type: 'paren', value: '(' },
+      { type: 'field', value: a }, { type: 'op', value: '*' }, { type: 'field', value: b },
+      { type: 'op', value: '/' }, { type: 'number', value: '100' }, { type: 'paren', value: ')' },
+    ],
+  },
+  { id: 'markup_persen', label: 'Markup %', icon: '📈', cat: 'Persentase', fields: 2,
+    desc: 'A + (A × B ÷ 100)', hint: 'Harga setelah markup. 100 markup 20% = 120',
+    labelA: 'Harga Asal', labelB: 'Markup (%)',
+    build: (a, b) => [
+      { type: 'field', value: a }, { type: 'op', value: '+' }, { type: 'paren', value: '(' },
+      { type: 'field', value: a }, { type: 'op', value: '*' }, { type: 'field', value: b },
+      { type: 'op', value: '/' }, { type: 'number', value: '100' }, { type: 'paren', value: ')' },
+    ],
+  },
+  { id: 'persen_dari', label: 'Persen Dari', icon: '📊', cat: 'Persentase', fields: 2,
+    desc: 'A × B ÷ 100', hint: 'Nilai persen dari A. 50% dari 200 = 100',
+    labelA: 'Nilai', labelB: 'Persen (%)',
+    build: (a, b) => [
+      { type: 'field', value: a }, { type: 'op', value: '*' }, { type: 'field', value: b },
+      { type: 'op', value: '/' }, { type: 'number', value: '100' },
+    ],
+  },
+  { id: 'ppn', label: 'PPN 11%', icon: '🧾', cat: 'Persentase', fields: 1,
+    desc: 'A × 11 ÷ 100', hint: 'Hitung PPN 11% dari nilai A',
+    labelA: 'Nilai DPP',
+    build: (a) => [
+      { type: 'field', value: a }, { type: 'op', value: '*' }, { type: 'number', value: '11' },
+      { type: 'op', value: '/' }, { type: 'number', value: '100' },
+    ],
+  },
+  { id: 'include_ppn', label: 'Harga + PPN 11%', icon: '🧾', cat: 'Persentase', fields: 1,
+    desc: 'A + (A × 11 ÷ 100)', hint: 'Harga termasuk PPN 11%. 100 → 111',
+    labelA: 'Harga DPP',
+    build: (a) => [
+      { type: 'field', value: a }, { type: 'op', value: '+' }, { type: 'paren', value: '(' },
+      { type: 'field', value: a }, { type: 'op', value: '*' }, { type: 'number', value: '11' },
+      { type: 'op', value: '/' }, { type: 'number', value: '100' }, { type: 'paren', value: ')' },
+    ],
+  },
+  // ── 3 Field ──
+  { id: 'qty_harga_diskon', label: 'Qty × Harga − Diskon', icon: '🛒', cat: '3 Field', fields: 3,
+    desc: 'A × B - C', hint: 'Subtotal dikurangi diskon nominal. 5 × 100 - 50 = 450',
+    labelA: 'Qty', labelB: 'Harga Satuan', labelC: 'Diskon (Rp)',
+    build: (a, b, c) => [
+      { type: 'field', value: a }, { type: 'op', value: '*' }, { type: 'field', value: b },
+      { type: 'op', value: '-' }, { type: 'field', value: c },
+    ],
+  },
+  { id: 'qty_harga_diskon_persen', label: 'Qty × Harga − Diskon%', icon: '🛒', cat: '3 Field', fields: 3,
+    desc: '(A × B) - ((A × B) × C ÷ 100)', hint: 'Subtotal lalu diskon persen. 5 × 100 diskon 10% = 450',
+    labelA: 'Qty', labelB: 'Harga Satuan', labelC: 'Diskon (%)',
+    build: (a, b, c) => [
+      { type: 'paren', value: '(' }, { type: 'field', value: a }, { type: 'op', value: '*' }, { type: 'field', value: b }, { type: 'paren', value: ')' },
+      { type: 'op', value: '-' },
+      { type: 'paren', value: '(' }, { type: 'paren', value: '(' },
+      { type: 'field', value: a }, { type: 'op', value: '*' }, { type: 'field', value: b },
+      { type: 'paren', value: ')' }, { type: 'op', value: '*' }, { type: 'field', value: c },
+      { type: 'op', value: '/' }, { type: 'number', value: '100' }, { type: 'paren', value: ')' },
+    ],
+  },
+  { id: 'a_plus_b_plus_c', label: 'A + B + C', icon: '📝', cat: '3 Field', fields: 3,
+    desc: 'A + B + C', hint: 'Penjumlahan 3 field',
+    build: (a, b, c) => [
+      { type: 'field', value: a }, { type: 'op', value: '+' }, { type: 'field', value: b },
+      { type: 'op', value: '+' }, { type: 'field', value: c },
+    ],
+  },
+]
+
+const selectedTemplate = ref('')
+const tplFieldA = ref('')
+const tplFieldB = ref('')
+const tplFieldC = ref('')
+
+const activeTemplate = computed(() => FORMULA_TEMPLATES.find(t => t.id === selectedTemplate.value))
+
+const templatePreview = computed(() => {
+  const tpl = activeTemplate.value
+  if (!tpl) return ''
+  const a = tplFieldA.value || 'A'
+  const b = tplFieldB.value || 'B'
+  const c = tplFieldC.value || 'C'
+  return tpl.desc.replace(/\bA\b/g, a).replace(/\bB\b/g, b).replace(/\bC\b/g, c)
+})
+
+const templateCategories = computed(() => {
+  const cats = []
+  const seen = new Set()
+  FORMULA_TEMPLATES.forEach(t => {
+    if (!seen.has(t.cat)) { seen.add(t.cat); cats.push(t.cat) }
+  })
+  return cats
+})
+
+function applyTemplate() {
+  const tpl = activeTemplate.value
+  if (!tpl || !tplFieldA.value) return
+  if (tpl.fields >= 2 && !tplFieldB.value) return
+  if (tpl.fields >= 3 && !tplFieldC.value) return
+  const tokens = tpl.build(tplFieldA.value, tplFieldB.value, tplFieldC.value)
+  setFormulaTokens(tokens)
+  selectedTemplate.value = ''
+  tplFieldA.value = ''
+  tplFieldB.value = ''
+  tplFieldC.value = ''
+}
+
 // ── Parent field options (static OR API-based) ─────────────────────────
 const apiParentOptions = ref([])
 const loadingParentOpts = ref(false)
@@ -717,6 +927,167 @@ function addColumnItem(key) {
               @input="updateField('requiredWhenValue', $event.target.value)"
             />
           </template>
+        </div>
+        <p v-if="pf.hint" class="text-xs text-muted-foreground/70 mt-1">{{ pf.hint }}</p>
+      </div>
+
+      <!-- Computed Formula — Visual Token Builder -->
+      <div v-else-if="pf.type === 'computedFormula'">
+        <label class="block mb-1 font-medium text-muted-foreground">{{ pf.label }}</label>
+        <div class="space-y-2">
+
+          <!-- ═══ Quick Formula Templates ═══ -->
+          <div class="bg-muted/30 rounded-lg p-2.5 space-y-2 border border-border/50">
+            <p class="text-[10px] text-muted-foreground/60 font-semibold uppercase tracking-wide">Pilih Template Perhitungan</p>
+
+            <!-- Grouped by category -->
+            <div v-for="cat in templateCategories" :key="cat" class="space-y-1">
+              <p class="text-[10px] text-muted-foreground/40 font-medium">{{ cat }}</p>
+              <div class="flex flex-wrap gap-1">
+                <button
+                  v-for="tpl in FORMULA_TEMPLATES.filter(t => t.cat === cat)" :key="tpl.id" type="button"
+                  class="px-2 py-1 rounded text-[10px] font-medium border transition-colors inline-flex items-center gap-1"
+                  :class="selectedTemplate === tpl.id ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted text-muted-foreground border-border hover:bg-muted/80'"
+                  :title="tpl.hint"
+                  @click="selectedTemplate = selectedTemplate === tpl.id ? '' : tpl.id; tplFieldA = ''; tplFieldB = ''; tplFieldC = ''"
+                ><span>{{ tpl.icon }}</span> {{ tpl.label }}</button>
+              </div>
+            </div>
+
+            <!-- Selected template config -->
+            <template v-if="activeTemplate">
+              <div class="bg-background/60 rounded p-2 space-y-2 border border-border/30">
+                <p class="text-[10px] font-semibold text-foreground/80">{{ activeTemplate.icon }} {{ activeTemplate.label }}</p>
+                <p class="text-[10px] text-muted-foreground/50 italic">{{ activeTemplate.hint }}</p>
+                <p class="text-[10px] text-amber-600 dark:text-amber-400 font-mono">{{ activeTemplate.desc }}</p>
+
+                <!-- Field selects based on template.fields count -->
+                <div class="space-y-1.5">
+                  <select v-model="tplFieldA" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary">
+                    <option value="" disabled>{{ activeTemplate.labelA || 'Field A' }} — pilih field...</option>
+                    <option v-for="af in formulaAvailableFields" :key="af.field" :value="af.field">{{ af.label || af.field }}</option>
+                  </select>
+                  <select v-if="activeTemplate.fields >= 2" v-model="tplFieldB" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary">
+                    <option value="" disabled>{{ activeTemplate.labelB || 'Field B' }} — pilih field...</option>
+                    <option v-for="af in formulaAvailableFields" :key="af.field" :value="af.field">{{ af.label || af.field }}</option>
+                  </select>
+                  <select v-if="activeTemplate.fields >= 3" v-model="tplFieldC" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary">
+                    <option value="" disabled>{{ activeTemplate.labelC || 'Field C' }} — pilih field...</option>
+                    <option v-for="af in formulaAvailableFields" :key="af.field" :value="af.field">{{ af.label || af.field }}</option>
+                  </select>
+                </div>
+
+                <div class="flex items-center justify-between gap-2">
+                  <span class="text-[10px] text-muted-foreground/50 font-mono flex-1 truncate">= {{ templatePreview }}</span>
+                  <button
+                    type="button"
+                    :disabled="!tplFieldA || (activeTemplate.fields >= 2 && !tplFieldB) || (activeTemplate.fields >= 3 && !tplFieldC)"
+                    class="px-3 py-1 rounded text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                    @click="applyTemplate"
+                  >Terapkan</button>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <!-- ═══ Token display area ═══ -->
+          <div class="min-h-[40px] rounded bg-muted/60 border border-border p-2 flex flex-wrap gap-1.5 items-center">
+            <template v-if="getFormulaTokens().length">
+              <span
+                v-for="(tok, ti) in getFormulaTokens()"
+                :key="ti"
+                class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium cursor-default"
+                :class="{
+                  'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300': tok.type === 'field',
+                  'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 font-bold': tok.type === 'op',
+                  'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 font-mono': tok.type === 'number',
+                  'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300 font-bold': tok.type === 'paren',
+                }"
+              >
+                {{ tok.type === 'op' && tok.value === '*' ? '×' : tok.type === 'op' && tok.value === '/' ? '÷' : tok.type === 'field' ? allFields.find(f => f.field === tok.value)?.label || tok.value : tok.value }}
+                <button
+                  type="button"
+                  class="ml-0.5 text-current opacity-50 hover:opacity-100 text-[10px] leading-none"
+                  @click="removeFormulaToken(ti)"
+                >✕</button>
+              </span>
+            </template>
+            <span v-else class="text-xs text-muted-foreground/50 italic">Belum ada formula — pakai template atau bangun manual di bawah</span>
+          </div>
+
+          <!-- ═══ Manual Builder ═══ -->
+          <details class="group">
+            <summary class="text-[10px] text-muted-foreground/60 cursor-pointer hover:text-muted-foreground select-none">
+              ▶ Bangun Manual (field, operator, angka)
+            </summary>
+            <div class="mt-2 space-y-2 pl-1 border-l-2 border-border/50 ml-1">
+              <!-- Add Field select -->
+              <div class="flex gap-1.5 items-center">
+                <select
+                  v-model="formulaFieldSelect"
+                  class="flex-1 rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary"
+                >
+                  <option value="" disabled>+ Pilih Field...</option>
+                  <option
+                    v-for="af in formulaAvailableFields"
+                    :key="af.field"
+                    :value="af.field"
+                  >{{ af.label || af.field }} ({{ af.field }})</option>
+                </select>
+                <button
+                  type="button"
+                  :disabled="!formulaFieldSelect"
+                  class="px-2 py-1 rounded text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                  @click="addFormulaField"
+                >+ Field</button>
+              </div>
+
+              <!-- Operator buttons -->
+              <div class="flex flex-wrap gap-1.5 items-center">
+                <span class="text-[10px] text-muted-foreground/60 mr-1">Operator:</span>
+                <button v-for="op in ['+', '-', '*', '/']" :key="op" type="button"
+                  class="w-7 h-7 flex items-center justify-center rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 font-bold text-sm hover:bg-amber-200 dark:hover:bg-amber-800/50"
+                  @click="addFormulaOp(op)"
+                >{{ op === '*' ? '×' : op === '/' ? '÷' : op }}</button>
+                <span class="text-[10px] text-muted-foreground/60 mx-1">Kurung:</span>
+                <button v-for="p in ['(', ')']" :key="p" type="button"
+                  class="w-7 h-7 flex items-center justify-center rounded bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300 font-bold text-sm hover:bg-gray-300 dark:hover:bg-gray-600"
+                  @click="addFormulaParen(p)"
+                >{{ p }}</button>
+              </div>
+
+              <!-- Number input -->
+              <div class="flex gap-1.5 items-center">
+                <input
+                  v-model="formulaNumberInput"
+                  type="text"
+                  inputmode="decimal"
+                  placeholder="Angka konstan..."
+                  class="flex-1 rounded bg-muted border border-border text-foreground px-2 py-1 text-xs font-mono focus:border-primary focus:ring-1 focus:ring-primary"
+                  @keydown.enter.prevent="addFormulaNumber"
+                />
+                <button
+                  type="button"
+                  :disabled="!formulaNumberInput?.trim() || isNaN(Number(formulaNumberInput))"
+                  class="px-2 py-1 rounded text-xs font-medium bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                  @click="addFormulaNumber"
+                >+ Angka</button>
+              </div>
+            </div>
+          </details>
+
+          <!-- Clear + Preview -->
+          <div class="flex items-center justify-between">
+            <button
+              v-if="getFormulaTokens().length"
+              type="button"
+              class="text-[10px] text-red-500 hover:text-red-400 underline"
+              @click="clearFormula"
+            >Hapus Semua</button>
+            <span v-if="getFormulaTokens().length" class="text-[10px] text-muted-foreground/50 font-mono">
+              = {{ formulaPreview(getFormulaTokens()) }}
+            </span>
+          </div>
         </div>
         <p v-if="pf.hint" class="text-xs text-muted-foreground/70 mt-1">{{ pf.hint }}</p>
       </div>

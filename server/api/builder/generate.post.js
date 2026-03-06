@@ -109,6 +109,69 @@ function buildResetValues(fields) {
   }).join('\n')
 }
 
+function buildComputedWatchers(fields) {
+  // Support both new array format and legacy string format
+  const computedFields = fields.filter(f => {
+    if (Array.isArray(f.computedFormula)) return f.computedFormula.length > 0
+    return typeof f.computedFormula === 'string' && f.computedFormula.trim()
+  })
+  if (!computedFields.length) return ''
+
+  const watchers = computedFields.map(f => {
+    let refs = []
+    let expr = ''
+
+    if (Array.isArray(f.computedFormula)) {
+      // New token array format: [{ type: 'field'|'op'|'number'|'paren', value: string }]
+      const tokens = f.computedFormula
+      refs = [...new Set(tokens.filter(t => t.type === 'field').map(t => t.value))]
+      expr = tokens.map(t => {
+        if (t.type === 'field') return `(Number(values.${t.value}) || 0)`
+        if (t.type === 'op') return ` ${t.value} `
+        if (t.type === 'number') return t.value
+        if (t.type === 'paren') return t.value
+        return ''
+      }).join('')
+    } else {
+      // Legacy string format — backward compat
+      const formula = f.computedFormula.trim()
+      const cleaned = formula.replace(/"[^"]*"|'[^']*'/g, '').replace(/[+\-*/().,\d\s]/g, ' ')
+      refs = [...new Set(cleaned.split(/\s+/).filter(t => t && /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(t)))]
+      const parts = formula.split(/(["'][^"']*["'])/g)
+      const isStringConcat = /"[^"]*"|'[^']*'/.test(formula)
+      expr = parts.map(part => {
+        if (/^["']/.test(part)) return part
+        let result = part
+        const sortedRefs = [...refs].sort((a, b) => b.length - a.length)
+        sortedRefs.forEach(ref => {
+          const wrap = isStringConcat ? `(values.${ref} || '')` : `(Number(values.${ref}) || 0)`
+          result = result.replace(new RegExp('\\b' + ref + '\\b', 'g'), wrap)
+        })
+        return result
+      }).join('')
+    }
+
+    const formulaDisplay = Array.isArray(f.computedFormula)
+      ? f.computedFormula.map(t => t.value).join(' ')
+      : f.computedFormula.trim()
+
+    const watchSources = refs.map(r => `  () => values.${r}`).join(',\n')
+    return `// Auto-compute: ${f.field} = ${formulaDisplay}
+watch(
+  [
+${watchSources}
+  ],
+  () => {
+    if (isReadOnly.value) return;
+    values.${f.field} = ${expr};
+  },
+  { immediate: true }
+);`
+  })
+
+  return '\n// ── Computed / Auto-Fill Fields ──\n' + watchers.join('\n\n')
+}
+
 function buildFieldTemplate(f, fields, fullClass) {
   const entry = getRegistryEntry(f.type)
   let tpl
@@ -132,6 +195,11 @@ function buildFieldTemplate(f, fields, fullClass) {
   // Post-process: conditional required
   if (f.required && f.requiredWhenField && f.requiredWhenValue !== undefined && f.requiredWhenValue !== '') {
     tpl = tpl.replace(':required="!isReadOnly"', `:required="!isReadOnly && values.${f.requiredWhenField}?.toString() === '${f.requiredWhenValue}'"`)
+  }
+  // Post-process: computed field — make disabled (value is auto-calculated)
+  const hasFormula = Array.isArray(f.computedFormula) ? f.computedFormula.length > 0 : f.computedFormula?.trim()
+  if (hasFormula) {
+    tpl = tpl.replace(':disabled="loading || isReadOnly"', ':disabled="true"')
   }
   tpl = wrapVisibleWhen(tpl, f)
   if (entry?.isSection) {
@@ -570,6 +638,49 @@ function buildDetailFieldTd(df) {
                       </td>`
 }
 
+function buildDetailFooter(detailFields, varName, prefixCols, suffixCols) {
+  const hasSummary = detailFields.some(df => df.summaryType)
+  if (!hasSummary) return ''
+
+  const footerTds = detailFields.map(df => {
+    if (!df.summaryType) return `                      <td class="px-2 py-2"></td>`
+    const fmt = df.type === 'currency' ? `.toLocaleString('id-ID')` : ''
+    if (df.summaryType === 'SUM') {
+      return `                      <td class="px-2 py-2 text-right font-semibold text-xs sm:text-sm">
+                        {{ ${varName}.reduce((s, d) => s + (Number(d.${df.key}) || 0), 0)${fmt} }}
+                      </td>`
+    }
+    if (df.summaryType === 'AVG') {
+      return `                      <td class="px-2 py-2 text-right font-semibold text-xs sm:text-sm">
+                        {{ ${varName}.length ? (${varName}.reduce((s, d) => s + (Number(d.${df.key}) || 0), 0) / ${varName}.length)${fmt ? `.toLocaleString('id-ID')` : '.toFixed(2)'} : 0 }}
+                      </td>`
+    }
+    if (df.summaryType === 'COUNT') {
+      return `                      <td class="px-2 py-2 text-center font-semibold text-xs sm:text-sm">
+                        {{ ${varName}.length }}
+                      </td>`
+    }
+    return `                      <td class="px-2 py-2"></td>`
+  }).join('\n')
+
+  const prefixEmpty = Array(prefixCols).fill(`                      <td class="px-2 py-2"></td>`).join('\n')
+  const suffixEmpty = Array(suffixCols).fill(`                      <td class="px-2 py-2"></td>`).join('\n')
+
+  // Label in first prefix column
+  const labelTd = prefixCols > 0
+    ? `                      <td class="px-2 py-2 text-right font-bold text-xs sm:text-sm" colspan="${prefixCols}">Total</td>`
+    : ''
+
+  return `
+                  <tfoot class="bg-muted/70 border-t-2 border-border">
+                    <tr>
+${labelTd}
+${footerTds}
+${suffixEmpty}
+                    </tr>
+                  </tfoot>`
+}
+
 function buildDetailTemplate(details) {
   if (!hasDetails(details)) return ''
   const tabTriggers = details.map((d, i) => {
@@ -595,6 +706,7 @@ function buildDetailTemplate(details) {
       // ── ADD TO LIST MODE ──
       const addName = i === 0 ? 'addDetailRow' : `addDetailRow${i + 1}`
       const totalCols = 1 + detailFields.length + 1
+      const footer = buildDetailFooter(detailFields, varName, 1, 1)
 
       return `        <TabsContent value="${val}" class="space-y-4 mt-4">
           <Card>
@@ -641,7 +753,7 @@ ${fieldTds}
                         </Button>
                       </td>
                     </tr>
-                  </tbody>
+                  </tbody>${footer}
                 </table>
               </div>
             </CardContent>
@@ -655,6 +767,7 @@ ${fieldTds}
       const uk = d.uniqueKey || 'id'
       const displayCols = d.displayColumns || []
       const columns = d.columns || []
+      const footer2 = buildDetailFooter(detailFields, varName, 1 + displayCols.length, 1)
 
       // Build columns literal
       const colsLiteral = columns.map(c =>
@@ -723,7 +836,7 @@ ${fieldTds}
                         </Button>
                       </td>
                     </tr>
-                  </tbody>
+                  </tbody>${footer2}
                 </table>
               </div>
             </CardContent>
@@ -798,6 +911,7 @@ export default defineEventHandler(async (event) => {
     __DETAIL_STATE__: buildDetailState(details),
     __DETAIL_SELECTED_IDS__: buildDetailSelectedIds(details),
     __DETAIL_METHODS__: buildDetailMethods(details),
+    __COMPUTED_WATCHERS__: buildComputedWatchers(fields),
     __DETAIL_RESET__: buildDetailReset(details),
     __DETAIL_LOAD_DATA__: buildDetailLoadData(details),
     __DETAIL_PAYLOAD__: buildDetailPayload(details),

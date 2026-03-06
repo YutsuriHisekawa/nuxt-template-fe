@@ -108,6 +108,11 @@ const previewProps = computed(() => {
   if (props.field.dependsOn && props.previewValues && !props.previewValues[props.field.dependsOn]) {
     result.disabled = true
   }
+  // Computed formula field: always disabled (auto-calculated)
+  const hasFormula = Array.isArray(props.field.computedFormula) ? props.field.computedFormula.length > 0 : false
+  if (hasFormula) {
+    result.disabled = true
+  }
   return result
 })
 
