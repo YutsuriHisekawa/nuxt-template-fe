@@ -958,7 +958,10 @@ async function generate() {
                   ? 'ring-2 ring-ring ring-offset-2 ring-offset-background bg-accent/50'
                   : 'hover:ring-2 hover:ring-ring/40 hover:ring-offset-2 hover:ring-offset-background hover:bg-accent/30',
                 fields[idx].visibleWhenField && String(previewValues[fields[idx].visibleWhenField] ?? '') !== String(fields[idx].visibleWhenValue ?? '')
-                  ? 'opacity-30 pointer-events-none'
+                  ? 'opacity-30'
+                  : '',
+                fields[idx].readonlyWhenField && !fields[idx].readonly && String(previewValues[fields[idx].readonlyWhenField] ?? '') === String(fields[idx].readonlyWhenValue ?? '')
+                  ? 'opacity-60'
                   : '',
                 dragIndex === idx ? 'opacity-40 scale-95' : '',
                 dragOverIndex === idx && dragIndex !== idx ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : '',
@@ -1066,7 +1069,7 @@ async function generate() {
 
               <!-- Footer row: badges + wizard step (below preview, normal flow) -->
               <div
-                v-if="fields[idx].requiredWhenField || (Array.isArray(fields[idx].computedFormula) ? fields[idx].computedFormula.length : fields[idx].computedFormula) || (wizardSteps.length > 0 && !getRegistryEntry(fields[idx].type)?.isSpace && !getRegistryEntry(fields[idx].type)?.isFieldGroupEnd)"
+                v-if="fields[idx].requiredWhenField || fields[idx].readonlyWhenField || (Array.isArray(fields[idx].computedFormula) ? fields[idx].computedFormula.length : fields[idx].computedFormula) || (wizardSteps.length > 0 && !getRegistryEntry(fields[idx].type)?.isSpace && !getRegistryEntry(fields[idx].type)?.isFieldGroupEnd)"
                 class="flex items-center gap-1.5 flex-wrap mt-2 pt-1.5 border-t border-border/50"
               >
                 <span
@@ -1075,6 +1078,14 @@ async function generate() {
                   :title="`Required jika ${fields[idx].requiredWhenField} = ${fields[idx].requiredWhenValue}`"
                 >
                   Req. Kondisional
+                </span>
+                <span
+                  v-if="fields[idx].readonlyWhenField"
+                  class="text-[9px] font-medium px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 dark:bg-slate-700/40 dark:text-slate-300 flex items-center gap-0.5"
+                  :title="`Readonly jika ${fields[idx].readonlyWhenField} = ${fields[idx].readonlyWhenValue}`"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                  Readonly Kondisional
                 </span>
                 <span
                   v-if="Array.isArray(fields[idx].computedFormula) ? fields[idx].computedFormula.length : fields[idx].computedFormula"

@@ -406,6 +406,70 @@ const requiredWhenValueOptions = computed(() => {
   return []
 })
 
+// ── ReadonlyWhen: reuse same option logic ─────────────────────────────
+const readonlyWhenTarget = computed(() => {
+  if (!props.field.readonlyWhenField) return null
+  return props.allFields.find(f => f.field === props.field.readonlyWhenField) || null
+})
+
+const readonlyWhenTargetType = computed(() => {
+  const t = readonlyWhenTarget.value
+  if (!t) return 'none'
+  const e = getRegistryEntry(t.type)
+  if (e?.isSwitch || t.type === 'fieldbox') return 'boolean'
+  if (['select', 'select_creatable', 'popup'].includes(t.type) && t.sourceType === 'static') return 'static'
+  if (['select', 'select_creatable', 'popup'].includes(t.type) && t.sourceType === 'api' && t.apiUrl) return 'api'
+  if (t.type === 'radio' && Array.isArray(t.radioOptions) && t.radioOptions.length) return 'radio'
+  return 'text'
+})
+
+const apiReadonlyWhenOpts = ref([])
+const loadingReadonlyWhenOpts = ref(false)
+
+watch(
+  () => [props.field.readonlyWhenField, readonlyWhenTargetType.value],
+  async () => {
+    if (readonlyWhenTargetType.value !== 'api') {
+      apiReadonlyWhenOpts.value = []
+      return
+    }
+    const t = readonlyWhenTarget.value
+    if (!t?.apiUrl) return
+    loadingReadonlyWhenOpts.value = true
+    try {
+      const { get } = useApi()
+      let url = t.apiUrl
+      const qp = new URLSearchParams()
+      if (Array.isArray(t.apiParams)) {
+        t.apiParams.forEach(p => { if (p.key) qp.set(p.key, p.value || '') })
+      }
+      qp.set('no_pagination', 'true')
+      const qs = qp.toString()
+      if (qs) url += (url.includes('?') ? '&' : '?') + qs
+      const res = await get(url)
+      const rows = Array.isArray(res) ? res : (res?.data || res?.rows || [])
+      const vf = t.valueField || 'id'
+      const df = t.displayField || 'name'
+      apiReadonlyWhenOpts.value = rows.map(r => ({ value: String(r[vf]), label: r[df] || r[vf] }))
+    } catch (e) {
+      apiReadonlyWhenOpts.value = []
+    } finally {
+      loadingReadonlyWhenOpts.value = false
+    }
+  },
+  { immediate: true }
+)
+
+const readonlyWhenValueOptions = computed(() => {
+  const type = readonlyWhenTargetType.value
+  const t = readonlyWhenTarget.value
+  if (type === 'boolean') return [{ value: 'true', label: t?.labelTrue || 'Aktif' }, { value: 'false', label: t?.labelFalse || 'Tidak Aktif' }]
+  if (type === 'static') return (t?.staticOptions || []).map(o => ({ value: o.value, label: o.label || o.value }))
+  if (type === 'radio') return (t?.radioOptions || []).map(o => ({ value: o.value, label: o.label || o.value }))
+  if (type === 'api') return apiReadonlyWhenOpts.value
+  return []
+})
+
 const visiblePanelFields = computed(() => {
   if (!entry.value?.panelFields) return []
   return entry.value.panelFields.filter(pf => {
@@ -925,6 +989,53 @@ function addColumnItem(key) {
               placeholder="Ketik nilai..."
               class="w-full rounded bg-muted border border-border text-foreground px-3 py-1.5 focus:border-primary focus:ring-1 focus:ring-primary text-sm"
               @input="updateField('requiredWhenValue', $event.target.value)"
+            />
+          </template>
+        </div>
+        <p v-if="pf.hint" class="text-xs text-muted-foreground/70 mt-1">{{ pf.hint }}</p>
+      </div>
+
+      <!-- Readonly When Combo (conditional readonly) -->
+      <div v-else-if="pf.type === 'readonlyWhenCombo'">
+        <label class="block mb-1 font-medium text-muted-foreground">{{ pf.label }}</label>
+        <div class="flex flex-col gap-2">
+          <select
+            :value="field.readonlyWhenField || ''"
+            class="w-full rounded bg-muted border border-border text-foreground px-3 py-1.5 focus:border-primary focus:ring-1 focus:ring-primary text-sm"
+            @change="emit('update:field', { ...field, readonlyWhenField: $event.target.value, readonlyWhenValue: '' })"
+          >
+            <option value="">-- Tidak ada (selalu editable) --</option>
+            <option
+              v-for="f in allFields.filter(af => af.field && af.field !== field.field)"
+              :key="f.field"
+              :value="f.field"
+            >
+              {{ f.label || f.field }} ({{ f.field }})
+            </option>
+          </select>
+          <template v-if="field.readonlyWhenField">
+            <label class="block text-xs font-medium text-muted-foreground">Menjadi readonly jika bernilai</label>
+            <div v-if="loadingReadonlyWhenOpts" class="text-xs text-muted-foreground italic py-1">
+              Memuat opsi dari API...
+            </div>
+            <select
+              v-else-if="readonlyWhenValueOptions.length > 0"
+              :value="field.readonlyWhenValue || ''"
+              class="w-full rounded bg-muted border border-border text-foreground px-3 py-1.5 focus:border-primary focus:ring-1 focus:ring-primary text-sm"
+              @change="updateField('readonlyWhenValue', $event.target.value)"
+            >
+              <option value="">-- Pilih nilai --</option>
+              <option v-for="opt in readonlyWhenValueOptions" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
+              </option>
+            </select>
+            <input
+              v-else
+              type="text"
+              :value="field.readonlyWhenValue || ''"
+              placeholder="Ketik nilai..."
+              class="w-full rounded bg-muted border border-border text-foreground px-3 py-1.5 focus:border-primary focus:ring-1 focus:ring-primary text-sm"
+              @input="updateField('readonlyWhenValue', $event.target.value)"
             />
           </template>
         </div>

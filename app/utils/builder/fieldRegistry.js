@@ -154,6 +154,12 @@ const PANEL = {
     hint: 'Wajib diisi hanya kalau field lain bernilai tertentu. Kosongkan untuk selalu wajib.',
     hideWhen: (f) => !f.required || f.type === 'switch',
   },
+  // ── Conditional Readonly ──
+  readonlyWhen: {
+    key: 'readonlyWhenField', label: 'Readonly When (Kondisional)', type: 'readonlyWhenCombo',
+    hint: 'Field menjadi readonly jika field lain bernilai tertentu. Kosongkan jika tidak ada kondisi.',
+    hideWhen: (f) => f.readonly || f.type === 'switch',
+  },
   // ── Conditional Visibility ──
   visibleWhen: {
     key: 'visibleWhenField', label: 'Visible When (Kondisional)', type: 'visibleWhenCombo',
@@ -234,18 +240,18 @@ const PANEL = {
 }
 
 // ── Common panel sets ──────────────────────────────────────────────────────
-const COMMON_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.defaultValue, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.computedFormula, PANEL.minLength, PANEL.maxLength, PANEL.minValue, PANEL.maxValue, PANEL.pattern, PANEL.patternMessage]
+const COMMON_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.defaultValue, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.readonlyWhen, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.computedFormula, PANEL.minLength, PANEL.maxLength, PANEL.minValue, PANEL.maxValue, PANEL.pattern, PANEL.patternMessage]
 const SELECT_PANELS = [...COMMON_PANELS, PANEL.sourceType, PANEL.apiUrl, PANEL.apiParams, PANEL.dependsOnParam, PANEL.displayField, PANEL.valueField, PANEL.staticOptions]
 const SWITCH_PANELS = [PANEL.fieldName, PANEL.label, PANEL.defaultValue, PANEL.labelTrue, PANEL.labelFalse, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen]
 const BOX_PANELS = [PANEL.fieldName, PANEL.label, PANEL.defaultValue, PANEL.labelTrue, PANEL.labelFalse, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen]
-const DATE_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.dateDefaultValue, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen]
-const RADIO_PANELS = [PANEL.fieldName, PANEL.label, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.radioOptions]
-const POPUP_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.apiUrl, PANEL.apiParams, PANEL.dependsOnParam, PANEL.displayField, PANEL.valueField, PANEL.popupColumns, PANEL.searchFields, PANEL.dialogTitle]
-const CURRENCY_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.defaultValue, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.computedFormula, PANEL.currencyPrefix, PANEL.allowDecimal, PANEL.minValue, PANEL.maxValue]
+const DATE_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.dateDefaultValue, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.readonlyWhen, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen]
+const RADIO_PANELS = [PANEL.fieldName, PANEL.label, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.readonlyWhen, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.radioOptions]
+const POPUP_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.readonlyWhen, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.apiUrl, PANEL.apiParams, PANEL.dependsOnParam, PANEL.displayField, PANEL.valueField, PANEL.popupColumns, PANEL.searchFields, PANEL.dialogTitle]
+const CURRENCY_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.defaultValue, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.readonlyWhen, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.computedFormula, PANEL.currencyPrefix, PANEL.allowDecimal, PANEL.minValue, PANEL.maxValue]
 const SLIDER_PANELS = [PANEL.fieldName, PANEL.label, PANEL.defaultValue, PANEL.required, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.sliderMin, PANEL.sliderMax, PANEL.sliderStep, PANEL.sliderUnit]
 const SECTION_PANELS = [PANEL.sectionTitle, PANEL.visibleWhen]
-const UPLOAD_PANELS = [PANEL.fieldName, PANEL.label, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.uploadAccept, PANEL.maxSizeMB]
-const MULTI_UPLOAD_PANELS = [PANEL.fieldName, PANEL.label, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.uploadAccept, PANEL.maxSizeMB, PANEL.maxImages]
+const UPLOAD_PANELS = [PANEL.fieldName, PANEL.label, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.readonlyWhen, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.uploadAccept, PANEL.maxSizeMB]
+const MULTI_UPLOAD_PANELS = [PANEL.fieldName, PANEL.label, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.readonlyWhen, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.uploadAccept, PANEL.maxSizeMB, PANEL.maxImages]
 
 // ── Static options helpers ────────────────────────────────────────────────
 // Returns a JS array literal string for code generation (from array of {value, label, parentValue?})
@@ -268,9 +274,18 @@ function getDisabledAttr(f) {
   return ':disabled="loading || isReadOnly"'
 }
 
+function getReadonlyAttr(f) {
+  if (f.readonly) return ':readonly="true"'
+  if (f.readonlyWhenField && f.readonlyWhenValue !== undefined && f.readonlyWhenValue !== '') {
+    const val = String(f.readonlyWhenValue).replace(/'/g, "\\'")
+    return `:readonly="isReadOnly || String(values.${f.readonlyWhenField}) === '${val}'"`
+  }
+  return ':readonly="isReadOnly"'
+}
+
 function genFieldX(f) {
   const typeAttr = f.type !== 'text' ? `\n              type="${f.type}"` : ''
-  const readonlyAttr = f.readonly ? ':readonly="true"' : ':readonly="isReadOnly"'
+  const readonlyAttr = getReadonlyAttr(f)
   return `            <FieldX
               id="${f.field}"
               label="${f.label}"${typeAttr}
@@ -287,7 +302,7 @@ function genFieldX(f) {
 }
 
 function genTextarea(f) {
-  const readonlyAttr = f.readonly ? ':readonly="true"' : ':readonly="isReadOnly"'
+  const readonlyAttr = getReadonlyAttr(f)
   return `            <FieldTextarea
               id="${f.field}"
               label="${f.label}"
@@ -305,7 +320,7 @@ function genTextarea(f) {
 
 function genFieldNumber(f) {
   const fnType = f.type === 'fieldnumber_decimal' ? 'decimal' : 'integer'
-  const readonlyAttr = f.readonly ? ':readonly="true"' : ':readonly="isReadOnly"'
+  const readonlyAttr = getReadonlyAttr(f)
   return `            <FieldNumber
               id="${f.field}"
               label="${f.label}"
@@ -346,7 +361,7 @@ function genFieldBox(f) {
 }
 
 function genSelect(f, component = 'FieldSelect', allFields = []) {
-  const readonlyAttr = f.readonly ? ':readonly="true"' : ':readonly="isReadOnly"'
+  const readonlyAttr = getReadonlyAttr(f)
   const isStatic = f.sourceType === 'static'
   const vf = isStatic ? 'value' : (f.valueField || 'id')
   const df = isStatic ? 'label' : (f.displayField || 'name')
@@ -431,7 +446,7 @@ function genSelect(f, component = 'FieldSelect', allFields = []) {
 }
 
 function genFieldDate(f) {
-  const readonlyAttr = f.readonly ? ':readonly="true"' : ':readonly="isReadOnly"'
+  const readonlyAttr = getReadonlyAttr(f)
   return `            <FieldDate
               id="${f.field}"
               label="${f.label}"
@@ -449,7 +464,7 @@ function genFieldDate(f) {
 }
 
 function genFieldDateTime(f) {
-  const readonlyAttr = f.readonly ? ':readonly="true"' : ':readonly="isReadOnly"'
+  const readonlyAttr = getReadonlyAttr(f)
   return `            <FieldDateTime
               id="${f.field}"
               label="${f.label}"
@@ -467,7 +482,7 @@ function genFieldDateTime(f) {
 }
 
 function genPopup(f, allFields = []) {
-  const readonlyAttr = f.readonly ? ':readonly="true"' : ':readonly="isReadOnly"'
+  const readonlyAttr = getReadonlyAttr(f)
   const vf = f.valueField || 'id'
   const df = f.displayField || 'name'
 
@@ -544,7 +559,7 @@ function genPopup(f, allFields = []) {
 }
 
 function genFieldRadio(f) {
-  const readonlyAttr = f.readonly ? ':readonly="true"' : ':readonly="isReadOnly"'
+  const readonlyAttr = getReadonlyAttr(f)
   const optionsLiteral = parseStaticOptionsLiteral(f.staticOptions || [])
   return `            <FieldRadio
               id="${f.field}"
@@ -562,7 +577,7 @@ function genFieldRadio(f) {
 }
 
 function genFieldCurrency(f) {
-  const readonlyAttr = f.readonly ? ':readonly="true"' : ':readonly="isReadOnly"'
+  const readonlyAttr = getReadonlyAttr(f)
   const prefix = f.currencyPrefix || 'Rp'
   const allowDecimal = f.allowDecimal !== false
   return `            <FieldCurrency
@@ -616,7 +631,7 @@ function resolveAcceptString(arr) {
 }
 
 function genFieldUpload(f) {
-  const readonlyAttr = f.readonly ? ':readonly="true"' : ':readonly="isReadOnly"'
+  const readonlyAttr = getReadonlyAttr(f)
   const accept = resolveAcceptString(f.uploadAccept)
   const maxSizeMB = Number(f.maxSizeMB) || 5
   return `            <FieldUpload
@@ -635,7 +650,7 @@ function genFieldUpload(f) {
 }
 
 function genFieldMultiUpload(f) {
-  const readonlyAttr = f.readonly ? ':readonly="true"' : ':readonly="isReadOnly"'
+  const readonlyAttr = getReadonlyAttr(f)
   const accept = resolveAcceptString(f.uploadAccept)
   const maxImages = f.maxImages || 10
   const maxSizeMB = Number(f.maxSizeMB) || 5
@@ -1087,6 +1102,8 @@ export function createBlankField() {
     patternMessage: '',
     requiredWhenField: '',
     requiredWhenValue: '',
+    readonlyWhenField: '',
+    readonlyWhenValue: '',
     computedFormula: [],
     step: 0,
     ...allMetaKeys,
