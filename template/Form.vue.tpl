@@ -59,6 +59,7 @@ __WIZARD_STATE__
 __DETAIL_STATE__
 __DETAIL_SELECTED_IDS__
 __DETAIL_METHODS__
+__COMPUTED_WATCHERS__
 
 // ============================================================================
 // API ENDPOINT — sesuaikan jika endpoint berubah

@@ -70,6 +70,44 @@ function onPreviewChange(fieldName, value) {
     });
   }
   clearDescendants(fieldName);
+  // Recompute all formula fields that depend on this changed field
+  computeAllFormulas();
+}
+
+// ── Live formula computation for builder preview ───────────────────────────
+function computeAllFormulas() {
+  // Multi-pass to handle chained formulas (field A → field B → field C)
+  const formulaFields = fields.value.filter(f => {
+    const tokens = Array.isArray(f.computedFormula) ? f.computedFormula : []
+    return tokens.length && f.field
+  })
+  if (!formulaFields.length) return
+  // Up to N passes (N = number of formula fields) to resolve chains
+  for (let pass = 0; pass < formulaFields.length; pass++) {
+    let changed = false
+    formulaFields.forEach(f => {
+      const tokens = f.computedFormula
+      try {
+        const expr = tokens.map(t => {
+          if (t.type === 'field') return `(Number(${JSON.stringify(previewValues[t.value] ?? '')}) || 0)`
+          if (t.type === 'op') return t.value
+          if (t.type === 'number') return t.value
+          if (t.type === 'paren') return t.value
+          return ''
+        }).join(' ')
+        const result = new Function(`"use strict"; return (${expr})`)()
+        const val = isFinite(result) ? result : 0
+        const strVal = String(val)
+        if (previewValues[f.field] !== strVal) {
+          previewValues[f.field] = strVal
+          changed = true
+        }
+      } catch {
+        // formula invalid — skip
+      }
+    })
+    if (!changed) break // converged
+  }
 }
 
 // Detail tabs state
@@ -322,11 +360,211 @@ const PRESET_TEMPLATES = [
   {
     name: 'Harga & Diskon',
     icon: '💰',
+    desc: 'Harga − Diskon% → Total',
     fields: [
       { field: 'harga', label: 'Harga', type: 'currency', required: true, currencyPrefix: 'Rp', allowDecimal: true },
-      { field: 'diskon_persen', label: 'Diskon (%)', type: 'fieldnumber_decimal' },
-      { field: 'diskon_nominal', label: 'Diskon (Rp)', type: 'currency', currencyPrefix: 'Rp', allowDecimal: true },
-      { field: 'total', label: 'Total', type: 'currency', currencyPrefix: 'Rp', allowDecimal: true, readonly: true },
+      { field: 'diskon_persen', label: 'Diskon (%)', type: 'fieldnumber_decimal', defaultValue: '0' },
+      {
+        field: 'total', label: 'Total', type: 'currency', currencyPrefix: 'Rp', allowDecimal: true, readonly: true,
+        computedFormula: [
+          { type: 'field', value: 'harga' },
+          { type: 'op', value: '-' },
+          { type: 'paren', value: '(' },
+          { type: 'field', value: 'harga' },
+          { type: 'op', value: '*' },
+          { type: 'field', value: 'diskon_persen' },
+          { type: 'op', value: '/' },
+          { type: 'number', value: '100' },
+          { type: 'paren', value: ')' },
+        ],
+      },
+    ],
+  },
+  {
+    name: 'Qty × Harga',
+    icon: '🛒',
+    desc: 'Qty × Harga Satuan → Subtotal',
+    fields: [
+      { field: 'qty', label: 'Qty', type: 'fieldnumber', required: true },
+      { field: 'harga_satuan', label: 'Harga Satuan', type: 'currency', required: true, currencyPrefix: 'Rp', allowDecimal: true },
+      {
+        field: 'subtotal', label: 'Subtotal', type: 'currency', currencyPrefix: 'Rp', allowDecimal: true, readonly: true,
+        computedFormula: [
+          { type: 'field', value: 'qty' },
+          { type: 'op', value: '*' },
+          { type: 'field', value: 'harga_satuan' },
+        ],
+      },
+    ],
+  },
+  {
+    name: 'Invoice Lengkap',
+    icon: '🧾',
+    desc: 'Qty × Harga − Diskon% + PPN 11%',
+    fields: [
+      { field: 'qty', label: 'Qty', type: 'fieldnumber', required: true },
+      { field: 'harga_satuan', label: 'Harga Satuan', type: 'currency', required: true, currencyPrefix: 'Rp', allowDecimal: true },
+      {
+        field: 'subtotal', label: 'Subtotal', type: 'currency', currencyPrefix: 'Rp', allowDecimal: true, readonly: true,
+        computedFormula: [
+          { type: 'field', value: 'qty' },
+          { type: 'op', value: '*' },
+          { type: 'field', value: 'harga_satuan' },
+        ],
+      },
+      { field: 'diskon_persen', label: 'Diskon (%)', type: 'fieldnumber_decimal', defaultValue: '0' },
+      {
+        field: 'after_diskon', label: 'Setelah Diskon', type: 'currency', currencyPrefix: 'Rp', allowDecimal: true, readonly: true,
+        computedFormula: [
+          { type: 'field', value: 'subtotal' },
+          { type: 'op', value: '-' },
+          { type: 'paren', value: '(' },
+          { type: 'field', value: 'subtotal' },
+          { type: 'op', value: '*' },
+          { type: 'field', value: 'diskon_persen' },
+          { type: 'op', value: '/' },
+          { type: 'number', value: '100' },
+          { type: 'paren', value: ')' },
+        ],
+      },
+      {
+        field: 'ppn', label: 'PPN (11%)', type: 'currency', currencyPrefix: 'Rp', allowDecimal: true, readonly: true,
+        computedFormula: [
+          { type: 'field', value: 'after_diskon' },
+          { type: 'op', value: '*' },
+          { type: 'number', value: '11' },
+          { type: 'op', value: '/' },
+          { type: 'number', value: '100' },
+        ],
+      },
+      {
+        field: 'grand_total', label: 'Grand Total', type: 'currency', currencyPrefix: 'Rp', allowDecimal: true, readonly: true,
+        computedFormula: [
+          { type: 'field', value: 'after_diskon' },
+          { type: 'op', value: '+' },
+          { type: 'field', value: 'ppn' },
+        ],
+      },
+    ],
+  },
+  {
+    name: 'Margin & Profit',
+    icon: '📊',
+    desc: 'Harga Jual − Harga Beli → Profit & Margin%',
+    fields: [
+      { field: 'harga_beli', label: 'Harga Beli', type: 'currency', required: true, currencyPrefix: 'Rp', allowDecimal: true },
+      { field: 'harga_jual', label: 'Harga Jual', type: 'currency', required: true, currencyPrefix: 'Rp', allowDecimal: true },
+      {
+        field: 'profit', label: 'Profit', type: 'currency', currencyPrefix: 'Rp', allowDecimal: true, readonly: true,
+        computedFormula: [
+          { type: 'field', value: 'harga_jual' },
+          { type: 'op', value: '-' },
+          { type: 'field', value: 'harga_beli' },
+        ],
+      },
+      {
+        field: 'margin_persen', label: 'Margin (%)', type: 'fieldnumber_decimal', readonly: true,
+        computedFormula: [
+          { type: 'paren', value: '(' },
+          { type: 'field', value: 'profit' },
+          { type: 'op', value: '/' },
+          { type: 'field', value: 'harga_jual' },
+          { type: 'paren', value: ')' },
+          { type: 'op', value: '*' },
+          { type: 'number', value: '100' },
+        ],
+      },
+    ],
+  },
+  {
+    name: 'Gaji Karyawan',
+    icon: '👤',
+    desc: 'Gaji Pokok + Tunjangan − Potongan → Take Home Pay',
+    fields: [
+      { field: 'gaji_pokok', label: 'Gaji Pokok', type: 'currency', required: true, currencyPrefix: 'Rp', allowDecimal: true },
+      { field: 'tunjangan', label: 'Tunjangan', type: 'currency', currencyPrefix: 'Rp', allowDecimal: true, defaultValue: '0' },
+      { field: 'potongan', label: 'Potongan', type: 'currency', currencyPrefix: 'Rp', allowDecimal: true, defaultValue: '0' },
+      {
+        field: 'take_home_pay', label: 'Take Home Pay', type: 'currency', currencyPrefix: 'Rp', allowDecimal: true, readonly: true,
+        computedFormula: [
+          { type: 'field', value: 'gaji_pokok' },
+          { type: 'op', value: '+' },
+          { type: 'field', value: 'tunjangan' },
+          { type: 'op', value: '-' },
+          { type: 'field', value: 'potongan' },
+        ],
+      },
+    ],
+  },
+  {
+    name: 'Luas & Volume',
+    icon: '📐',
+    desc: 'Panjang × Lebar → Luas, × Tinggi → Volume',
+    fields: [
+      { field: 'panjang', label: 'Panjang', type: 'fieldnumber_decimal', required: true },
+      { field: 'lebar', label: 'Lebar', type: 'fieldnumber_decimal', required: true },
+      {
+        field: 'luas', label: 'Luas', type: 'fieldnumber_decimal', readonly: true,
+        computedFormula: [
+          { type: 'field', value: 'panjang' },
+          { type: 'op', value: '*' },
+          { type: 'field', value: 'lebar' },
+        ],
+      },
+      { field: 'tinggi', label: 'Tinggi', type: 'fieldnumber_decimal' },
+      {
+        field: 'volume', label: 'Volume', type: 'fieldnumber_decimal', readonly: true,
+        computedFormula: [
+          { type: 'field', value: 'panjang' },
+          { type: 'op', value: '*' },
+          { type: 'field', value: 'lebar' },
+          { type: 'op', value: '*' },
+          { type: 'field', value: 'tinggi' },
+        ],
+      },
+    ],
+  },
+  {
+    name: 'Pinjaman Cicilan',
+    icon: '🏧',
+    desc: 'Total Pinjaman ÷ Tenor → Cicilan/Bulan',
+    fields: [
+      { field: 'total_pinjaman', label: 'Total Pinjaman', type: 'currency', required: true, currencyPrefix: 'Rp', allowDecimal: true },
+      { field: 'tenor_bulan', label: 'Tenor (Bulan)', type: 'fieldnumber', required: true },
+      {
+        field: 'cicilan_per_bulan', label: 'Cicilan / Bulan', type: 'currency', currencyPrefix: 'Rp', allowDecimal: true, readonly: true,
+        computedFormula: [
+          { type: 'field', value: 'total_pinjaman' },
+          { type: 'op', value: '/' },
+          { type: 'field', value: 'tenor_bulan' },
+        ],
+      },
+    ],
+  },
+  {
+    name: 'Berat & Ongkir',
+    icon: '📦',
+    desc: 'Qty × Berat Satuan → Total Berat, × Tarif → Ongkir',
+    fields: [
+      { field: 'qty_brg', label: 'Qty Barang', type: 'fieldnumber', required: true },
+      { field: 'berat_satuan', label: 'Berat / pcs (kg)', type: 'fieldnumber_decimal', required: true },
+      {
+        field: 'total_berat', label: 'Total Berat (kg)', type: 'fieldnumber_decimal', readonly: true,
+        computedFormula: [
+          { type: 'field', value: 'qty_brg' },
+          { type: 'op', value: '*' },
+          { type: 'field', value: 'berat_satuan' },
+        ],
+      },
+      { field: 'tarif_per_kg', label: 'Tarif / kg', type: 'currency', currencyPrefix: 'Rp', allowDecimal: true, required: true },
+      {
+        field: 'ongkir', label: 'Ongkir', type: 'currency', currencyPrefix: 'Rp', allowDecimal: true, readonly: true,
+        computedFormula: [
+          { type: 'field', value: 'total_berat' },
+          { type: 'op', value: '*' },
+          { type: 'field', value: 'tarif_per_kg' },
+        ],
+      },
     ],
   },
 ];
@@ -510,6 +748,7 @@ function exportConfig() {
     details: details.value,
     landingConfig: landingConfig.value,
     columnLayout: columnLayout.value,
+    wizardSteps: wizardSteps.value,
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -536,6 +775,7 @@ function importConfig() {
       if (Array.isArray(data.details)) details.value = data.details;
       if (Array.isArray(data.landingConfig)) landingConfig.value = data.landingConfig;
       if (data.columnLayout) columnLayout.value = data.columnLayout;
+      if (Array.isArray(data.wizardSteps)) wizardSteps.value = data.wizardSteps;
       toast.success(`Config imported: ${data.fields?.length || 0} fields`);
     } catch (err) {
       toast.error('Gagal import: file JSON tidak valid');
@@ -1149,19 +1389,25 @@ async function generate() {
               <Button variant="outline" size="sm" class="h-8 gap-1 text-xs" @click="showPresetMenu = !showPresetMenu">
                 <Package class="h-3.5 w-3.5" /> Preset
               </Button>
-              <div v-if="showPresetMenu" class="absolute top-full left-0 mt-1 z-50 bg-card border border-border rounded-lg shadow-lg p-1 min-w-[200px]">
-                <button
-                  v-for="preset in PRESET_TEMPLATES"
-                  :key="preset.name"
-                  class="w-full text-left px-3 py-2 rounded-md text-sm hover:bg-accent flex items-center gap-2"
-                  @click="addPreset(preset)"
-                >
-                  <span>{{ preset.icon }}</span>
-                  <div>
-                    <div class="font-medium text-xs">{{ preset.name }}</div>
-                    <div class="text-[10px] text-muted-foreground">{{ preset.fields.length }} field</div>
-                  </div>
-                </button>
+              <div v-if="showPresetMenu" class="absolute top-full left-0 mt-1 z-50 bg-card border border-border rounded-lg shadow-lg p-1 min-w-[260px] max-h-[420px] overflow-y-auto">
+                <div v-for="(group, gIdx) in [
+                  { title: 'Data', items: PRESET_TEMPLATES.filter(p => !p.desc) },
+                  { title: 'Perhitungan', items: PRESET_TEMPLATES.filter(p => p.desc) },
+                ].filter(g => g.items.length)" :key="gIdx">
+                  <div class="px-3 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide" :class="gIdx > 0 ? 'border-t border-border mt-1 pt-2' : ''">{{ group.title }}</div>
+                  <button
+                    v-for="preset in group.items"
+                    :key="preset.name"
+                    class="w-full text-left px-3 py-2 rounded-md text-sm hover:bg-accent flex items-center gap-2"
+                    @click="addPreset(preset)"
+                  >
+                    <span class="text-base">{{ preset.icon }}</span>
+                    <div class="min-w-0">
+                      <div class="font-medium text-xs">{{ preset.name }}</div>
+                      <div class="text-[10px] text-muted-foreground truncate">{{ preset.desc || preset.fields.length + ' field' }}</div>
+                    </div>
+                  </button>
+                </div>
               </div>
             </div>
             <!-- Bulk toggle -->
@@ -1198,7 +1444,7 @@ async function generate() {
               @dragleave="onDragLeave"
               @drop="onDrop(idx, $event)"
               @dragend="onDragEnd"
-              class="relative group rounded-lg pt-4 pb-2 px-2 transition-all"
+              class="relative group rounded-lg pt-4 pb-3 px-3 transition-all"
               :class="[
                 fields[idx].fullWidth || getRegistryEntry(fields[idx].type)?.isSection || getRegistryEntry(fields[idx].type)?.isFieldGroup || getRegistryEntry(fields[idx].type)?.isFieldGroupEnd ? colSpanFull : '',
                 panelIndex === idx
@@ -1296,25 +1542,13 @@ async function generate() {
               </span>
 
               <!-- RequiredWhen badge -->
-              <span
-                v-if="fields[idx].requiredWhenField"
-                class="absolute bottom-0.5 left-2 text-[9px] font-medium px-1 py-0.5 rounded bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400"
-                :title="`Required jika ${fields[idx].requiredWhenField} = ${fields[idx].requiredWhenValue}`"
-              >
-                Req. Kondisional
-              </span>
+              <!-- (moved to footer row below preview) -->
+
+              <!-- Computed formula badge -->
+              <!-- (moved to footer row below preview) -->
 
               <!-- Wizard step selector -->
-              <div v-if="wizardSteps.length > 0 && !getRegistryEntry(fields[idx].type)?.isSpace && !getRegistryEntry(fields[idx].type)?.isFieldGroupEnd" class="absolute bottom-0.5 right-2">
-                <select
-                  :value="fields[idx].step || 0"
-                  class="text-[10px] bg-muted border border-border rounded px-1 py-0.5 focus:ring-0 focus:border-primary cursor-pointer"
-                  @click.stop
-                  @change.stop="fields[idx].step = Number($event.target.value)"
-                >
-                  <option v-for="(step, si) in wizardSteps" :key="si" :value="si">S{{ si + 1 }}: {{ step.label }}</option>
-                </select>
-              </div>
+              <!-- (moved to footer row below preview) -->
 
               <!-- Dynamic preview from registry -->
               <BuilderFieldPreview
@@ -1322,6 +1556,37 @@ async function generate() {
                 :previewValues="previewValues"
                 @previewChange="(fieldName, val) => onPreviewChange(fieldName, val)"
               />
+
+              <!-- Footer row: badges + wizard step (below preview, normal flow) -->
+              <div
+                v-if="fields[idx].requiredWhenField || (Array.isArray(fields[idx].computedFormula) ? fields[idx].computedFormula.length : fields[idx].computedFormula) || (wizardSteps.length > 0 && !getRegistryEntry(fields[idx].type)?.isSpace && !getRegistryEntry(fields[idx].type)?.isFieldGroupEnd)"
+                class="flex items-center gap-1.5 flex-wrap mt-2 pt-1.5 border-t border-border/50"
+              >
+                <span
+                  v-if="fields[idx].requiredWhenField"
+                  class="text-[9px] font-medium px-1.5 py-0.5 rounded bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400"
+                  :title="`Required jika ${fields[idx].requiredWhenField} = ${fields[idx].requiredWhenValue}`"
+                >
+                  Req. Kondisional
+                </span>
+                <span
+                  v-if="Array.isArray(fields[idx].computedFormula) ? fields[idx].computedFormula.length : fields[idx].computedFormula"
+                  class="text-[9px] font-medium px-1.5 py-0.5 rounded bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400 font-mono truncate max-w-[60%]"
+                  :title="`Formula: ${Array.isArray(fields[idx].computedFormula) ? fields[idx].computedFormula.map(t => t.value).join(' ') : fields[idx].computedFormula}`"
+                >
+                  ƒ {{ Array.isArray(fields[idx].computedFormula) ? fields[idx].computedFormula.map(t => t.type === 'field' ? t.value : (t.value === '*' ? '×' : t.value === '/' ? '÷' : t.value)).join(' ') : fields[idx].computedFormula }}
+                </span>
+                <div class="ml-auto" v-if="wizardSteps.length > 0 && !getRegistryEntry(fields[idx].type)?.isSpace && !getRegistryEntry(fields[idx].type)?.isFieldGroupEnd">
+                  <select
+                    :value="fields[idx].step || 0"
+                    class="text-[10px] bg-muted border border-border rounded px-1.5 py-0.5 focus:ring-0 focus:border-primary cursor-pointer"
+                    @click.stop
+                    @change.stop="fields[idx].step = Number($event.target.value)"
+                  >
+                    <option v-for="(step, si) in wizardSteps" :key="si" :value="si">S{{ si + 1 }}: {{ step.label }}</option>
+                  </select>
+                </div>
+              </div>
 
               <!-- Add field inside group button -->
               <div
