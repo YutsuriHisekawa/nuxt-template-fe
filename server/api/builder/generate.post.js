@@ -416,8 +416,8 @@ function buildDetailMethods(details) {
       // ── Add To List mode: push empty row ──
       const addName = i === 0 ? 'addDetailRow' : `addDetailRow${i + 1}`
       const fieldDefaults = detailFields.map(df => {
-        if (df.type === 'checkbox') return `    ${df.key}: ${df.default !== false},`
-        if (['number', 'fieldnumber', 'fieldnumber_decimal'].includes(df.type)) return `    ${df.key}: ${df.default || 0},`
+        if (df.type === 'checkbox' || df.type === 'status') return `    ${df.key}: ${df.default !== false},`
+        if (['number', 'fieldnumber', 'fieldnumber_decimal', 'currency', 'slider'].includes(df.type)) return `    ${df.key}: ${df.default || 0},`
         return `    ${df.key}: "${df.default || ''}",`
       }).join('\n')
 
@@ -440,8 +440,8 @@ const ${removeName} = (index) => {
       const uk = d.uniqueKey || 'id'
 
       const fieldDefaults = detailFields.map(df => {
-        if (df.type === 'checkbox') return `      ${df.key}: ${df.default !== false},`
-        if (['number', 'fieldnumber', 'fieldnumber_decimal'].includes(df.type)) return `      ${df.key}: ${df.default || 0},`
+        if (df.type === 'checkbox' || df.type === 'status') return `      ${df.key}: ${df.default !== false},`
+        if (['number', 'fieldnumber', 'fieldnumber_decimal', 'currency', 'slider'].includes(df.type)) return `      ${df.key}: ${df.default || 0},`
         return `      ${df.key}: "${df.default || ''}",`
       }).join('\n')
 
@@ -494,8 +494,8 @@ function buildDetailLoadData(details) {
     if (d.mode === 'add_to_list') {
       // ── Add To List: load all fields directly ──
       const fieldMappings = detailFields.map(df => {
-        if (df.type === 'checkbox') return `        ${df.key}: detail.${df.key} !== undefined ? detail.${df.key} : ${df.default !== false},`
-        if (['number', 'fieldnumber', 'fieldnumber_decimal'].includes(df.type)) return `        ${df.key}: detail.${df.key} !== undefined ? detail.${df.key} : ${df.default || 0},`
+        if (df.type === 'checkbox' || df.type === 'status') return `        ${df.key}: detail.${df.key} !== undefined ? detail.${df.key} : ${df.default !== false},`
+        if (['number', 'fieldnumber', 'fieldnumber_decimal', 'currency', 'slider'].includes(df.type)) return `        ${df.key}: detail.${df.key} !== undefined ? detail.${df.key} : ${df.default || 0},`
         return `        ${df.key}: detail.${df.key} || "${df.default || ''}",`
       }).join('\n')
 
@@ -511,8 +511,8 @@ ${fieldMappings}
       const fk = d.foreignKey || 'id'
       const fkDisplay = d.foreignDisplay || ''
       const fieldMappings = detailFields.map(df => {
-        if (df.type === 'checkbox') return `        ${df.key}: detail.${df.key} !== undefined ? detail.${df.key} : ${df.default !== false},`
-        if (['number', 'fieldnumber', 'fieldnumber_decimal'].includes(df.type)) return `        ${df.key}: detail.${df.key} !== undefined ? detail.${df.key} : ${df.default || 0},`
+        if (df.type === 'checkbox' || df.type === 'status') return `        ${df.key}: detail.${df.key} !== undefined ? detail.${df.key} : ${df.default !== false},`
+        if (['number', 'fieldnumber', 'fieldnumber_decimal', 'currency', 'slider'].includes(df.type)) return `        ${df.key}: detail.${df.key} !== undefined ? detail.${df.key} : ${df.default || 0},`
         return `        ${df.key}: detail.${df.key} || "${df.default || ''}",`
       }).join('\n')
 
@@ -540,8 +540,8 @@ function buildDetailPayload(details) {
     if (d.mode === 'add_to_list') {
       // ── Add To List: only detail fields, no FK ──
       const fieldMappings = detailFields.map(df => {
-        if (df.type === 'checkbox') return `        ${df.key}: d.${df.key} !== undefined ? d.${df.key} : ${df.default !== false},`
-        if (['number', 'fieldnumber', 'fieldnumber_decimal'].includes(df.type)) return `        ${df.key}: d.${df.key} !== undefined ? d.${df.key} : ${df.default || 0},`
+        if (df.type === 'checkbox' || df.type === 'status') return `        ${df.key}: d.${df.key} !== undefined ? d.${df.key} : ${df.default !== false},`
+        if (['number', 'fieldnumber', 'fieldnumber_decimal', 'currency', 'slider'].includes(df.type)) return `        ${df.key}: d.${df.key} !== undefined ? d.${df.key} : ${df.default || 0},`
         return `        ${df.key}: d.${df.key}?.toString().trim() || null,`
       }).join('\n')
 
@@ -552,8 +552,8 @@ ${fieldMappings}
       // ── ButtonMultiSelect: FK + detail fields ──
       const fk = d.foreignKey || 'id'
       const fieldMappings = detailFields.map(df => {
-        if (df.type === 'checkbox') return `        ${df.key}: d.${df.key} !== undefined ? d.${df.key} : ${df.default !== false},`
-        if (['number', 'fieldnumber', 'fieldnumber_decimal'].includes(df.type)) return `        ${df.key}: d.${df.key} !== undefined ? d.${df.key} : ${df.default || 0},`
+        if (df.type === 'checkbox' || df.type === 'status') return `        ${df.key}: d.${df.key} !== undefined ? d.${df.key} : ${df.default !== false},`
+        if (['number', 'fieldnumber', 'fieldnumber_decimal', 'currency', 'slider'].includes(df.type)) return `        ${df.key}: d.${df.key} !== undefined ? d.${df.key} : ${df.default || 0},`
         return `        ${df.key}: d.${df.key}?.toString().trim() || null,`
       }).join('\n')
 
@@ -616,14 +616,114 @@ function buildDetailFieldTd(df) {
                       </td>`
   }
   if (df.type === 'select') {
+    const src = df.sourceType || 'api'
+    if (src === 'api') {
+      return `                      <td class="px-2 py-2">
+                        <FieldSelect
+                          v-if="!isReadOnly"
+                          :value="detail.${df.key}"
+                          @input="(v) => (detail.${df.key} = v)"
+                          apiUrl="${df.apiUrl || ''}"
+                          displayField="${df.displayField || 'name'}"
+                          valueField="${df.valueField || 'id'}"
+                          class="w-full"
+                        />
+                        <span v-else>{{ detail.${df.key} || '-' }}</span>
+                      </td>`
+    }
+    const opts = (df.staticOptions || []).map(o => `{ value: '${o.value}', label: '${o.label}' }`).join(', ')
     return `                      <td class="px-2 py-2">
                         <FieldSelect
+                          v-if="!isReadOnly"
+                          :value="detail.${df.key}"
+                          @input="(v) => (detail.${df.key} = v)"
+                          sourceType="static"
+                          :staticOptions="[${opts}]"
+                          class="w-full"
+                        />
+                        <span v-else>{{ detail.${df.key} || '-' }}</span>
+                      </td>`
+  }
+  if (df.type === 'popup') {
+    return `                      <td class="px-2 py-2">
+                        <FieldPopUp
+                          v-if="!isReadOnly"
+                          :value="detail.${df.key}"
+                          @input="(v) => (detail.${df.key} = v)"
+                          apiUrl="${df.apiUrl || ''}"
+                          displayField="${df.displayField || 'name'}"
+                          valueField="${df.valueField || 'id'}"
+                          class="w-full"
+                        />
+                        <span v-else>{{ detail.${df.key} || '-' }}</span>
+                      </td>`
+  }
+  if (df.type === 'status') {
+    return `                      <td class="px-2 py-2 text-center">
+                        <FieldStatus
+                          v-if="!isReadOnly"
+                          v-model="detail.${df.key}"
+                          active-text="${df.labelTrue || 'Aktif'}"
+                          inactive-text="${df.labelFalse || 'Tidak Aktif'}"
+                        />
+                        <span v-else :class="detail.${df.key} ? 'text-green-600 font-semibold' : 'text-red-500'">{{ detail.${df.key} ? '${df.labelTrue || 'Aktif'}' : '${df.labelFalse || 'Tidak Aktif'}' }}</span>
+                      </td>`
+  }
+  if (df.type === 'date') {
+    return `                      <td class="px-2 py-2">
+                        <FieldDate
                           v-if="!isReadOnly"
                           :value="detail.${df.key}"
                           @input="(v) => (detail.${df.key} = v)"
                           class="w-full"
                         />
                         <span v-else>{{ detail.${df.key} || '-' }}</span>
+                      </td>`
+  }
+  if (df.type === 'datetime') {
+    return `                      <td class="px-2 py-2">
+                        <FieldDateTime
+                          v-if="!isReadOnly"
+                          :value="detail.${df.key}"
+                          @input="(v) => (detail.${df.key} = v)"
+                          class="w-full"
+                        />
+                        <span v-else>{{ detail.${df.key} || '-' }}</span>
+                      </td>`
+  }
+  if (df.type === 'radio') {
+    const opts = (df.radioOptions || []).map(o => `{ value: '${o.value}', label: '${o.label}' }`).join(', ')
+    return `                      <td class="px-2 py-2">
+                        <FieldRadio
+                          v-if="!isReadOnly"
+                          :value="detail.${df.key}"
+                          @input="(v) => (detail.${df.key} = v)"
+                          :options="[${opts}]"
+                          class="w-full"
+                        />
+                        <span v-else>{{ detail.${df.key} || '-' }}</span>
+                      </td>`
+  }
+  if (df.type === 'currency') {
+    return `                      <td class="px-2 py-2">
+                        <FieldCurrency
+                          v-if="!isReadOnly"
+                          :value="detail.${df.key}"
+                          @input="(v) => (detail.${df.key} = v)"
+                          class="w-full"
+                        />
+                        <span v-else>{{ Number(detail.${df.key} || 0).toLocaleString('id-ID') }}</span>
+                      </td>`
+  }
+  if (df.type === 'slider') {
+    return `                      <td class="px-2 py-2">
+                        <FieldSlider
+                          v-if="!isReadOnly"
+                          :value="detail.${df.key}"
+                          @input="(v) => (detail.${df.key} = v)"
+                          class="w-full"
+                        />
+                        <span v-else>{{ detail.${df.key} }}</span>
                       </td>`
   }
   // Default: FieldX text
@@ -887,6 +987,9 @@ export default defineEventHandler(async (event) => {
   const hasSwitch = fields.some(f => f.type === 'switch')
   const switchField = fields.find(f => f.type === 'switch')
 
+  // Detect if module has m_unit_bisnis_id field (for auto unit bisnis filtering)
+  const hasUnitBisnis = fields.some(f => f.field === 'm_unit_bisnis_id')
+
   const replacements = {
     __READABLE_NAME__: readableName,
     __READABLE_NAME_LOWER__: readableName.toLowerCase(),
@@ -918,6 +1021,62 @@ export default defineEventHandler(async (event) => {
     __DETAIL_PAYLOAD__: buildDetailPayload(details),
     __DETAIL_TEMPLATE__: buildDetailTemplate(details),
     __HAS_SWITCH_COLUMN__: hasSwitch ? `\n\t\t{\n\t\t\theaderName: "Aktif",\n\t\t\tfield: "${switchField?.field || 'is_active'}",\n\t\t\tminWidth: 110,\n\t\t\tcellRenderer: (params) => {\n\t\t\t\tconst isActive = checkActive(params?.value)\n\t\t\t\tconst label = isActive ? "${switchField?.labelTrue || 'Aktif'}" : "${switchField?.labelFalse || 'Nonaktif'}"\n\t\t\t\tconst cls = isActive ? "font-bold text-green-600" : "font-bold text-red-600"\n\t\t\t\treturn \`<span class="\${cls}">\${label}</span>\`\n\t\t\t},\n\t\t},` : '',
+
+    // ── Unit Bisnis auto-filter & auto-fill ────────────────────────────
+    __UNIT_BISNIS_LANDING_SETUP__: hasUnitBisnis
+      ? `const authStore = useAuthStore()
+
+// Unit bisnis user login (non-super-admin hanya lihat data unit bisnis sendiri)
+const userCompanyId = computed(() => {
+\tif (authStore.isSuperAdmin) return null
+\tconst ud = authStore.userDefault
+\tif (!ud) return null
+\treturn ud.karyawan?.m_unit_bisnis_id
+\t\t|| ud.user_details?.find(d => d.is_primary && d.is_active)?.m_respo?.m_unit_bisnis_id
+\t\t|| ud.user_details?.find(d => d.is_active)?.m_respo?.m_unit_bisnis_id
+\t\t|| null
+})
+`
+      : '',
+    __UNIT_BISNIS_LANDING_FILTER__: hasUnitBisnis
+      ? `\t\t\t\tif (userCompanyId.value) {
+\t\t\t\t\tparams.set("filter_column_m_unit_bisnis_id", userCompanyId.value)
+\t\t\t\t\tparams.set("filter_operator_m_unit_bisnis_id", "=")
+\t\t\t\t}
+`
+      : '',
+    __UNIT_BISNIS_FORM_SETUP__: hasUnitBisnis
+      ? `const authStore = useAuthStore();
+
+// ============================================================================
+// AUTH — Cek tipe user (Super Admin atau bukan)
+// ============================================================================
+const isSuperAdmin = computed(() => authStore.isSuperAdmin);
+
+// Nama company untuk display di field readonly (non-super-admin)
+const companyNameDisplay = computed(() => {
+  const ud = authStore.userDefault;
+  if (!ud) return '-';
+  if (ud.karyawan?.m_unit_bisni?.nama_comp) return ud.karyawan.m_unit_bisni.nama_comp;
+  const primary = ud.user_details?.find((d) => d.is_primary && d.is_active) || ud.user_details?.find((d) => d.is_active);
+  return primary?.m_respo?.unit_bisnis?.nama_comp || '-';
+});
+`
+      : '',
+    __UNIT_BISNIS_FORM_AUTOFILL__: hasUnitBisnis
+      ? `  // Auto-fill unit bisnis untuk non-super-admin
+  if (!isSuperAdmin.value) {
+    const ud = authStore.userDefault;
+    if (ud) {
+      const companyId = ud.karyawan?.m_unit_bisnis_id
+        || ud.user_details?.find((d) => d.is_primary && d.is_active)?.m_respo?.m_unit_bisnis_id
+        || ud.user_details?.find((d) => d.is_active)?.m_respo?.m_unit_bisnis_id;
+      if (companyId) values.m_unit_bisnis_id = companyId;
+    }
+  }
+
+`
+      : '',
   }
 
   // ── Apply replacements ─────────────────────────────────────────────────
@@ -926,6 +1085,31 @@ export default defineEventHandler(async (event) => {
   for (const [token, value] of Object.entries(replacements)) {
     formContent = formContent.replaceAll(token, value)
     landingContent = landingContent.replaceAll(token, value)
+  }
+
+  // ── Post-process: wrap m_unit_bisnis_id FieldSelect with v-if/v-else ──
+  if (hasUnitBisnis) {
+    // Find the generated FieldSelect for m_unit_bisnis_id and wrap it
+    const ubFieldRegex = /(<(?:FieldSelect|FieldSelectCreatable)\s[^>]*id="m_unit_bisnis_id"[^/]*\/>)/s
+    const match = formContent.match(ubFieldRegex)
+    if (match) {
+      const original = match[1]
+      const wrapped = original.replace(
+        /(<(?:FieldSelect|FieldSelectCreatable))/,
+        '$1\n              v-if="isSuperAdmin"'
+      )
+      const fieldXFallback = `            <FieldX
+              v-else
+              id="m_unit_bisnis_id_display"
+              label="Unit Bisnis"
+              :value="companyNameDisplay"
+              :disabled="true"
+              :readonly="true"
+              hints="Unit bisnis dari akun Anda"
+              class="w-full"
+            />`
+      formContent = formContent.replace(original, wrapped + '\n\n' + fieldXFallback)
+    }
   }
 
   // ── Write files ────────────────────────────────────────────────────────

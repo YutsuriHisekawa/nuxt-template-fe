@@ -43,7 +43,7 @@ const checkActive = (val) => val === true || val === 1 || val === "1" || val ===
 
 const landing = reactive({
 	api: {
-		url: "/api/dynamic/m_prefix",
+		url: "/api/dynamic/m_respo",
 		async fetch({ page = 1, pageSize = 25, search = '', searchfield = '' } = {}) {
 			loading.value = true
 			errorMessage.value = ""
@@ -136,20 +136,9 @@ const landing = reactive({
 		},
 	],
 	columns: [
-		{ headerName: "Nama Prefix", field: "nama_prefx", minWidth: 140 },
-		{ headerName: "Value", field: "value", minWidth: 140 },
-		{ headerName: "Tipe Prefix", field: "tipe_prefix", minWidth: 140 },
-		{
-			headerName: "Aktif",
-			field: "is_active",
-			minWidth: 110,
-			cellRenderer: (params) => {
-				const isActive = checkActive(params?.value)
-				const label = isActive ? "Aktif" : "Tidak Aktif"
-				const cls = isActive ? "font-bold text-green-600" : "font-bold text-red-600"
-				return `<span class="${cls}">${label}</span>`
-			},
-		},
+		{ headerName: "Unit Bisnis", field: "unit_bisnis.nama_comp", minWidth: 140 },
+		{ headerName: "Nama Respo", field: "nama", minWidth: 140 },
+		{ headerName: "Catatan", field: "catatan", minWidth: 140 },
 	],
 })
 
@@ -175,8 +164,8 @@ const actionIcons = { trash: Trash2, eye: Eye, edit: Edit, copy: Copy }
 	<div class="space-y-4 pt-5">
 		<!-- Page Header -->
 		<div class="px-1">
-			<h1 class="text-xl sm:text-2xl font-bold tracking-tight">Master Prefix</h1>
-			<p class="text-xs sm:text-sm text-muted-foreground">Kelola master prefix aplikasi</p>
+			<h1 class="text-xl sm:text-2xl font-bold tracking-tight">Master Respo</h1>
+			<p class="text-xs sm:text-sm text-muted-foreground">Kelola master respo aplikasi</p>
 		</div>
 
 		<div class="rounded-lg border border-border bg-card p-2">
@@ -213,7 +202,7 @@ const actionIcons = { trash: Trash2, eye: Eye, edit: Edit, copy: Copy }
 					actionsPlacement="toolbar"
 					:showSearch="true"
 					:showRowNumber="true"
-					searchPlaceholder="Search master prefix..."
+					searchPlaceholder="Search master respo..."
 					:showCreateButton="true"
 					createButtonText="Create New"
 					@request="landing.api.fetch"
@@ -229,7 +218,7 @@ const actionIcons = { trash: Trash2, eye: Eye, edit: Edit, copy: Copy }
 						<input
 							v-model="searchInput"
 							type="text"
-							placeholder="Search master prefix..."
+							placeholder="Search master respo..."
 							class="h-9 w-full rounded-md border border-border bg-background px-3 text-sm placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary"
 						/>
 					</form>
@@ -265,8 +254,8 @@ const actionIcons = { trash: Trash2, eye: Eye, edit: Edit, copy: Copy }
 						<!-- Header -->
 						<div class="flex items-start justify-between gap-2">
 							<div class="min-w-0 flex-1">
-								<p class="text-sm font-semibold truncate">{{ row.nama_prefix || '-' }}</p>
-								<p class="text-xs text-muted-foreground truncate">{{ row.value || '-' }}</p>
+								<p class="text-sm font-semibold truncate">{{ row.m_unit_bisnis_id || '-' }}</p>
+								<p class="text-xs text-muted-foreground truncate">{{ row.nama || '-' }}</p>
 							</div>
 							<span
 								class="shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold"
@@ -278,8 +267,7 @@ const actionIcons = { trash: Trash2, eye: Eye, edit: Edit, copy: Copy }
 
 						<!-- Info rows -->
 						<div class="grid grid-cols-1 gap-y-0.5 text-xs">
-							<div v-if="row.value"><span class="text-muted-foreground">Value:</span> <span class="font-medium">{{ row.value }}</span></div>
-							<div v-if="row.tipe_prefix"><span class="text-muted-foreground">Tipe Prefix:</span> <span class="font-medium">{{ row.tipe_prefix }}</span></div>
+							<div v-if="row.catatan"><span class="text-muted-foreground">Catatan:</span> <span class="font-medium">{{ row.catatan }}</span></div>
 						</div>
 
 						<!-- Action buttons -->
@@ -318,7 +306,7 @@ const actionIcons = { trash: Trash2, eye: Eye, edit: Edit, copy: Copy }
 					<AlertDialogHeader>
 						<AlertDialogTitle>Hapus data?</AlertDialogTitle>
 						<AlertDialogDescription>
-							Data "{{ deleteTarget?.nama_prefix || deleteTarget?.id || '-' }}" akan dihapus permanen.
+							Data "{{ deleteTarget?.m_unit_bisnis_id || deleteTarget?.id || '-' }}" akan dihapus permanen.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>

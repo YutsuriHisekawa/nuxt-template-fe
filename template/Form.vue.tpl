@@ -10,6 +10,7 @@ __DETAIL_IMPORTS__
 const api = useApi();       // Helper untuk panggil API (GET, POST, PUT)
 const router = useRouter();  // Untuk navigasi antar halaman
 const route = useRoute();    // Untuk baca parameter URL (misalnya :id)
+__UNIT_BISNIS_FORM_SETUP__
 
 // ============================================================================
 // STATE — variabel reaktif yang dipakai di form
@@ -74,7 +75,7 @@ __API_DETAIL_ENDPOINT__
 const isRead = !!recordId.value;  // true kalau mode Edit / View / Copy
 
 onBeforeMount(async () => {
-  if (!isRead) return;  // Mode create, tidak perlu load data
+__UNIT_BISNIS_FORM_AUTOFILL__  if (!isRead) return;  // Mode create, tidak perlu load data
 
   const params = { join: true };
   const fixedParams = new URLSearchParams(params);

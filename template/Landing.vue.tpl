@@ -5,7 +5,7 @@ import { Trash2, Eye, Edit, Copy } from "lucide-vue-next"
 const api = useApi()
 const router = useRouter()
 const route = useRoute()
-
+__UNIT_BISNIS_LANDING_SETUP__
 const rowData = ref([])
 const loading = ref(false)
 const errorMessage = ref("")
@@ -45,7 +45,7 @@ const landing = reactive({
 				params.set("order_type", "DESC")
 				params.set("filter_column_is_active", activeFilter.value === "active" ? "true" : "false")
 				params.set("filter_operator_is_active", "=")
-				if (search) {
+__UNIT_BISNIS_LANDING_FILTER__				if (search) {
 					params.set("search", search)
 					params.set("searchfield", searchfield)
 				}

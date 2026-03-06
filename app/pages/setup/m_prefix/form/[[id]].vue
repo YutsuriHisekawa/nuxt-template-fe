@@ -8,6 +8,21 @@ import { ArrowLeft, Loader2, Save } from "lucide-vue-next";
 const api = useApi();       // Helper untuk panggil API (GET, POST, PUT)
 const router = useRouter();  // Untuk navigasi antar halaman
 const route = useRoute();    // Untuk baca parameter URL (misalnya :id)
+const authStore = useAuthStore();
+
+// ============================================================================
+// AUTH — Cek tipe user (Super Admin atau bukan)
+// ============================================================================
+const isSuperAdmin = computed(() => authStore.isSuperAdmin);
+
+// Nama company untuk display di field readonly (non-super-admin)
+const companyNameDisplay = computed(() => {
+  const ud = authStore.userDefault;
+  if (!ud) return '-';
+  if (ud.karyawan?.m_unit_bisni?.nama_comp) return ud.karyawan.m_unit_bisni.nama_comp;
+  const primary = ud.user_details?.find((d) => d.is_primary && d.is_active) || ud.user_details?.find((d) => d.is_active);
+  return primary?.m_respo?.unit_bisnis?.nama_comp || '-';
+});
 
 // ============================================================================
 // STATE — variabel reaktif yang dipakai di form
@@ -68,6 +83,17 @@ const API_SAVE = API_BASE;
 const isRead = !!recordId.value;
 
 onBeforeMount(async () => {
+  // Auto-fill unit bisnis untuk non-super-admin
+  if (!isSuperAdmin.value) {
+    const ud = authStore.userDefault;
+    if (ud) {
+      const companyId = ud.karyawan?.m_unit_bisnis_id
+        || ud.user_details?.find((d) => d.is_primary && d.is_active)?.m_respo?.m_unit_bisnis_id
+        || ud.user_details?.find((d) => d.is_active)?.m_respo?.m_unit_bisnis_id;
+      if (companyId) values.m_unit_bisnis_id = companyId;
+    }
+  }
+
   if (!isRead) return;
 
   const params = { join: true };
@@ -234,6 +260,7 @@ const handleCancel = () => {
         <CardContent class="space-y-6">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <FieldSelect
+              v-if="isSuperAdmin"
               id="m_unit_bisnis_id"
               label="Unit Bisnis"
               :value="values.m_unit_bisnis_id"
@@ -248,6 +275,16 @@ const handleCancel = () => {
               valueField="id"
               placeholder="Pilih Unit Bisnis"
               :clearable="true"
+              class="w-full"
+            />
+            <FieldX
+              v-else
+              id="m_unit_bisnis_id_display"
+              label="Unit Bisnis"
+              :value="companyNameDisplay"
+              :disabled="true"
+              :readonly="true"
+              hints="Unit bisnis dari akun Anda"
               class="w-full"
             />
 
