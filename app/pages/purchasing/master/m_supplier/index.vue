@@ -122,8 +122,9 @@ const landing = reactive({
 	columns: [
 		{ headerName: "Kode Vendor", field: "kode_supplier", minWidth: 140 },
 		{ headerName: "Nama Vendor", field: "nama_supp", minWidth: 140 },
-		{ headerName: "Negara", field: "negara_supp_id", minWidth: 140 },
-		{ headerName: "Kota", field: "kota_supp_id", minWidth: 140 },
+		{ headerName: "Alamat Vendor", field: "alamat_supp", minWidth: 140 },
+		{ headerName: "Negara Vendor", field: "negara_supp", minWidth: 140 },
+		{ headerName: "Kota Vendor", field: "kota_supp", minWidth: 140 },
 	],
 })
 
@@ -252,8 +253,9 @@ const actionIcons = { trash: Trash2, eye: Eye, edit: Edit, copy: Copy }
 
 						<!-- Info rows -->
 						<div class="grid grid-cols-1 gap-y-0.5 text-xs">
-							<div v-if="row.negara_supp"><span class="text-muted-foreground">Negara:</span> <span class="font-medium">{{ row.negara_supp }}</span></div>
-							<div v-if="row.kota_supp"><span class="text-muted-foreground">Kota:</span> <span class="font-medium">{{ row.kota_supp }}</span></div>
+							<div v-if="row.alamat_supp"><span class="text-muted-foreground">Alamat Vendor:</span> <span class="font-medium">{{ row.alamat_supp }}</span></div>
+							<div v-if="row.negara_supp"><span class="text-muted-foreground">Negara Vendor:</span> <span class="font-medium">{{ row.negara_supp }}</span></div>
+							<div v-if="row.kota_supp"><span class="text-muted-foreground">Kota Vendor:</span> <span class="font-medium">{{ row.kota_supp }}</span></div>
 						</div>
 
 						<!-- Action buttons -->

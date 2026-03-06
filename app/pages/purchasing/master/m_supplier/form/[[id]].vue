@@ -2,7 +2,7 @@
 // @ts-nocheck — Template builder, bukan runtime code
 import { toast } from "vue-sonner";
 import { ArrowLeft, Loader2, Save } from "lucide-vue-next";
-
+import { Trash2 } from "lucide-vue-next";
 
 // ============================================================================
 // COMPOSABLES & ROUTE
@@ -50,6 +50,7 @@ const pageDescription = computed(() => {
 const values = reactive({
   kode_supplier: "",
   nama_supp: "",
+  alamat_supp: "",
   negara_supp: "",
   kota_supp: "",
 });
@@ -58,18 +59,69 @@ const values = reactive({
 const errors = reactive({
   kode_supplier: "",
   nama_supp: "",
+  alamat_supp: "",
   negara_supp: "",
   kota_supp: "",
 });
+const wizardStep = ref(0);
 
+// Detail arrays
+const detailArr = ref([]);
+const detailArr2 = ref([]);
 
+const selectedDetailIds = computed(() => detailArr.value.map(d => d.id));
+const selectedDetailIds2 = computed(() => detailArr2.value.map(d => d.id));
+
+const handleDetailAdd = (selectedItems) => {
+  if (!selectedItems || selectedItems.length === 0) return;
+  let addedCount = 0;
+  let skippedCount = 0;
+  selectedItems.forEach((item) => {
+    const exists = detailArr.value.some((d) => d.id === item.id);
+    if (exists) { skippedCount++; return; }
+    detailArr.value.push({
+      id: item.id,
+      is_read: true,
+    });
+    addedCount++;
+  });
+  if (addedCount > 0) toast.success(`${addedCount} item ditambahkan`);
+  if (skippedCount > 0) toast.warning(`${skippedCount} item sudah ada`);
+};
+
+const removeDetail = (index) => {
+  detailArr.value.splice(index, 1);
+  toast.info("Item dihapus dari daftar");
+};
+
+const handleDetailAdd2 = (selectedItems) => {
+  if (!selectedItems || selectedItems.length === 0) return;
+  let addedCount = 0;
+  let skippedCount = 0;
+  selectedItems.forEach((item) => {
+    const exists = detailArr2.value.some((d) => d.id === item.id);
+    if (exists) { skippedCount++; return; }
+    detailArr2.value.push({
+      id: item.id,
+      is_read: true,
+    });
+    addedCount++;
+  });
+  if (addedCount > 0) toast.success(`${addedCount} item ditambahkan`);
+  if (skippedCount > 0) toast.warning(`${skippedCount} item sudah ada`);
+};
+
+const removeDetail2 = (index) => {
+  detailArr2.value.splice(index, 1);
+  toast.info("Item dihapus dari daftar");
+};
 
 
 // ============================================================================
 // API ENDPOINT — sesuaikan jika endpoint berubah
 // ============================================================================
 const API_BASE = "/api/dynamic/m_supplier";
-const API_SAVE = API_BASE;
+const API_SAVE = API_BASE + "/with-details"; // with-details karena ada detail
 
 // ============================================================================
 // LOAD DATA — Dipanggil saat halaman pertama kali dibuka (onBeforeMount)
@@ -115,6 +167,21 @@ onBeforeMount(async () => {
       }
     }
 
+    // Load detail: 
+    if (data.) {
+      detailArr.value = data..map((detail) => ({
+        id: detail.id,
+        is_read: detail.is_read !== undefined ? detail.is_read : true,
+      }));
+    }
+
+    // Load detail: 
+    if (data.) {
+      detailArr2.value = data..map((detail) => ({
+        id: detail.id,
+        is_read: detail.is_read !== undefined ? detail.is_read : true,
+      }));
+    }
   } catch (err) {
     // Kalau gagal load data, tampilkan error dan kembali ke halaman list
     toast.error("Gagal memuat data", {
@@ -132,6 +199,7 @@ const onReset = () => {
   Object.assign(values, {
     kode_supplier: "",
     nama_supp: "",
+    alamat_supp: "",
     negara_supp: "",
     kota_supp: "",
   });
@@ -139,6 +207,9 @@ const onReset = () => {
     errors[key] = "";
   });
 
+  // Reset detail arrays
+  detailArr.value = [];
+  detailArr2.value = [];
 };
 
 // ============================================================================
@@ -153,19 +224,23 @@ const onSave = async () => {
   // 2. Validasi: cek field yang wajib diisi
   let invalid = false;
   if (!values.kode_supplier?.toString().trim()) {
-    errors.kode_supplier = "Isien cak!!";
+    errors.kode_supplier = "Harus diisi!!";
     invalid = true;
   }
   if (!values.nama_supp?.toString().trim()) {
-    errors.nama_supp = "Ojo ksoong jal!!";
+    errors.nama_supp = "Wajib diisi!!!";
+    invalid = true;
+  }
+  if (!values.alamat_supp?.toString().trim()) {
+    errors.alamat_supp = "Alamat Vendor Wajib Di isi";
     invalid = true;
   }
   if (!values.negara_supp?.toString().trim()) {
-    errors.negara_supp = "isien dul!!";
+    errors.negara_supp = "Harus dipilih!!!";
     invalid = true;
   }
   if (!values.kota_supp?.toString().trim()) {
-    errors.kota_supp = "Isien le!!";
+    errors.kota_supp = "Harus diisi!!";
     invalid = true;
   }
 
@@ -186,9 +261,18 @@ const onSave = async () => {
     const payload = {
     kode_supplier: values.kode_supplier?.toString().trim() || null,
     nama_supp: values.nama_supp?.toString().trim() || null,
+    alamat_supp: values.alamat_supp?.toString().trim() || null,
     negara_supp: values.negara_supp?.toString().trim() || null,
     kota_supp: values.kota_supp?.toString().trim() || null,
 
+      : detailArr.value.map((d) => ({
+        id: d.id,
+        is_read: d.is_read !== undefined ? d.is_read : true,
+      })),
+      : detailArr2.value.map((d) => ({
+        id: d.id,
+        is_read: d.is_read !== undefined ? d.is_read : true,
+      })),
     };
 
     // Pilih method: PUT (update) atau POST (create baru)
@@ -251,8 +335,35 @@ const handleCancel = () => {
           </CardDescription>
         </CardHeader>
         <CardContent class="space-y-6">
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div class="md:col-span-2">
+          <!-- Wizard Steps -->
+          <div class="flex gap-2 mb-6 flex-wrap">
+              <button
+                @click="wizardStep = 0"
+                class="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                :class="wizardStep === 0 ? 'bg-primary text-primary-foreground shadow-sm' : 'bg-muted text-muted-foreground hover:text-foreground'"
+              >
+                <span class="flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold" :class="wizardStep === 0 ? 'bg-primary-foreground text-primary' : 'bg-muted-foreground/20'">1</span>
+                Get Set
+              </button>
+              <button
+                @click="wizardStep = 1"
+                class="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                :class="wizardStep === 1 ? 'bg-primary text-primary-foreground shadow-sm' : 'bg-muted text-muted-foreground hover:text-foreground'"
+              >
+                <span class="flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold" :class="wizardStep === 1 ? 'bg-primary-foreground text-primary' : 'bg-muted-foreground/20'">2</span>
+                Ready
+              </button>
+              <button
+                @click="wizardStep = 2"
+                class="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                :class="wizardStep === 2 ? 'bg-primary text-primary-foreground shadow-sm' : 'bg-muted text-muted-foreground hover:text-foreground'"
+              >
+                <span class="flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold" :class="wizardStep === 2 ? 'bg-primary-foreground text-primary' : 'bg-muted-foreground/20'">3</span>
+                Go
+              </button>
+          </div>
+
+          <div v-show="wizardStep === 0" class="grid grid-cols-1 gap-6">
             <FieldX
               id="kode_supplier"
               label="Kode Vendor"
@@ -263,12 +374,27 @@ const handleCancel = () => {
               :required="!isReadOnly"
               :disabled="loading || isReadOnly"
               :readonly="isReadOnly"
-              placeholder="Kode Vendor"
+              placeholder="Isi kode untuk vendor"
               class="w-full"
             />
-            </div>
 
             <div class="md:col-span-2">
+            <div class="col-span-full border-b border-border pb-2 pt-4">
+              <h3 class="text-base font-semibold text-foreground">Section Title</h3>
+            </div>
+            </div>
+
+            <div></div>
+
+            <div class="md:col-span-2 rounded-lg border border-border bg-card/50 p-5 space-y-1">
+              <h3 class="text-sm font-semibold text-foreground mb-3">Wilayah Vendor</h3>
+              <div class="grid grid-cols-1 gap-6">
+
+              </div>
+            </div>
+          </div>
+
+          <div v-show="wizardStep === 1" class="grid grid-cols-1 gap-6">
             <FieldX
               id="nama_supp"
               label="Nama Vendor"
@@ -279,14 +405,35 @@ const handleCancel = () => {
               :required="!isReadOnly"
               :disabled="loading || isReadOnly"
               :readonly="isReadOnly"
-              placeholder="Nama Vendor"
+              placeholder="Isi nama untuk vendor"
               class="w-full"
             />
-            </div>
 
+            <FieldX
+              id="alamat_supp"
+              label="Alamat Vendor"
+              :value="values.alamat_supp"
+              :errorname="errors.alamat_supp ? 'failed' : ''"
+              @input="(v) => (values.alamat_supp = v)"
+              :hints="errors.alamat_supp"
+              :required="!isReadOnly"
+              :disabled="loading || isReadOnly"
+              :readonly="isReadOnly"
+              placeholder="Isi alamat untuk vendor"
+              class="w-full"
+            />
+
+            <div class="md:col-span-2">
+            <div class="col-span-full border-b border-border pb-2 pt-4">
+              <h3 class="text-base font-semibold text-foreground">Section Title</h3>
+            </div>
+            </div>
+          </div>
+
+          <div v-show="wizardStep === 2" class="grid grid-cols-1 gap-6">
             <FieldSelect
               id="negara_supp"
-              label="Negara"
+              label="Negara Vendor"
               :value="values.negara_supp"
               :errorname="errors.negara_supp ? 'failed' : ''"
               @input="(v) => { values.negara_supp = v; values.kota_supp = '' }"
@@ -297,14 +444,14 @@ const handleCancel = () => {
               apiUrl="/api/dynamic/m_negara"
               displayField="nama_negara"
               valueField="id"
-              placeholder="Negara"
+              placeholder="Negara Vendor"
               :clearable="true"
               class="w-full"
             />
 
             <FieldSelect
               id="kota_supp"
-              label="Kota"
+              label="Kota Vendor"
               :value="values.kota_supp"
               :errorname="errors.kota_supp ? 'failed' : ''"
               @input="(v) => (values.kota_supp = v)"
@@ -313,17 +460,162 @@ const handleCancel = () => {
               :disabled="!values.negara_supp || loading || isReadOnly"
               :readonly="isReadOnly"
               apiUrl="/api/dynamic/m_kota?join=true"
-              :apiParams="{ 'filter_column_m_negara.id': values.negara_supp }"
+              :apiParams="{ 'field_column_m_negara.id': values.negara_supp }"
               displayField="nama_kota"
               valueField="id"
-              placeholder="Kota"
+              placeholder="Kota Vendor"
               :clearable="true"
               class="w-full"
             />
           </div>
+
+          <div class="flex justify-between mt-4">
+            <Button variant="outline" v-if="wizardStep > 0" @click="wizardStep--">Sebelumnya</Button>
+            <div v-else />
+            <Button v-if="wizardStep < 2" @click="wizardStep++">Selanjutnya</Button>
+          </div>
         </CardContent>
       </Card>
 
+      <!-- DETAIL TABS -->
+      <Tabs default-value="detail-0" class="w-full">
+        <TabsList class="w-full overflow-x-auto flex justify-start">
+          <TabsTrigger value="detail-0">Detail</TabsTrigger>
+          <TabsTrigger value="detail-1">Detail</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="detail-0" class="space-y-4 mt-4">
+          <Card>
+            <CardHeader>
+              <div class="flex items-center justify-between">
+                <div>
+                  <CardTitle>Detail</CardTitle>
+                  <CardDescription>Kelola data detail</CardDescription>
+                </div>
+                <ButtonMultiSelect
+                  v-if="!isReadOnly"
+                  title="Pilih Item"
+                  :api="{ url: '' }"
+                  :columns="[
+                    { key: '', label: '', sortable: true, width: '200px' }
+                  ]"
+                  searchKey="name"
+                  displayKey="name"
+                  uniqueKey="id"
+                  :excludeIds="selectedDetailIds"
+                  @add="handleDetailAdd"
+                />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div class="border rounded-lg overflow-x-auto">
+                <table class="w-full text-sm">
+                  <thead class="bg-muted">
+                    <tr>
+                      <th class="px-3 py-2 text-left font-medium text-xs sm:text-sm">No</th>
+                      <th class="px-3 py-2 text-left font-medium text-xs sm:text-sm">Nama</th>
+                      <th class="px-2 py-2 text-center font-medium text-xs sm:text-sm">Read</th>
+                      <th v-if="!isReadOnly" class="px-2 py-2 text-center font-medium text-xs sm:text-sm">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-if="detailArr.length === 0">
+                      <td colspan="4" class="text-center py-8 text-muted-foreground text-xs sm:text-sm">
+                        Belum ada item ditambahkan
+                      </td>
+                    </tr>
+                    <tr v-for="(detail, index) in detailArr" :key="index" class="border-t hover:bg-muted/50">
+                      <td class="px-3 py-2 text-xs sm:text-sm whitespace-nowrap">{{ index + 1 }}</td>
+                      <td class="px-3 py-2 text-xs sm:text-sm">{{ detail.name || '-' }}</td>
+                      <td class="px-2 py-2 text-center">
+                        <FieldBox
+                          v-if="!isReadOnly"
+                          :value="detail.is_read"
+                          @input="(v) => (detail.is_read = v)"
+                          labelTrue="Ya"
+                          labelFalse="Tidak"
+                        />
+                        <span v-else>{{ detail.is_read ? 'Ya' : 'Tidak' }}</span>
+                      </td>
+                      <td v-if="!isReadOnly" class="px-2 py-2 text-center">
+                        <Button variant="ghost" size="icon" class="h-7 w-7 sm:h-8 sm:w-8" @click="removeDetail(index)">
+                          <Trash2 class="h-3 w-3 sm:h-4 sm:w-4 text-destructive" />
+                        </Button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="detail-1" class="space-y-4 mt-4">
+          <Card>
+            <CardHeader>
+              <div class="flex items-center justify-between">
+                <div>
+                  <CardTitle>Detail</CardTitle>
+                  <CardDescription>Kelola data detail</CardDescription>
+                </div>
+                <ButtonMultiSelect
+                  v-if="!isReadOnly"
+                  title="Pilih Item"
+                  :api="{ url: '' }"
+                  :columns="[
+                    { key: '', label: '', sortable: true, width: '200px' }
+                  ]"
+                  searchKey="name"
+                  displayKey="name"
+                  uniqueKey="id"
+                  :excludeIds="selectedDetailIds2"
+                  @add="handleDetailAdd2"
+                />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div class="border rounded-lg overflow-x-auto">
+                <table class="w-full text-sm">
+                  <thead class="bg-muted">
+                    <tr>
+                      <th class="px-3 py-2 text-left font-medium text-xs sm:text-sm">No</th>
+                      <th class="px-3 py-2 text-left font-medium text-xs sm:text-sm">Nama</th>
+                      <th class="px-2 py-2 text-center font-medium text-xs sm:text-sm">Read</th>
+                      <th v-if="!isReadOnly" class="px-2 py-2 text-center font-medium text-xs sm:text-sm">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-if="detailArr2.length === 0">
+                      <td colspan="4" class="text-center py-8 text-muted-foreground text-xs sm:text-sm">
+                        Belum ada item ditambahkan
+                      </td>
+                    </tr>
+                    <tr v-for="(detail, index) in detailArr2" :key="index" class="border-t hover:bg-muted/50">
+                      <td class="px-3 py-2 text-xs sm:text-sm whitespace-nowrap">{{ index + 1 }}</td>
+                      <td class="px-3 py-2 text-xs sm:text-sm">{{ detail.name || '-' }}</td>
+                      <td class="px-2 py-2 text-center">
+                        <FieldBox
+                          v-if="!isReadOnly"
+                          :value="detail.is_read"
+                          @input="(v) => (detail.is_read = v)"
+                          labelTrue="Ya"
+                          labelFalse="Tidak"
+                        />
+                        <span v-else>{{ detail.is_read ? 'Ya' : 'Tidak' }}</span>
+                      </td>
+                      <td v-if="!isReadOnly" class="px-2 py-2 text-center">
+                        <Button variant="ghost" size="icon" class="h-7 w-7 sm:h-8 sm:w-8" @click="removeDetail2(index)">
+                          <Trash2 class="h-3 w-3 sm:h-4 sm:w-4 text-destructive" />
+                        </Button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       <!-- ================================================================ -->
       <!-- ACTION BUTTONS -->
