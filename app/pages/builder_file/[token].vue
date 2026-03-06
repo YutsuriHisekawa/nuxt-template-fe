@@ -958,7 +958,7 @@ async function generate() {
                   ? 'ring-2 ring-ring ring-offset-2 ring-offset-background bg-accent/50'
                   : 'hover:ring-2 hover:ring-ring/40 hover:ring-offset-2 hover:ring-offset-background hover:bg-accent/30',
                 fields[idx].visibleWhenField && String(previewValues[fields[idx].visibleWhenField] ?? '') !== String(fields[idx].visibleWhenValue ?? '')
-                  ? 'opacity-30 pointer-events-none'
+                  ? 'opacity-30'
                   : '',
                 fields[idx].readonlyWhenField && !fields[idx].readonly && String(previewValues[fields[idx].readonlyWhenField] ?? '') === String(fields[idx].readonlyWhenValue ?? '')
                   ? 'opacity-60'
