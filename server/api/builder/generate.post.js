@@ -957,10 +957,116 @@ ${tabContents}
       </Tabs>`
 }
 
+// ── Print page generation helpers ──────────────────────────────────────────
+function buildPrintFields(fields, printConfig) {
+  // If printConfig is provided, use it (visible fields only, in configured order)
+  // Otherwise fall back to all fields
+  const fieldMap = new Map(fields.map(f => [f.field, f]))
+  const printItems = (printConfig && printConfig.length)
+    ? printConfig.filter(pc => pc.visible !== false).map(pc => {
+        const orig = fieldMap.get(pc.field) || {}
+        return { ...orig, field: pc.field, label: pc.label || orig.label || pc.field }
+      })
+    : fields
+
+  const rows = []
+  printItems.forEach(f => {
+    const entry = getRegistryEntry(f.type)
+    if (entry?.isSpace || entry?.isFieldGroupEnd) return
+
+    if (entry?.isSection) {
+      rows.push(`          <tr>\n            <td colspan="2" class="pt-4 pb-1 font-bold text-sm uppercase tracking-wide border-b-2 border-black">${f.label || 'Section'}</td>\n          </tr>`)
+      return
+    }
+    if (entry?.isFieldGroup) {
+      rows.push(`          <tr>\n            <td colspan="2" class="pt-3 pb-1 font-semibold text-sm border-b border-gray-400">${f.label || 'Group'}</td>\n          </tr>`)
+      return
+    }
+
+    let valueExpr = `record.${f.field}`
+    if (entry?.isSwitch) {
+      valueExpr = `record.${f.field} === true || record.${f.field} === 1 || record.${f.field} === '1' ? '${f.labelTrue || 'Aktif'}' : '${f.labelFalse || 'Tidak Aktif'}'`
+    } else if (f.type === 'currency') {
+      valueExpr = `Number(record.${f.field} || 0).toLocaleString('id-ID')`
+    } else if (f.type === 'date') {
+      valueExpr = `record.${f.field} ? new Date(record.${f.field}).toLocaleDateString('id-ID') : '-'`
+    } else if (f.type === 'datetime') {
+      valueExpr = `record.${f.field} ? new Date(record.${f.field}).toLocaleString('id-ID') : '-'`
+    }
+
+    rows.push(`          <tr class="border-b border-gray-200">\n            <td class="py-2 pr-4 font-medium text-gray-600 w-50 align-top">${f.label || f.field}</td>\n            <td class="py-2">{{ ${valueExpr} || '-' }}</td>\n          </tr>`)
+  })
+  return rows.join('\n')
+}
+
+function buildPrintDetailTables(details) {
+  if (!hasDetails(details)) return ''
+  const sections = details.map((d, i) => {
+    const detailFields = d.detailFields || []
+    const displayCols = d.displayColumns || []
+    const rk = d.responseKey || ''
+    const dataPath = rk ? `record.${rk}` : '[]'
+    const fkDisplay = d.foreignDisplay || ''
+
+    const ths = []
+    ths.push(`              <th class="border border-gray-300 px-2 py-1.5 text-left bg-gray-100 text-xs font-semibold">No</th>`)
+    if (d.mode !== 'add_to_list') {
+      displayCols.forEach(dc => {
+        ths.push(`              <th class="border border-gray-300 px-2 py-1.5 text-left bg-gray-100 text-xs font-semibold">${dc.label || dc.key}</th>`)
+      })
+    }
+    detailFields.forEach(df => {
+      ths.push(`              <th class="border border-gray-300 px-2 py-1.5 text-left bg-gray-100 text-xs font-semibold">${df.label || df.key}</th>`)
+    })
+
+    const tds = []
+    tds.push(`              <td class="border border-gray-300 px-2 py-1.5 text-xs">{{ idx + 1 }}</td>`)
+    if (d.mode !== 'add_to_list') {
+      displayCols.forEach(dc => {
+        const accessor = fkDisplay ? `row.${fkDisplay}?.${dc.key}` : `row.${dc.key}`
+        tds.push(`              <td class="border border-gray-300 px-2 py-1.5 text-xs">{{ ${accessor} || '-' }}</td>`)
+      })
+    }
+    detailFields.forEach(df => {
+      let valExpr = `row.${df.key}`
+      if (df.type === 'checkbox' || df.type === 'status') {
+        valExpr = `row.${df.key} ? '${df.labelTrue || 'Ya'}' : '${df.labelFalse || 'Tidak'}'`
+      } else if (df.type === 'currency') {
+        valExpr = `Number(row.${df.key} || 0).toLocaleString('id-ID')`
+      }
+      tds.push(`              <td class="border border-gray-300 px-2 py-1.5 text-xs">{{ ${valExpr} || '-' }}</td>`)
+    })
+
+    return `
+      <!-- Detail: ${d.tabLabel || 'Detail'} -->
+      <div class="mt-6">
+        <h3 class="text-sm font-bold mb-2 uppercase">${d.tabLabel || 'Detail'}</h3>
+        <table class="w-full text-sm border-collapse">
+          <thead>
+            <tr>
+${ths.join('\n')}
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(row, idx) in (${dataPath} || [])" :key="idx">
+${tds.join('\n')}
+            </tr>
+            <tr v-if="!(${dataPath} || []).length">
+              <td colspan="${1 + (d.mode !== 'add_to_list' ? displayCols.length : 0) + detailFields.length}" class="border border-gray-300 px-2 py-4 text-center text-gray-400 text-xs">
+                Tidak ada data
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>`
+  })
+  return sections.join('\n')
+}
+
 // ── Handler ────────────────────────────────────────────────────────────────
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
-  const { modulePath, moduleName, apiEndpoint, routePath, pageTitle, fields, details, landingConfig, columnLayout, wizardSteps } = body
+  const { modulePath, moduleName, apiEndpoint, routePath, pageTitle, fields, details, landingConfig, printConfig, columnLayout, wizardSteps } = body
 
   if (!modulePath || !fields?.length) {
     throw createError({ statusCode: 400, statusMessage: 'modulePath and fields are required' })
@@ -982,6 +1088,8 @@ export default defineEventHandler(async (event) => {
   // ── Read templates ─────────────────────────────────────────────────────
   const formTpl = readFileSync(resolve(root, 'template', 'Form.vue.tpl'), 'utf-8')
   const landingTpl = readFileSync(resolve(root, 'template', 'Landing.vue.tpl'), 'utf-8')
+  const printTplPath = resolve(root, 'template', 'Print.vue.tpl')
+  const printTpl = existsSync(printTplPath) ? readFileSync(printTplPath, 'utf-8') : null
 
   // ── Build replacements ─────────────────────────────────────────────────
   const hasSwitch = fields.some(f => f.type === 'switch')
@@ -1020,12 +1128,25 @@ export default defineEventHandler(async (event) => {
     __DETAIL_LOAD_DATA__: buildDetailLoadData(details),
     __DETAIL_PAYLOAD__: buildDetailPayload(details),
     __DETAIL_TEMPLATE__: buildDetailTemplate(details),
+    __PRINT_BUTTON__: printTpl
+      ? `        <Button
+          v-if="isViewMode && perms.is_print !== false"
+          type="button"
+          variant="outline"
+          @click="navigateTo('${routePath}/print/' + recordId, { open: { target: '_blank' } })"
+          class="gap-2 w-full sm:w-auto"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/></svg>
+          Cetak
+        </Button>`
+      : '',
+    __PRINT_FIELDS__: printTpl ? buildPrintFields(fields, printConfig) : '',
+    __PRINT_DETAIL_TABLES__: printTpl ? buildPrintDetailTables(details) : '',
     __HAS_SWITCH_COLUMN__: hasSwitch ? `\n\t\t{\n\t\t\theaderName: "Aktif",\n\t\t\tfield: "${switchField?.field || 'is_active'}",\n\t\t\tminWidth: 110,\n\t\t\tcellRenderer: (params) => {\n\t\t\t\tconst isActive = checkActive(params?.value)\n\t\t\t\tconst label = isActive ? "${switchField?.labelTrue || 'Aktif'}" : "${switchField?.labelFalse || 'Nonaktif'}"\n\t\t\t\tconst cls = isActive ? "font-bold text-green-600" : "font-bold text-red-600"\n\t\t\t\treturn \`<span class="\${cls}">\${label}</span>\`\n\t\t\t},\n\t\t},` : '',
 
     // ── Unit Bisnis auto-filter & auto-fill ────────────────────────────
     __UNIT_BISNIS_LANDING_SETUP__: hasUnitBisnis
-      ? `const authStore = useAuthStore()
-
+      ? `
 // Unit bisnis user login (non-super-admin hanya lihat data unit bisnis sendiri)
 const userCompanyId = computed(() => {
 \tif (authStore.isSuperAdmin) return null
@@ -1046,8 +1167,7 @@ const userCompanyId = computed(() => {
 `
       : '',
     __UNIT_BISNIS_FORM_SETUP__: hasUnitBisnis
-      ? `const authStore = useAuthStore();
-
+      ? `
 // ============================================================================
 // AUTH — Cek tipe user (Super Admin atau bukan)
 // ============================================================================
@@ -1115,6 +1235,7 @@ const companyNameDisplay = computed(() => {
   // ── Write files ────────────────────────────────────────────────────────
   const formDir = resolve(root, 'app', 'pages', ...modulePath.split('/'), 'form')
   const landingDir = resolve(root, 'app', 'pages', ...modulePath.split('/'))
+  const printDir = resolve(root, 'app', 'pages', ...modulePath.split('/'), 'print')
 
   mkdirSync(formDir, { recursive: true })
 
@@ -1136,6 +1257,22 @@ const companyNameDisplay = computed(() => {
   } else {
     writeFileSync(formFile, formContent)
     created.push(`pages/${modulePath}/form/[[id]].vue`)
+  }
+
+  // ── Print page ───────────────────────────────────────────────────────
+  if (printTpl) {
+    mkdirSync(printDir, { recursive: true })
+    const printFile = resolve(printDir, '[[id]].vue')
+    let printContent = printTpl
+    for (const [token, value] of Object.entries(replacements)) {
+      printContent = printContent.replaceAll(token, value)
+    }
+    if (existsSync(printFile)) {
+      skipped.push(`pages/${modulePath}/print/[[id]].vue (sudah ada)`)
+    } else {
+      writeFileSync(printFile, printContent)
+      created.push(`pages/${modulePath}/print/[[id]].vue`)
+    }
   }
 
   // Clean up config

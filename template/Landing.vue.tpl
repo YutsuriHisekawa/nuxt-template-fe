@@ -5,6 +5,18 @@ import { Trash2, Eye, Edit, Copy } from "lucide-vue-next"
 const api = useApi()
 const router = useRouter()
 const route = useRoute()
+const authStore = useAuthStore()
+
+// Permission check for current menu
+const currentMenu = computed(() => {
+	return authStore.selectRespo?.menus?.find(m => m.path === '__ROUTE_PATH__')
+})
+const perms = computed(() => {
+	if (authStore.isSuperAdmin) return { is_read: true, is_create: true, is_update: true, is_delete: true, is_print: true }
+	const menuId = currentMenu.value?.id
+	if (!menuId) return { is_read: true, is_create: true, is_update: true, is_delete: true, is_print: true }
+	return authStore.selectRespo?.permissions?.[menuId] || {}
+})
 __UNIT_BISNIS_LANDING_SETUP__
 const rowData = ref([])
 const loading = ref(false)
@@ -87,7 +99,7 @@ __UNIT_BISNIS_LANDING_FILTER__				if (search) {
 			icon: "trash",
 			title: "Hapus",
 			variant: "destructive",
-			show: (row) => row.is_active !== false,
+			show: (row) => row.is_active !== false && perms.value.is_delete !== false,
 			click(row) {
 				if (!row?.id) return
 				deleteTarget.value = row
@@ -106,6 +118,7 @@ __UNIT_BISNIS_LANDING_FILTER__				if (search) {
 			icon: "edit",
 			title: "Edit",
 			variant: "primary",
+			show: () => perms.value.is_update !== false,
 			click(row) {
 				router.push(`${route.path}/form/${row.id}?action=Edit`)
 			},
@@ -114,6 +127,7 @@ __UNIT_BISNIS_LANDING_FILTER__				if (search) {
 			icon: "copy",
 			title: "Copy",
 			variant: "outline",
+			show: () => perms.value.is_create !== false,
 			click(row) {
 				router.push(`${route.path}/form/${row.id}?action=Copy`)
 			},
@@ -185,7 +199,7 @@ const actionIcons = { trash: Trash2, eye: Eye, edit: Edit, copy: Copy }
 					:showSearch="true"
 					:showRowNumber="true"
 					searchPlaceholder="Search __READABLE_NAME_LOWER__..."
-					:showCreateButton="true"
+					:showCreateButton="perms.is_create !== false"
 					createButtonText="Create New"
 					@request="landing.api.fetch"
 					@create="router.push(route.path + '/form')"
@@ -205,6 +219,7 @@ const actionIcons = { trash: Trash2, eye: Eye, edit: Edit, copy: Copy }
 						/>
 					</form>
 					<button
+						v-if="perms.is_create !== false"
 						type="button"
 						class="inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 whitespace-nowrap"
 						@click="router.push(route.path + '/form')"

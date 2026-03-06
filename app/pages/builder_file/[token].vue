@@ -28,9 +28,10 @@ import {
   ListChecks,
   Footprints,
   ExternalLink,
+  Zap,
 } from "lucide-vue-next";
 import { createBlankField, createBlankDetail, getComponentBadge, getRegistryEntry } from "~/utils/builder/fieldRegistry";
-import { Layers } from "lucide-vue-next";
+import { Layers, Printer } from "lucide-vue-next";
 import { AgGridVue } from "ag-grid-vue3";
 import { PRESET_TEMPLATES } from './_presets';
 import { useLanding } from './_useLanding';
@@ -309,6 +310,48 @@ function addPreset(preset) {
   toast.success(`${preset.name}: ${preset.fields.length} field ditambahkan`);
 }
 
+// ── Auto-Detect Fields from API ────────────────────────────────────────────
+const autoDetecting = ref(false);
+
+async function autoDetectFields() {
+  if (!config.value?.apiEndpoint) {
+    toast.error('API Endpoint belum tersedia');
+    return;
+  }
+  autoDetecting.value = true;
+  try {
+    const result = await $fetch('/api/builder/detect-fields', {
+      method: 'POST',
+      body: {
+        apiEndpoint: config.value.apiEndpoint,
+        token: builderToken,
+      },
+    });
+    if (!result?.success || !result.fields?.length) {
+      toast.warning(result?.message || 'Tidak ada field yang terdeteksi dari API');
+      return;
+    }
+    pushUndo();
+    const blankBase = createBlankField();
+    const existingNames = new Set(fields.value.map(f => f.field));
+    let addedCount = 0;
+    result.fields.forEach(df => {
+      if (existingNames.has(df.field)) return; // skip duplicate
+      fields.value.push({ ...blankBase, ...df });
+      addedCount++;
+    });
+    if (addedCount > 0) {
+      toast.success(`${addedCount} field terdeteksi dan ditambahkan dari API`);
+    } else {
+      toast.info('Semua field dari API sudah ada di builder');
+    }
+  } catch (err) {
+    toast.error('Gagal auto-detect: ' + (err?.data?.statusMessage || err?.message || 'Error'));
+  } finally {
+    autoDetecting.value = false;
+  }
+}
+
 const detailPanelIndex = ref(-1);
 
 // ── Cookie-backed state (survives refresh) ─────────────────────────────────
@@ -317,17 +360,20 @@ const DEFAULT_FIELDS = [];
 const savedFields = useCookie('builder_fields', { default: () => null, maxAge: 60 * 60 * 24 });
 const savedDetails = useCookie('builder_details', { default: () => null, maxAge: 60 * 60 * 24 });
 const savedLandingConfig = useCookie('builder_landing', { default: () => null, maxAge: 60 * 60 * 24 });
+const savedPrintConfig = useCookie('builder_print', { default: () => null, maxAge: 60 * 60 * 24 });
 const savedColumnLayout = useCookie('builder_col_layout', { default: () => 2, maxAge: 60 * 60 * 24 });
 
 const fields = ref(savedFields.value && savedFields.value.length ? savedFields.value : structuredClone(DEFAULT_FIELDS));
 const details = ref(savedDetails.value && savedDetails.value.length ? savedDetails.value : []);
 const landingConfig = ref(savedLandingConfig.value || []);
+const printConfig = ref(savedPrintConfig.value || []);
 const columnLayout = ref(savedColumnLayout.value || 2);
 
 // Auto-save to cookies on change
 watch(fields, (v) => { savedFields.value = v; }, { deep: true });
 watch(details, (v) => { savedDetails.value = v; }, { deep: true });
 watch(landingConfig, (v) => { savedLandingConfig.value = v; }, { deep: true });
+watch(printConfig, (v) => { savedPrintConfig.value = v; }, { deep: true });
 watch(columnLayout, (v) => { savedColumnLayout.value = v; });
 
 // Auto-sync landing config ketika fields berubah
@@ -362,10 +408,45 @@ watch(fields, (newFields) => {
   landingConfig.value = result;
 }, { deep: true, immediate: true });
 
+// Auto-sync print config when fields change
+watch(fields, (newFields) => {
+  const current = printConfig.value;
+  const validFields = newFields.filter(f => {
+    const entry = getRegistryEntry(f.type);
+    return !entry?.isSpace && !entry?.isSection && !entry?.isFieldGroup && !entry?.isFieldGroupEnd && f.field?.trim();
+  });
+  const existingSet = new Set(current.map(c => c.field));
+  const newFieldSet = new Set(validFields.map(f => f.field));
+  const result = current
+    .filter(c => newFieldSet.has(c.field))
+    .map(c => {
+      const f = validFields.find(vf => vf.field === c.field);
+      return { ...c, label: f?.label || c.label };
+    });
+  validFields.forEach(f => {
+    if (!existingSet.has(f.field)) {
+      result.push({ field: f.field, label: f.label || f.field, visible: true });
+    }
+  });
+  printConfig.value = result;
+}, { deep: true, immediate: true });
+
+function movePrintCol(i, dir) {
+  const arr = printConfig.value;
+  const j = i + dir;
+  if (j < 0 || j >= arr.length) return;
+  [arr[i], arr[j]] = [arr[j], arr[i]];
+}
+
+function updatePrintCol(i, key, val) {
+  printConfig.value[i][key] = val;
+}
+
 function clearBuilderCookies() {
   savedFields.value = null;
   savedDetails.value = null;
   savedLandingConfig.value = null;
+  savedPrintConfig.value = null;
   savedColumnLayout.value = null;
   savedWizardSteps.value = null;
 }
@@ -385,6 +466,7 @@ async function cancelBuilder() {
   fields.value = structuredClone(DEFAULT_FIELDS);
   details.value = [];
   landingConfig.value = [];
+  printConfig.value = [];
   closePanel();
   closeDetailPanel();
   // Delete config on server so token is invalidated
@@ -477,6 +559,7 @@ function exportConfig() {
     fields: fields.value,
     details: details.value,
     landingConfig: landingConfig.value,
+    printConfig: printConfig.value,
     columnLayout: columnLayout.value,
     wizardSteps: wizardSteps.value,
   };
@@ -504,6 +587,7 @@ function importConfig() {
       if (Array.isArray(data.fields)) fields.value = data.fields;
       if (Array.isArray(data.details)) details.value = data.details;
       if (Array.isArray(data.landingConfig)) landingConfig.value = data.landingConfig;
+      if (Array.isArray(data.printConfig)) printConfig.value = data.printConfig;
       if (data.columnLayout) columnLayout.value = data.columnLayout;
       if (Array.isArray(data.wizardSteps)) wizardSteps.value = data.wizardSteps;
       toast.success(`Config imported: ${data.fields?.length || 0} fields`);
@@ -674,6 +758,7 @@ async function generate() {
         fields: fields.value,
         details: details.value,
         landingConfig: landingConfig.value,
+        printConfig: printConfig.value,
         columnLayout: columnLayout.value,
         wizardSteps: wizardSteps.value.length ? wizardSteps.value : null,
       },
@@ -794,12 +879,15 @@ async function generate() {
     <div class="max-w-[80%] mx-auto p-6 space-y-6">
       <!-- Builder Tabs -->
       <Tabs default-value="form" class="w-full">
-        <TabsList class="grid w-full grid-cols-2">
+        <TabsList class="grid w-full grid-cols-3">
           <TabsTrigger value="form">
             <Settings2 class="h-4 w-4 mr-1.5" /> Form Builder
           </TabsTrigger>
           <TabsTrigger value="landing">
             <Table2 class="h-4 w-4 mr-1.5" /> Konfigurasi Landing
+          </TabsTrigger>
+          <TabsTrigger value="print">
+            <Printer class="h-4 w-4 mr-1.5" /> Konfigurasi Print
           </TabsTrigger>
         </TabsList>
 
@@ -930,6 +1018,19 @@ async function generate() {
                 </div>
               </div>
             </div>
+            <!-- Auto-detect from API -->
+            <Button
+              variant="outline"
+              size="sm"
+              class="h-8 gap-1 text-xs"
+              :disabled="autoDetecting"
+              @click="autoDetectFields"
+              title="Deteksi field otomatis dari response API"
+            >
+              <Loader2 v-if="autoDetecting" class="h-3.5 w-3.5 animate-spin" />
+              <Zap v-else class="h-3.5 w-3.5" />
+              Auto-Detect
+            </Button>
             <!-- Bulk toggle -->
             <Button
               :variant="bulkMode ? 'default' : 'outline'"
@@ -1382,6 +1483,106 @@ async function generate() {
           </div>
         </CardContent>
       </Card>
+        </TabsContent>
+
+        <!-- ============================================================ -->
+        <!-- TAB: KONFIGURASI PRINT -->
+        <!-- ============================================================ -->
+        <TabsContent value="print" class="space-y-6 mt-4">
+      <Card v-if="printConfig.length > 0">
+        <CardHeader>
+          <div class="flex items-center gap-3">
+            <Printer class="h-5 w-5 text-primary shrink-0" />
+            <div>
+              <CardTitle class="text-base">Konfigurasi Print</CardTitle>
+              <CardDescription>Atur field yang tampil di halaman cetak & urutan tampilannya</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div class="border border-border rounded-lg overflow-hidden text-xs">
+            <!-- Table Header -->
+            <div class="grid grid-cols-[28px_minmax(0,1fr)_minmax(0,1fr)_52px_28px] gap-1.5 px-2.5 py-2 bg-muted font-semibold text-muted-foreground items-center">
+              <span class="text-center">#</span>
+              <span>Field</span>
+              <span>Label Print</span>
+              <span class="text-center" title="Tampil di printout">Tampil</span>
+              <span></span>
+            </div>
+            <!-- Rows -->
+            <div
+              v-for="(col, i) in printConfig"
+              :key="col.field"
+              class="grid grid-cols-[28px_minmax(0,1fr)_minmax(0,1fr)_52px_28px] gap-1.5 px-2.5 py-1.5 border-t border-border items-center transition-opacity"
+              :class="!col.visible ? 'opacity-40' : ''"
+            >
+              <span class="text-center text-muted-foreground">{{ i + 1 }}</span>
+              <span class="font-mono text-[11px] truncate" :title="col.field">{{ col.field }}</span>
+              <input
+                type="text"
+                :value="col.label"
+                class="w-full bg-transparent border-b border-transparent hover:border-border focus:border-primary outline-none px-0.5 py-0.5 text-xs"
+                @input="updatePrintCol(i, 'label', $event.target.value)"
+              />
+              <div class="flex justify-center">
+                <input
+                  type="checkbox"
+                  :checked="col.visible"
+                  class="h-3.5 w-3.5 rounded border-border accent-primary cursor-pointer"
+                  @change="updatePrintCol(i, 'visible', $event.target.checked)"
+                />
+              </div>
+              <div class="flex flex-col items-center -space-y-1">
+                <button
+                  v-if="i > 0"
+                  class="text-muted-foreground hover:text-foreground transition-colors p-0"
+                  @click="movePrintCol(i, -1)"
+                >
+                  <ChevronUp class="h-3.5 w-3.5" />
+                </button>
+                <button
+                  v-if="i < printConfig.length - 1"
+                  class="text-muted-foreground hover:text-foreground transition-colors p-0"
+                  @click="movePrintCol(i, 1)"
+                >
+                  <ChevronDown class="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Print Preview Skeleton -->
+          <div class="mt-5">
+            <p class="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">Preview Layout Print</p>
+            <div class="border border-border rounded-lg p-6 bg-white text-black dark:bg-white">
+              <!-- Header -->
+              <div class="text-center mb-4">
+                <h2 class="text-base font-bold uppercase tracking-wide">{{ config?.readableName || 'Nama Modul' }}</h2>
+                <p class="text-[10px] text-gray-400 mt-0.5">Dicetak pada: {{ new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' }) }}</p>
+              </div>
+              <!-- Fields Table -->
+              <table class="w-full text-xs border-collapse mb-4">
+                <tbody>
+                  <tr v-for="col in printConfig.filter(c => c.visible)" :key="'pp-' + col.field" class="border-b border-gray-200">
+                    <td class="py-1.5 pr-3 font-medium text-gray-600 w-[180px] align-top">{{ col.label || col.field }}</td>
+                    <td class="py-1.5 text-gray-400 italic">- sample data -</td>
+                  </tr>
+                </tbody>
+              </table>
+              <!-- Signature -->
+              <div class="grid grid-cols-3 gap-4 text-center text-[10px] mt-6">
+                <div><p class="font-semibold mb-8">Dibuat Oleh</p><div class="border-t border-black pt-0.5 mx-2 text-gray-400">Nama / Tanggal</div></div>
+                <div><p class="font-semibold mb-8">Diperiksa Oleh</p><div class="border-t border-black pt-0.5 mx-2 text-gray-400">Nama / Tanggal</div></div>
+                <div><p class="font-semibold mb-8">Disetujui Oleh</p><div class="border-t border-black pt-0.5 mx-2 text-gray-400">Nama / Tanggal</div></div>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+      <div v-else class="text-center py-12 text-muted-foreground">
+        <Printer class="h-10 w-10 mx-auto mb-3 opacity-30" />
+        <p class="text-sm">Belum ada field. Tambahkan field di tab Form Builder terlebih dahulu.</p>
+      </div>
         </TabsContent>
       </Tabs>
 
