@@ -1119,6 +1119,12 @@ function normalizePrintBlock(block, fields, details, title) {
   const base = {
     id: block?.id || `pb_${Math.random().toString(36).slice(2, 10)}`,
     type: block?.type || 'paragraph',
+    marginTop: Number(block?.marginTop || 0),
+    marginBottom: Number(block?.marginBottom || 0),
+    borderWidth: Number(block?.borderWidth || 0),
+    borderColor: block?.borderColor || '#000000',
+    backgroundColor: block?.backgroundColor || '',
+    blockPadding: Number(block?.blockPadding || 0),
   }
 
   switch (base.type) {
@@ -1130,13 +1136,33 @@ function normalizePrintBlock(block, fields, details, title) {
         companySubtitle: block?.companySubtitle || '',
         address: block?.address || '',
         meta: block?.meta || '',
-        showDivider: block?.showDivider !== false,
         align: block?.align === 'center' ? 'center' : 'left',
       }
     case 'heading':
-      return { ...base, text: block?.text || title || 'Dokumen', level: Number(block?.level || 1), align: block?.align || 'center' }
+      return {
+        ...base,
+        text: block?.text || title || 'Dokumen',
+        level: Number(block?.level || 1),
+        align: block?.align || 'center',
+        fontSize: Number(block?.fontSize || 0),
+        fontFamily: block?.fontFamily || '',
+        bold: block?.bold !== false,
+        italic: !!block?.italic,
+        underline: !!block?.underline,
+        color: block?.color || '',
+      }
     case 'paragraph':
-      return { ...base, text: block?.text || '', align: block?.align || 'left' }
+      return {
+        ...base,
+        text: block?.text || '',
+        align: block?.align || 'left',
+        fontSize: Number(block?.fontSize || 0),
+        fontFamily: block?.fontFamily || '',
+        bold: !!block?.bold,
+        italic: !!block?.italic,
+        underline: !!block?.underline,
+        color: block?.color || '',
+      }
     case 'field':
       return { ...base, field: block?.field || firstField, label: block?.label || '', layout: block?.layout || 'row' }
     case 'field_table':
@@ -1153,10 +1179,55 @@ function normalizePrintBlock(block, fields, details, title) {
         fit: block?.fit || 'contain',
         align: ['left', 'center', 'right'].includes(block?.align) ? block.align : 'left',
       }
+    case 'columns':
+      return {
+        ...base,
+        colCount: Number(block?.colCount || 2),
+        gap: Number(block?.gap || 16),
+        columnsHtml: Array.isArray(block?.columnsHtml)
+          ? block.columnsHtml.map(h => h || '')
+          : Array(Number(block?.colCount || 2)).fill(''),
+      }
+    case 'list':
+      return {
+        ...base,
+        listType: block?.listType || 'bullet',
+        itemsText: block?.itemsText || 'Item 1\nItem 2\nItem 3',
+        fontSize: Number(block?.fontSize || 0),
+        fontFamily: block?.fontFamily || '',
+        color: block?.color || '',
+      }
+    case 'table':
+      return {
+        ...base,
+        rows: Number(block?.rows || 3),
+        cols: Number(block?.cols || 3),
+        cellsText: block?.cellsText || '',
+        showBorder: block?.showBorder !== false,
+        headerRow: block?.headerRow !== false,
+      }
     case 'divider':
-      return { ...base, thickness: Number(block?.thickness || 1) }
+      return { ...base, thickness: Number(block?.thickness || 1), style: block?.style || 'solid' }
     case 'spacer':
       return { ...base, height: Number(block?.height || 20) }
+    case 'page_break':
+      return { ...base }
+    case 'page_number':
+      return {
+        ...base,
+        format: block?.format || 'Halaman {page}',
+        align: block?.align || 'center',
+        fontSize: Number(block?.fontSize || 0),
+      }
+    case 'watermark':
+      return {
+        ...base,
+        text: block?.text || 'DRAFT',
+        opacity: Number(block?.opacity || 0.08),
+        fontSize: Number(block?.fontSize || 80),
+        color: block?.color || '#000000',
+        rotate: Number(block?.rotate ?? -35),
+      }
     case 'signature':
       return { ...base, titlesText: block?.titlesText || 'Dibuat Oleh\nDiperiksa Oleh\nDisetujui Oleh', caption: block?.caption || 'Nama / Tanggal' }
     case 'html':
@@ -1174,6 +1245,10 @@ function normalizePrintConfigServer(rawConfig, fields, details, title) {
     marginMm: 15,
     exportPdf: true,
     exportDocx: true,
+    headerText: '',
+    footerText: '',
+    showPageNumber: false,
+    pageNumberPosition: 'bottom-center',
     blocks: createDefaultPrintBlocks(fields, details, title),
   }
 
@@ -1203,6 +1278,10 @@ function normalizePrintConfigServer(rawConfig, fields, details, title) {
     marginMm: Number(rawConfig.marginMm || 15),
     exportPdf: rawConfig.exportPdf !== false,
     exportDocx: rawConfig.exportDocx !== false,
+    headerText: rawConfig.headerText || '',
+    footerText: rawConfig.footerText || '',
+    showPageNumber: !!rawConfig.showPageNumber,
+    pageNumberPosition: rawConfig.pageNumberPosition || 'bottom-center',
     blocks: Array.isArray(rawConfig.blocks) && rawConfig.blocks.length
       ? rawConfig.blocks.map((block) => normalizePrintBlock(block, fields, details, title))
       : fallback.blocks,
