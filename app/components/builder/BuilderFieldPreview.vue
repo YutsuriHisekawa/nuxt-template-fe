@@ -161,7 +161,9 @@ function toggleSwitch(e) {
   </div>
 
   <!-- Switch preview (inline native button) -->
-  <div v-else-if="isSwitch" class="flex items-center gap-3 pt-2 cursor-pointer select-none" draggable="false" @mousedown.stop @click="toggleSwitch">
+  <div v-else-if="isSwitch" class="pt-1" draggable="false" @mousedown.stop>
+    <label v-if="field.label" class="block text-sm font-medium mb-1">{{ field.label }}</label>
+    <div class="flex items-center gap-3 cursor-pointer select-none" @click="toggleSwitch">
     <button
       type="button"
       role="switch"
@@ -183,6 +185,7 @@ function toggleSwitch(e) {
     <span class="text-sm font-semibold" :class="switchValue ? 'text-green-600' : 'text-red-600'">
       {{ switchValue ? (field.labelTrue || 'Aktif') : (field.labelFalse || 'Tidak Aktif') }}
     </span>
+    </div>
   </div>
 
   <!-- FieldBox uses its own component -->

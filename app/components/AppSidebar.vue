@@ -80,6 +80,7 @@ const loadMenus = async (force = false) => {
     menuCache.value.items = Array.isArray(sr.menus) ? sr.menus : []
     menuCache.value.loaded = true
     menuCache.value.loading = false
+    logSidebarMenus('selectRespo', menuCache.value.items)
     return
   }
 
@@ -90,6 +91,7 @@ const loadMenus = async (force = false) => {
     if (response.status === 'success' && Array.isArray(response.data)) {
       menuCache.value.items = response.data
       menuCache.value.loaded = true
+      logSidebarMenus('super-admin-api', menuCache.value.items)
     }
   } catch (error) {
     console.error('Failed to load menus:', error)
@@ -122,12 +124,47 @@ const normalizePath = (value: string) => {
   return withSlash.replace(/\/+$/, '')
 }
 
+const getRawSubModul = (menu: any) => menu?.sub_modul?.trim() || ''
+
+const logSidebarMenus = (source: string, menus: any[]) => {
+  if (!import.meta.client) return
+
+  const sample = (menus || []).slice(0, 20).map((menu: any) => ({
+    name: menu?.name,
+    path: menu?.path,
+    modul: menu?.modul,
+    rawSubModul: menu?.sub_modul ?? null,
+    seq: menu?.seq,
+    is_active: menu?.is_active,
+  }))
+
+  const groupedSummary = (menus || []).reduce((acc: Record<string, number>, menu: any) => {
+    const modul = String(menu?.modul || 'OTHER').trim() || 'OTHER'
+    const subModul = getRawSubModul(menu) || '_root'
+    const key = `${modul} > ${subModul}`
+    acc[key] = (acc[key] || 0) + 1
+    return acc
+  }, {})
+
+  console.log('[DEBUG-SIDEBAR] source=', source)
+  console.log('[DEBUG-SIDEBAR] groupedSummary=', groupedSummary)
+  console.table(sample)
+}
+
 // Check if a menu item should be active
-const isMenuItemActive = (itemPath: string): boolean => {
+// Checks both direct path match and route meta.parentMenu for related routes
+const isMenuItemActive = (itemPath: string, itemName?: string): boolean => {
   const current = normalizePath(route.path)
   const target = normalizePath(itemPath)
   if (!current || !target) return false
-  return current === target || current.startsWith(target + '/')
+
+  const pathMatch = current === target || current.startsWith(target + '/')
+
+  // Also check if current route has parentMenu meta that matches this item
+  const parentMenuMeta = ((route.meta?.parentMenu as string) || '').trim()
+  const parentMatch = !!itemName && !!parentMenuMeta && parentMenuMeta.toLowerCase() === itemName.toLowerCase()
+
+  return pathMatch || parentMatch
 }
 
 // Build hierarchical menu structure from flat dynamic menus
@@ -151,7 +188,7 @@ const buildMenuStructure = computed(() => {
     const subModulMap = new Map<string, any[]>()
     
     menus.forEach(menu => {
-      const subModul = menu.sub_modul?.trim() || '_root'
+      const subModul = getRawSubModul(menu) || '_root'
       if (!subModulMap.has(subModul)) {
         subModulMap.set(subModul, [])
       }
@@ -168,7 +205,7 @@ const buildMenuStructure = computed(() => {
             title: item.name,
             url: item.path,
             icon: getIconComponent(item.icon?.trim()),
-            isActive: isMenuItemActive(item.path),
+            isActive: isMenuItemActive(item.path, item.name),
           })
         })
       } else {
@@ -177,12 +214,12 @@ const buildMenuStructure = computed(() => {
           title: subModul,
           url: '#',
           icon: LucideIcons.Folder,
-          isActive: items.some((i: any) => isMenuItemActive(i.path)),
+          isActive: items.some((i: any) => isMenuItemActive(i.path, i.name)),
           items: items.map(item => ({
             title: item.name,
             url: item.path,
             icon: getIconComponent(item.icon?.trim()),
-            isActive: isMenuItemActive(item.path),
+            isActive: isMenuItemActive(item.path, item.name),
           }))
         })
       }
@@ -193,7 +230,7 @@ const buildMenuStructure = computed(() => {
         title: 'Menu',
         url: '/setup/menu',
         icon: Logs,
-        isActive: isMenuItemActive('/setup/menu'),
+        isActive: isMenuItemActive('/setup/menu', 'Menu'),
       })
     }
 
@@ -212,24 +249,30 @@ const buildMenuStructure = computed(() => {
 // All menu items for search (flattened)
 const allMenuItems = computed(() => {
   const items: any[] = []
-  const hasSetupModule = dynamicMenus.value.some(menu => menu.modul === 'SETUP')
-  if (hasSetupModule && authStore.isSuperAdmin) {
+  
+  // Check if user has SETUP access
+  const hasSetupAccess = authStore.isSuperAdmin || dynamicMenus.value.some(m => m.modul === 'SETUP')
+
+  // Add all dynamic menus flattened
+  dynamicMenus.value.forEach(menu => {
+    const rawSubModul = getRawSubModul(menu)
     items.push({
-      title: 'Master Menu',
+      title: menu.name,
+      url: menu.path,
+      icon: getIconComponent(menu.icon?.trim()),
+      parent: rawSubModul ? `${menu.modul} > ${rawSubModul}` : menu.modul
+    })
+  })
+
+  // Add static SETUP menu only if user has SETUP access
+  if (hasSetupAccess && authStore.isSuperAdmin) {
+    items.push({
+      title: 'Menu',
       url: '/setup/menu',
       icon: Logs,
       parent: 'SETUP'
     })
   }
-  
-  dynamicMenus.value.forEach(menu => {
-    items.push({
-      title: menu.name,
-      url: menu.path,
-      icon: getIconComponent(menu.icon?.trim()),
-      parent: menu.sub_modul ? `${menu.modul} > ${menu.sub_modul}` : menu.modul
-    })
-  })
 
   return items
 })
@@ -273,11 +316,11 @@ const data = computed(() => {
               title: item.title,
               url: item.url,
               icon: item.icon,
-              isActive: isMenuItemActive(item.url),
+              isActive: isMenuItemActive(item.url, item.title),
             })
           })
           
-          // Convert grouped to menu structure
+          // Convert grouped to menu structure — merge same modules
           const moduleMap: Record<string, NavItem> = {}
           
           Object.entries(grouped).forEach(([parent, items]) => {

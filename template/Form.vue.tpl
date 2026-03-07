@@ -10,6 +10,20 @@ __DETAIL_IMPORTS__
 const api = useApi();       // Helper untuk panggil API (GET, POST, PUT)
 const router = useRouter();  // Untuk navigasi antar halaman
 const route = useRoute();    // Untuk baca parameter URL (misalnya :id)
+const authStore = useAuthStore();
+
+// ============================================================================
+// PERMISSIONS — Cek hak akses user berdasarkan menu
+// ============================================================================
+const currentMenu = computed(() => {
+  return authStore.selectRespo?.menus?.find(m => m.path === '__ROUTE_PATH__');
+});
+const perms = computed(() => {
+  if (authStore.isSuperAdmin) return { is_read: true, is_create: true, is_update: true, is_delete: true, is_print: true };
+  const menuId = currentMenu.value?.id;
+  if (!menuId) return { is_read: true, is_create: true, is_update: true, is_delete: true, is_print: true };
+  return authStore.selectRespo?.permissions?.[menuId] || {};
+});
 __UNIT_BISNIS_FORM_SETUP__
 
 // ============================================================================
@@ -247,8 +261,9 @@ __DETAIL_TEMPLATE__
         >
           {{ isReadOnly ? "Kembali" : "Batal" }}
         </Button>
+__PRINT_BUTTON__
         <Button
-          v-if="!isReadOnly"
+          v-if="!isReadOnly && (isEditMode ? perms.is_update !== false : perms.is_create !== false)"
           type="button"
           @click="onSave"
           :disabled="loading"

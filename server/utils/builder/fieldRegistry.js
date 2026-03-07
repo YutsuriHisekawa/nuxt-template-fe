@@ -92,6 +92,7 @@ function genSwitch(f) {
   const readonlyAttr = getReadonlyAttr(f)
   return `            <FieldStatus
               v-model="values.${f.field}"
+              label="${f.label || ''}"
               ${disabledExpr}
               ${readonlyAttr}
               active-text="${f.labelTrue || 'Aktif'}"
