@@ -22,6 +22,15 @@ const detailMeta = __PRINT_DETAIL_META_JSON__;
 
 const API_BASE = "/api/dynamic/__API_ENDPOINT__";
 
+function resolveLogoUrl(path) {
+  if (!path) return '';
+  if (path.startsWith('http')) return path;
+  const cfg = useRuntimeConfig();
+  const base = (cfg.public.baseUrl || '').replace(/\/api\/?$/, '');
+  if (path.startsWith('uploads/')) return `${base}/${path}`;
+  return `${base}/uploads/${path}`;
+}
+
 function getPaperStyle(cfg) {
   const sizes = {
     A4: { portrait: { width: "210mm", minHeight: "297mm" }, landscape: { width: "297mm", minHeight: "210mm" } },
@@ -66,6 +75,52 @@ function parseSignatureTitles(text) {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean);
+}
+
+function parseListItems(text) {
+  return String(text || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function parseTableCells(text, rows, cols) {
+  const lines = String(text || "")
+    .split(/\r?\n/)
+    .map((l) => l.trim());
+  const result = [];
+  for (let r = 0; r < rows; r++) {
+    const row = [];
+    for (let c = 0; c < cols; c++) {
+      const idx = r * cols + c;
+      row.push(lines[idx] || "");
+    }
+    result.push(row);
+  }
+  return result;
+}
+
+function getBlockWrapperStyle(block) {
+  const s = {};
+  if (block.marginTop) s.marginTop = `${block.marginTop}px`;
+  if (block.marginBottom) s.marginBottom = `${block.marginBottom}px`;
+  if (block.borderWidth) {
+    s.border = `${block.borderWidth}px solid ${block.borderColor || '#000'}`;
+  }
+  if (block.backgroundColor) s.backgroundColor = block.backgroundColor;
+  if (block.blockPadding) s.padding = `${block.blockPadding}px`;
+  return s;
+}
+
+function getFontStyle(block) {
+  const s = {};
+  if (block.fontSize) s.fontSize = `${block.fontSize}px`;
+  if (block.fontFamily) s.fontFamily = block.fontFamily;
+  if (block.bold) s.fontWeight = 'bold';
+  if (block.italic) s.fontStyle = 'italic';
+  if (block.underline) s.textDecoration = 'underline';
+  if (block.color) s.color = block.color;
+  return s;
 }
 
 function resolveFieldValue(fieldName) {
@@ -285,15 +340,39 @@ const handleBack = () => {
         </button>
       </div>
 
-      <div ref="printRoot" class="mx-auto bg-white shadow-sm print:shadow-none print:max-w-none" :style="paperStyle">
+      <div ref="printRoot" class="mx-auto bg-white shadow-sm print:shadow-none print:max-w-none relative" :style="paperStyle">
+        <!-- Watermark overlay -->
+        <template v-for="block in printConfig.blocks" :key="'wm-' + block.id">
+          <div
+            v-if="block.type === 'watermark'"
+            class="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden print:flex"
+            style="z-index:0"
+          >
+            <span
+              :style="{
+                fontSize: `${block.fontSize || 80}px`,
+                color: block.color || '#000',
+                opacity: block.opacity || 0.08,
+                transform: `rotate(${block.rotate ?? -35}deg)`,
+                whiteSpace: 'nowrap',
+                userSelect: 'none',
+                fontWeight: 'bold',
+                letterSpacing: '0.1em',
+              }"
+            >{{ renderTokens(block.text || 'DRAFT') }}</span>
+          </div>
+        </template>
+
+        <div style="position:relative;z-index:1">
         <template v-for="block in printConfig.blocks" :key="block.id">
           <div
             v-if="block.type === 'company_header'"
             class="mb-5"
+            :style="getBlockWrapperStyle(block)"
           >
             <div class="flex gap-4 items-start" :class="block.align === 'center' ? 'justify-center text-center' : 'justify-start text-left'">
               <div v-if="block.logoUrl" class="shrink-0">
-                <img :src="block.logoUrl" alt="logo" class="object-contain max-h-20 max-w-24" />
+                <img :src="resolveLogoUrl(block.logoUrl)" alt="logo" class="w-16 h-16 object-cover rounded" />
               </div>
               <div>
                 <h1 class="text-xl font-bold uppercase tracking-wide">{{ renderTokens(block.companyName) }}</h1>
@@ -302,17 +381,17 @@ const handleBack = () => {
                 <p v-if="block.meta" class="text-[11px] mt-1 text-slate-600">{{ renderTokens(block.meta) }}</p>
               </div>
             </div>
-            <div v-if="block.showDivider" class="mt-3 border-b-2 border-black"></div>
           </div>
 
           <component
             :is="`h${Math.min(3, Math.max(1, Number(block.level || 1)))}`"
             v-else-if="block.type === 'heading'"
-            class="font-bold tracking-wide mb-3"
+            class="tracking-wide mb-3"
             :class="{
               'text-center': block.align === 'center',
               'text-right': block.align === 'right',
             }"
+            :style="{ ...getBlockWrapperStyle(block), ...getFontStyle(block) }"
           >{{ renderTokens(block.text) }}</component>
 
           <p
@@ -323,14 +402,15 @@ const handleBack = () => {
               'text-right': block.align === 'right',
               'text-justify': block.align === 'justify',
             }"
+            :style="{ ...getBlockWrapperStyle(block), ...getFontStyle(block) }"
           >{{ renderTokens(block.text) }}</p>
 
-          <div v-else-if="block.type === 'field'" class="mb-3" :class="block.layout === 'stacked' ? 'space-y-1' : 'grid grid-cols-[180px_minmax(0,1fr)] gap-3'">
+          <div v-else-if="block.type === 'field'" class="mb-3" :class="block.layout === 'stacked' ? 'space-y-1' : 'grid grid-cols-[180px_minmax(0,1fr)] gap-3'" :style="getBlockWrapperStyle(block)">
             <div class="font-semibold text-sm">{{ block.label || fieldMeta?.[block.field]?.label || block.field }}</div>
             <div class="text-sm">{{ resolveFieldValue(block.field) }}</div>
           </div>
 
-          <div v-else-if="block.type === 'field_table'" class="mb-4">
+          <div v-else-if="block.type === 'field_table'" class="mb-4" :style="getBlockWrapperStyle(block)">
             <h3 v-if="block.title" class="text-sm font-bold uppercase mb-2">{{ renderTokens(block.title) }}</h3>
             <table class="w-full text-sm border-collapse no-border">
               <tbody>
@@ -342,7 +422,7 @@ const handleBack = () => {
             </table>
           </div>
 
-          <div v-else-if="block.type === 'detail_table'" class="mb-5">
+          <div v-else-if="block.type === 'detail_table'" class="mb-5" :style="getBlockWrapperStyle(block)">
             <h3 class="text-sm font-bold uppercase mb-2">{{ renderTokens(block.title || 'Detail') }}</h3>
             <table class="w-full text-xs border-collapse">
               <thead>
@@ -363,7 +443,7 @@ const handleBack = () => {
             </table>
           </div>
 
-          <div v-else-if="block.type === 'image'" class="mb-4" :class="{ 'text-center': block.align === 'center', 'text-right': block.align === 'right' }">
+          <div v-else-if="block.type === 'image'" class="mb-4" :class="{ 'text-center': block.align === 'center', 'text-right': block.align === 'right' }" :style="getBlockWrapperStyle(block)">
             <img
               v-if="block.src"
               :src="block.src"
@@ -373,19 +453,62 @@ const handleBack = () => {
             />
           </div>
 
-          <div v-else-if="block.type === 'divider'" class="mb-4 border-b border-black" :style="{ borderBottomWidth: `${Number(block.thickness || 1)}px` }"></div>
+          <div v-else-if="block.type === 'divider'" class="mb-4" :style="{ ...getBlockWrapperStyle(block), borderBottomWidth: `${Number(block.thickness || 1)}px`, borderBottomStyle: block.style || 'solid', borderBottomColor: '#000' }"></div>
 
-          <div v-else-if="block.type === 'spacer'" :style="{ height: `${Number(block.height || 20)}px` }"></div>
+          <div v-else-if="block.type === 'spacer'" :style="{ height: `${Number(block.height || 20)}px`, ...getBlockWrapperStyle(block) }"></div>
 
-          <div v-else-if="block.type === 'signature'" class="mt-10 grid gap-8 text-center text-sm" :style="{ gridTemplateColumns: `repeat(${Math.max(1, parseSignatureTitles(block.titlesText).length)}, minmax(0, 1fr))` }">
+          <!-- Page Break -->
+          <div v-else-if="block.type === 'page_break'" style="page-break-before: always; break-before: page;"></div>
+
+          <!-- Page Number -->
+          <div
+            v-else-if="block.type === 'page_number'"
+            class="mb-3 text-sm"
+            :class="{ 'text-center': block.align === 'center', 'text-right': block.align === 'right' }"
+            :style="{ ...getBlockWrapperStyle(block), fontSize: block.fontSize ? `${block.fontSize}px` : undefined }"
+          >{{ renderTokens((block.format || 'Halaman {page}').replace('{page}', '1').replace('{pages}', '1')) }}</div>
+
+          <!-- List -->
+          <component
+            v-else-if="block.type === 'list'"
+            :is="block.listType === 'number' ? 'ol' : 'ul'"
+            class="mb-4 pl-6"
+            :class="block.listType === 'number' ? 'list-decimal' : 'list-disc'"
+            :style="{ ...getBlockWrapperStyle(block), ...getFontStyle(block) }"
+          >
+            <li v-for="(item, li) in parseListItems(block.itemsText)" :key="`${block.id}-li-${li}`">{{ renderTokens(item) }}</li>
+          </component>
+
+          <!-- Table (Free-form) -->
+          <div v-else-if="block.type === 'table'" class="mb-4" :style="getBlockWrapperStyle(block)">
+            <table class="w-full text-sm border-collapse" :class="block.showBorder !== false ? '' : 'no-border'">
+              <tbody>
+                <tr v-for="(row, ri) in parseTableCells(block.cellsText, block.rows || 3, block.cols || 3)" :key="`${block.id}-r-${ri}`" :class="ri === 0 && block.headerRow !== false ? 'font-bold bg-slate-100' : ''">
+                  <td v-for="(cell, ci) in row" :key="`${block.id}-c-${ri}-${ci}`" class="px-2 py-1.5" :class="block.showBorder !== false ? 'border border-slate-300' : ''">{{ renderTokens(cell) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Columns -->
+          <div
+            v-else-if="block.type === 'columns'"
+            class="mb-4"
+            :style="{ ...getBlockWrapperStyle(block), display: 'grid', gridTemplateColumns: `repeat(${block.colCount || 2}, 1fr)`, gap: `${block.gap || 16}px` }"
+          >
+            <div v-for="(html, ci) in (block.columnsHtml || [])" :key="`${block.id}-col-${ci}`" class="prose prose-sm max-w-none" v-html="renderHtmlBlock(html)"></div>
+          </div>
+
+          <div v-else-if="block.type === 'signature'" class="mt-10 grid gap-8 text-center text-sm" :style="{ ...getBlockWrapperStyle(block), gridTemplateColumns: `repeat(${Math.max(1, parseSignatureTitles(block.titlesText).length)}, minmax(0, 1fr))` }">
             <div v-for="(title, titleIndex) in parseSignatureTitles(block.titlesText)" :key="`${block.id}-${titleIndex}`">
               <p class="font-semibold mb-16">{{ renderTokens(title) }}</p>
               <div class="border-t border-black pt-1 text-slate-500">{{ renderTokens(block.caption || 'Nama / Tanggal') }}</div>
             </div>
           </div>
 
-          <div v-else-if="block.type === 'html'" class="mb-3 prose prose-sm max-w-none" v-html="renderHtmlBlock(block.html)"></div>
+          <div v-else-if="block.type === 'html'" class="mb-3 prose prose-sm max-w-none" :style="getBlockWrapperStyle(block)" v-html="renderHtmlBlock(block.html)"></div>
         </template>
+        </div>
       </div>
     </div>
   </div>
