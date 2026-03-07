@@ -60,6 +60,7 @@ const generatedMessage = ref("");
 const panelOpen = ref(false);
 const panelIndex = ref(-1);
 const docsOpen = ref(false);
+const showPrintHelp = ref(false);
 
 // Shared preview values for cascading selects in builder preview
 const previewValues = reactive({});
@@ -117,6 +118,325 @@ function computeAllFormulas() {
 
 // Detail tabs state
 const detailPanelOpen = ref(false);
+const PRINT_BLOCK_TYPES = [
+  { value: 'company_header', label: 'Company Header' },
+  { value: 'heading', label: 'Heading' },
+  { value: 'paragraph', label: 'Paragraph' },
+  { value: 'field', label: 'Field' },
+  { value: 'field_table', label: 'Field Table' },
+  { value: 'detail_table', label: 'Detail Table' },
+  { value: 'image', label: 'Image / Logo' },
+  { value: 'divider', label: 'Separator / Divider' },
+  { value: 'spacer', label: 'Spacer' },
+  { value: 'signature', label: 'Signature' },
+  { value: 'html', label: 'HTML / Custom' },
+];
+const PRINT_PAPER_OPTIONS = ['A4', 'A5', 'Letter', 'Legal'];
+
+function printUid() {
+  return `pb_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function isPrintableField(field) {
+  const entry = getRegistryEntry(field?.type);
+  return !entry?.isSpace && !entry?.isSection && !entry?.isFieldGroup && !entry?.isFieldGroupEnd && !!field?.field?.trim();
+}
+
+function buildFieldTableText(items, allFields) {
+  const rows = (items || []).filter((item) => item?.visible !== false).map((item) => {
+    const source = allFields.find((field) => field.field === item.field);
+    return `${item.field}|${item.label || source?.label || item.field}`;
+  });
+  return rows.join('\n');
+}
+
+function createDefaultPrintBlocks(allFields, allDetails, title) {
+  const printable = (allFields || []).filter(isPrintableField);
+  const firstDetail = (allDetails || []).find((detail) => detail?.responseKey);
+  const fieldTableText = buildFieldTableText(
+    printable.slice(0, 10).map((field) => ({ field: field.field, label: field.label || field.field, visible: true })),
+    printable,
+  );
+
+  const blocks = [
+    {
+      id: printUid(),
+      type: 'company_header',
+      logoUrl: '',
+      companyName: 'Nama Perusahaan',
+      companySubtitle: 'Alamat / Divisi / Cabang',
+      address: 'Jl. Contoh Alamat No. 123, Kota, Indonesia',
+      meta: 'Telp: 021-000000 | Email: info@company.com',
+      showDivider: true,
+      align: 'left',
+    },
+    { id: printUid(), type: 'heading', text: title || 'Dokumen', level: 1, align: 'center' },
+    { id: printUid(), type: 'paragraph', text: 'Dicetak pada {{current_date}}', align: 'center' },
+    { id: printUid(), type: 'field_table', title: '', itemsText: fieldTableText, variant: 'plain' },
+  ];
+
+  if (firstDetail) {
+    blocks.push({
+      id: printUid(),
+      type: 'detail_table',
+      title: firstDetail.tabLabel || 'Detail',
+      responseKey: firstDetail.responseKey,
+    });
+  }
+
+  blocks.push({
+    id: printUid(),
+    type: 'signature',
+    titlesText: 'Dibuat Oleh\nDiperiksa Oleh\nDisetujui Oleh',
+    caption: 'Nama / Tanggal',
+  });
+
+  return blocks;
+}
+
+function createDefaultPrintConfig(allFields, allDetails, title) {
+  return {
+    enabled: false,
+    paperSize: 'A4',
+    orientation: 'portrait',
+    marginMm: 15,
+    exportPdf: true,
+    exportDocx: true,
+    blocks: createDefaultPrintBlocks(allFields, allDetails, title),
+  };
+}
+
+function normalizePrintBlock(block, allFields, allDetails, title) {
+  const printable = (allFields || []).filter(isPrintableField);
+  const firstField = printable[0]?.field || '';
+  const firstDetail = (allDetails || []).find((detail) => detail?.responseKey);
+  const base = {
+    id: block?.id || printUid(),
+    type: block?.type || 'paragraph',
+  };
+
+  switch (base.type) {
+    case 'company_header':
+      return {
+        ...base,
+        logoUrl: block?.logoUrl || '',
+        companyName: block?.companyName || 'Nama Perusahaan',
+        companySubtitle: block?.companySubtitle || '',
+        address: block?.address || '',
+        meta: block?.meta || '',
+        showDivider: block?.showDivider !== false,
+        align: block?.align || 'left',
+      };
+    case 'heading':
+      return { ...base, text: block?.text || title || 'Dokumen', level: Number(block?.level || 1), align: block?.align || 'center' };
+    case 'paragraph':
+      return { ...base, text: block?.text || '', align: block?.align || 'left' };
+    case 'field':
+      return { ...base, field: block?.field || firstField, label: block?.label || '', layout: block?.layout || 'row' };
+    case 'field_table':
+      return { ...base, title: block?.title || '', itemsText: block?.itemsText || buildFieldTableText(printable.slice(0, 10).map((field) => ({ field: field.field, label: field.label || field.field, visible: true })), printable), variant: block?.variant || 'plain' };
+    case 'detail_table':
+      return { ...base, title: block?.title || firstDetail?.tabLabel || 'Detail', responseKey: block?.responseKey || firstDetail?.responseKey || '' };
+    case 'image':
+      return {
+        ...base,
+        src: block?.src || '',
+        alt: block?.alt || 'image',
+        width: Number(block?.width || 120),
+        height: Number(block?.height || 120),
+        fit: block?.fit || 'contain',
+        align: block?.align || 'left',
+      };
+    case 'divider':
+      return { ...base, thickness: Number(block?.thickness || 1) };
+    case 'spacer':
+      return { ...base, height: Number(block?.height || 20) };
+    case 'signature':
+      return { ...base, titlesText: block?.titlesText || 'Dibuat Oleh\nDiperiksa Oleh\nDisetujui Oleh', caption: block?.caption || 'Nama / Tanggal' };
+    case 'html':
+      return { ...base, html: block?.html || '<p>{{page_title}}</p>' };
+    default:
+      return { ...base, type: 'paragraph', text: block?.text || '', align: block?.align || 'left' };
+  }
+}
+
+function normalizePrintConfig(rawConfig, allFields, allDetails, title) {
+  const fallback = createDefaultPrintConfig(allFields, allDetails, title);
+
+  if (Array.isArray(rawConfig)) {
+    return {
+      ...fallback,
+      enabled: rawConfig.length > 0,
+      blocks: [
+        normalizePrintBlock({ type: 'heading', text: title || 'Dokumen', level: 1, align: 'center' }, allFields, allDetails, title),
+        normalizePrintBlock({ type: 'paragraph', text: 'Dicetak pada {{current_date}}', align: 'center' }, allFields, allDetails, title),
+        normalizePrintBlock({ type: 'field_table', itemsText: buildFieldTableText(rawConfig, allFields) }, allFields, allDetails, title),
+        normalizePrintBlock({ type: 'signature' }, allFields, allDetails, title),
+      ],
+    };
+  }
+
+  if (!rawConfig || typeof rawConfig !== 'object') {
+    return fallback;
+  }
+
+  const blocks = Array.isArray(rawConfig.blocks) && rawConfig.blocks.length
+    ? rawConfig.blocks.map((block) => normalizePrintBlock(block, allFields, allDetails, title))
+    : fallback.blocks;
+
+  return {
+    ...fallback,
+    ...rawConfig,
+    enabled: rawConfig.enabled === true,
+    paperSize: PRINT_PAPER_OPTIONS.includes(rawConfig.paperSize) ? rawConfig.paperSize : fallback.paperSize,
+    orientation: rawConfig.orientation === 'landscape' ? 'landscape' : 'portrait',
+    marginMm: Number(rawConfig.marginMm || fallback.marginMm),
+    exportPdf: rawConfig.exportPdf !== false,
+    exportDocx: rawConfig.exportDocx !== false,
+    blocks,
+  };
+}
+
+function parsePrintFieldTable(itemsText) {
+  return String(itemsText || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [field, label] = line.split('|').map((part) => part.trim());
+      return { field, label: label || field };
+    })
+    .filter((item) => item.field);
+}
+
+function parseSignatureTitles(text) {
+  return String(text || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function getPaperPreviewStyle(printCfg) {
+  const sizeMap = {
+    A4: { portrait: { width: '210mm', minHeight: '297mm' }, landscape: { width: '297mm', minHeight: '210mm' } },
+    A5: { portrait: { width: '148mm', minHeight: '210mm' }, landscape: { width: '210mm', minHeight: '148mm' } },
+    Letter: { portrait: { width: '216mm', minHeight: '279mm' }, landscape: { width: '279mm', minHeight: '216mm' } },
+    Legal: { portrait: { width: '216mm', minHeight: '356mm' }, landscape: { width: '356mm', minHeight: '216mm' } },
+  };
+  const paper = sizeMap[printCfg?.paperSize || 'A4'] || sizeMap.A4;
+  const dims = paper[printCfg?.orientation === 'landscape' ? 'landscape' : 'portrait'];
+  return {
+    width: '100%',
+    maxWidth: dims.width,
+    minHeight: dims.minHeight,
+    padding: `${Number(printCfg?.marginMm || 15)}mm`,
+  };
+}
+
+function getPrintableFieldLabel(fieldName) {
+  return fields.value.find((field) => field.field === fieldName)?.label || fieldName;
+}
+
+function getPreviewFieldValue(fieldName) {
+  const field = fields.value.find((item) => item.field === fieldName);
+  if (!field) return '-';
+  if (field.type === 'switch') return field.labelTrue || 'Aktif';
+  if (field.type === 'currency') return '1.250.000';
+  if (field.type === 'date') return '07 Maret 2026';
+  if (field.type === 'datetime') return '07 Maret 2026 10:30';
+  if (field.type === 'popup' || field.type === 'select') return `${field.label || field.field} Sample`;
+  if (field.type === 'textarea') return `Contoh ${field.label || field.field}`;
+  return `${field.label || field.field} sample`;
+}
+
+function renderPrintTokens(text) {
+  const value = String(text || '');
+  return value
+    .replace(/\{\{\s*page_title\s*\}\}/gi, config.value?.readableName || 'Dokumen')
+    .replace(/\{\{\s*current_date\s*\}\}/gi, new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' }))
+    .replace(/\{\{\s*current_datetime\s*\}\}/gi, new Date().toLocaleString('id-ID'))
+    .replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, fieldName) => getPreviewFieldValue(fieldName));
+}
+
+function renderPrintHtmlPreview(html) {
+  return renderPrintTokens(html)
+    .replace(/\n/g, '<br>');
+}
+
+function clonePlain(value, fallback = null) {
+  if (value === undefined) return fallback;
+  return JSON.parse(JSON.stringify(value));
+}
+
+function clonePrintConfigState() {
+  return normalizePrintConfig(
+    clonePlain(printConfig.value, createDefaultPrintConfig(fields.value, details.value, config.value?.readableName || 'Dokumen')),
+    fields.value,
+    details.value,
+    config.value?.readableName || 'Dokumen',
+  );
+}
+
+function addPrintBlock(type) {
+  pushUndo();
+  const next = clonePrintConfigState();
+  next.blocks = [...(next.blocks || []), normalizePrintBlock({ type }, fields.value, details.value, config.value?.readableName || 'Dokumen')];
+  printConfig.value = next;
+}
+
+function updatePrintBlock(idx, key, value) {
+  const next = clonePrintConfigState();
+  next.blocks[idx][key] = value;
+  printConfig.value = next;
+}
+
+function duplicatePrintBlock(idx) {
+  pushUndo();
+  const next = clonePrintConfigState();
+  const copied = structuredClone(next.blocks[idx]);
+  copied.id = printUid();
+  next.blocks.splice(idx + 1, 0, copied);
+  printConfig.value = next;
+}
+
+function removePrintBlock(idx) {
+  pushUndo();
+  const next = clonePrintConfigState();
+  next.blocks.splice(idx, 1);
+  printConfig.value = next;
+}
+
+function movePrintBlock(idx, dir) {
+  const next = clonePrintConfigState();
+  const target = idx + dir;
+  if (target < 0 || target >= next.blocks.length) return;
+  [next.blocks[idx], next.blocks[target]] = [next.blocks[target], next.blocks[idx]];
+  printConfig.value = next;
+}
+
+function setPrintEnabled(enabled) {
+  const next = normalizePrintConfig(printConfig.value, fields.value, details.value, config.value?.readableName || 'Dokumen');
+  next.enabled = !!enabled;
+  if (next.enabled && (!Array.isArray(next.blocks) || next.blocks.length === 0)) {
+    next.blocks = createDefaultPrintBlocks(fields.value, details.value, config.value?.readableName || 'Dokumen');
+  }
+  printConfig.value = next;
+}
+
+const printableFields = computed(() => fields.value.filter(isPrintableField));
+const printableDetails = computed(() => details.value.filter((detail) => detail?.responseKey));
+const printPreviewStyle = computed(() => getPaperPreviewStyle(printConfig.value));
+const printTokenExamples = computed(() => {
+  const fieldNames = printableFields.value.map((field) => field.field);
+  const createdField = fieldNames.find((name) => ['created_at', 'createdAt', 'tgl_buat', 'tanggal_buat'].includes(name)) || fieldNames.find((name) => name.toLowerCase().includes('created')) || 'created_at';
+  const userField = fieldNames.find((name) => ['created_by', 'createdBy', 'nama_kary', 'nama_user'].includes(name)) || fieldNames.find((name) => name.toLowerCase().includes('nama')) || 'nama_kary';
+  return {
+    createdField,
+    userField,
+    signatureExample: `{{${userField}}} / {{current_date}}`,
+    createdExample: `Dibuat pada {{${createdField}}}`,
+  };
+});
 
 // ── Drag & Drop state ──────────────────────────────────────────────────────
 const dragIndex = ref(-1);
@@ -154,27 +474,50 @@ const undoStack = ref([]);
 const redoStack = ref([]);
 const MAX_HISTORY = 50;
 
+function getBuilderSnapshot() {
+  return JSON.stringify({
+    fields: clonePlain(fields.value, []),
+    details: clonePlain(details.value, []),
+    landingConfig: clonePlain(landingConfig.value, []),
+    printConfig: clonePlain(printConfig.value, createDefaultPrintConfig(fields.value, details.value, config.value?.readableName || 'Dokumen')),
+    columnLayout: columnLayout.value,
+    wizardSteps: clonePlain(wizardSteps.value, []),
+  });
+}
+
+function restoreBuilderSnapshot(snapshotText) {
+  const snapshot = JSON.parse(snapshotText);
+  fields.value = Array.isArray(snapshot.fields) ? snapshot.fields : [];
+  details.value = Array.isArray(snapshot.details) ? snapshot.details : [];
+  landingConfig.value = Array.isArray(snapshot.landingConfig) ? snapshot.landingConfig : [];
+  printConfig.value = normalizePrintConfig(snapshot.printConfig, fields.value, details.value, config.value?.readableName || 'Dokumen');
+  columnLayout.value = Number(snapshot.columnLayout || 2);
+  wizardSteps.value = Array.isArray(snapshot.wizardSteps) ? snapshot.wizardSteps : [];
+}
+
 function pushUndo() {
-  undoStack.value.push(JSON.stringify(fields.value));
+  undoStack.value.push(getBuilderSnapshot());
   if (undoStack.value.length > MAX_HISTORY) undoStack.value.shift();
   redoStack.value = []; // new action clears redo
 }
 
 function undo() {
   if (!undoStack.value.length) return;
-  redoStack.value.push(JSON.stringify(fields.value));
+  redoStack.value.push(getBuilderSnapshot());
   const prev = undoStack.value.pop();
-  fields.value = JSON.parse(prev);
+  restoreBuilderSnapshot(prev);
   closePanel();
+  closeDetailPanel();
   toast.info('Undo');
 }
 
 function redo() {
   if (!redoStack.value.length) return;
-  undoStack.value.push(JSON.stringify(fields.value));
+  undoStack.value.push(getBuilderSnapshot());
   const next = redoStack.value.pop();
-  fields.value = JSON.parse(next);
+  restoreBuilderSnapshot(next);
   closePanel();
+  closeDetailPanel();
   toast.info('Redo');
 }
 
@@ -366,7 +709,7 @@ const savedColumnLayout = useCookie('builder_col_layout', { default: () => 2, ma
 const fields = ref(savedFields.value && savedFields.value.length ? savedFields.value : structuredClone(DEFAULT_FIELDS));
 const details = ref(savedDetails.value && savedDetails.value.length ? savedDetails.value : []);
 const landingConfig = ref(savedLandingConfig.value || []);
-const printConfig = ref(savedPrintConfig.value || []);
+const printConfig = ref(normalizePrintConfig(savedPrintConfig.value, fields.value, details.value, config.value?.readableName || 'Dokumen'));
 const columnLayout = ref(savedColumnLayout.value || 2);
 
 // Auto-save to cookies on change
@@ -408,39 +751,13 @@ watch(fields, (newFields) => {
   landingConfig.value = result;
 }, { deep: true, immediate: true });
 
-// Auto-sync print config when fields change
-watch(fields, (newFields) => {
-  const current = printConfig.value;
-  const validFields = newFields.filter(f => {
-    const entry = getRegistryEntry(f.type);
-    return !entry?.isSpace && !entry?.isSection && !entry?.isFieldGroup && !entry?.isFieldGroupEnd && f.field?.trim();
-  });
-  const existingSet = new Set(current.map(c => c.field));
-  const newFieldSet = new Set(validFields.map(f => f.field));
-  const result = current
-    .filter(c => newFieldSet.has(c.field))
-    .map(c => {
-      const f = validFields.find(vf => vf.field === c.field);
-      return { ...c, label: f?.label || c.label };
-    });
-  validFields.forEach(f => {
-    if (!existingSet.has(f.field)) {
-      result.push({ field: f.field, label: f.label || f.field, visible: true });
-    }
-  });
-  printConfig.value = result;
-}, { deep: true, immediate: true });
-
-function movePrintCol(i, dir) {
-  const arr = printConfig.value;
-  const j = i + dir;
-  if (j < 0 || j >= arr.length) return;
-  [arr[i], arr[j]] = [arr[j], arr[i]];
-}
-
-function updatePrintCol(i, key, val) {
-  printConfig.value[i][key] = val;
-}
+watch(
+  [fields, details, () => config.value?.readableName],
+  () => {
+    printConfig.value = normalizePrintConfig(printConfig.value, fields.value, details.value, config.value?.readableName || 'Dokumen');
+  },
+  { deep: true, immediate: true },
+);
 
 function clearBuilderCookies() {
   savedFields.value = null;
@@ -466,7 +783,7 @@ async function cancelBuilder() {
   fields.value = structuredClone(DEFAULT_FIELDS);
   details.value = [];
   landingConfig.value = [];
-  printConfig.value = [];
+  printConfig.value = createDefaultPrintConfig([], [], config.value?.readableName || 'Dokumen');
   closePanel();
   closeDetailPanel();
   // Delete config on server so token is invalidated
@@ -587,7 +904,7 @@ function importConfig() {
       if (Array.isArray(data.fields)) fields.value = data.fields;
       if (Array.isArray(data.details)) details.value = data.details;
       if (Array.isArray(data.landingConfig)) landingConfig.value = data.landingConfig;
-      if (Array.isArray(data.printConfig)) printConfig.value = data.printConfig;
+      if (data.printConfig) printConfig.value = normalizePrintConfig(data.printConfig, data.fields || fields.value, data.details || details.value, config.value?.readableName || 'Dokumen');
       if (data.columnLayout) columnLayout.value = data.columnLayout;
       if (Array.isArray(data.wizardSteps)) wizardSteps.value = data.wizardSteps;
       toast.success(`Config imported: ${data.fields?.length || 0} fields`);
@@ -1489,100 +1806,491 @@ async function generate() {
         <!-- TAB: KONFIGURASI PRINT -->
         <!-- ============================================================ -->
         <TabsContent value="print" class="space-y-6 mt-4">
-      <Card v-if="printConfig.length > 0">
+      <Card>
         <CardHeader>
-          <div class="flex items-center gap-3">
-            <Printer class="h-5 w-5 text-primary shrink-0" />
-            <div>
-              <CardTitle class="text-base">Konfigurasi Print</CardTitle>
-              <CardDescription>Atur field yang tampil di halaman cetak & urutan tampilannya</CardDescription>
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <div class="flex items-center gap-3">
+              <Printer class="h-5 w-5 text-primary shrink-0" />
+              <div>
+                <CardTitle class="text-base">Konfigurasi Print</CardTitle>
+                <CardDescription>Printout opsional. Aktifkan hanya jika modul ini memang punya layout cetak.</CardDescription>
+              </div>
             </div>
+            <label class="inline-flex items-center gap-2 text-sm font-medium">
+              <input
+                type="checkbox"
+                :checked="printConfig.enabled"
+                class="h-4 w-4 rounded border-border accent-primary"
+                @change="setPrintEnabled($event.target.checked)"
+              />
+              Aktifkan Printout
+            </label>
           </div>
         </CardHeader>
-        <CardContent>
-          <div class="border border-border rounded-lg overflow-hidden text-xs">
-            <!-- Table Header -->
-            <div class="grid grid-cols-[28px_minmax(0,1fr)_minmax(0,1fr)_52px_28px] gap-1.5 px-2.5 py-2 bg-muted font-semibold text-muted-foreground items-center">
-              <span class="text-center">#</span>
-              <span>Field</span>
-              <span>Label Print</span>
-              <span class="text-center" title="Tampil di printout">Tampil</span>
-              <span></span>
-            </div>
-            <!-- Rows -->
-            <div
-              v-for="(col, i) in printConfig"
-              :key="col.field"
-              class="grid grid-cols-[28px_minmax(0,1fr)_minmax(0,1fr)_52px_28px] gap-1.5 px-2.5 py-1.5 border-t border-border items-center transition-opacity"
-              :class="!col.visible ? 'opacity-40' : ''"
-            >
-              <span class="text-center text-muted-foreground">{{ i + 1 }}</span>
-              <span class="font-mono text-[11px] truncate" :title="col.field">{{ col.field }}</span>
-              <input
-                type="text"
-                :value="col.label"
-                class="w-full bg-transparent border-b border-transparent hover:border-border focus:border-primary outline-none px-0.5 py-0.5 text-xs"
-                @input="updatePrintCol(i, 'label', $event.target.value)"
-              />
-              <div class="flex justify-center">
-                <input
-                  type="checkbox"
-                  :checked="col.visible"
-                  class="h-3.5 w-3.5 rounded border-border accent-primary cursor-pointer"
-                  @change="updatePrintCol(i, 'visible', $event.target.checked)"
-                />
-              </div>
-              <div class="flex flex-col items-center -space-y-1">
-                <button
-                  v-if="i > 0"
-                  class="text-muted-foreground hover:text-foreground transition-colors p-0"
-                  @click="movePrintCol(i, -1)"
-                >
-                  <ChevronUp class="h-3.5 w-3.5" />
-                </button>
-                <button
-                  v-if="i < printConfig.length - 1"
-                  class="text-muted-foreground hover:text-foreground transition-colors p-0"
-                  @click="movePrintCol(i, 1)"
-                >
-                  <ChevronDown class="h-3.5 w-3.5" />
-                </button>
-              </div>
-            </div>
+        <CardContent class="space-y-5">
+          <div v-if="!printConfig.enabled" class="rounded-lg border border-dashed border-border p-8 text-center text-muted-foreground">
+            <Printer class="h-10 w-10 mx-auto mb-3 opacity-40" />
+            <p class="text-sm font-medium mb-1">Printout belum diaktifkan</p>
+            <p class="text-xs">Aktifkan jika modul ini perlu layout cetak, export PDF, atau export DOCX.</p>
           </div>
 
-          <!-- Print Preview Skeleton -->
-          <div class="mt-5">
-            <p class="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">Preview Layout Print</p>
-            <div class="border border-border rounded-lg p-6 bg-white text-black dark:bg-white">
-              <!-- Header -->
-              <div class="text-center mb-4">
-                <h2 class="text-base font-bold uppercase tracking-wide">{{ config?.readableName || 'Nama Modul' }}</h2>
-                <p class="text-[10px] text-gray-400 mt-0.5">Dicetak pada: {{ new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' }) }}</p>
+          <template v-else>
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3 rounded-lg border border-border p-4">
+              <div class="space-y-1.5">
+                <label class="text-xs font-semibold text-muted-foreground">Ukuran Kertas</label>
+                <select
+                  v-model="printConfig.paperSize"
+                  class="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
+                >
+                  <option v-for="size in PRINT_PAPER_OPTIONS" :key="size" :value="size">{{ size }}</option>
+                </select>
               </div>
-              <!-- Fields Table -->
-              <table class="w-full text-xs border-collapse mb-4">
-                <tbody>
-                  <tr v-for="col in printConfig.filter(c => c.visible)" :key="'pp-' + col.field" class="border-b border-gray-200">
-                    <td class="py-1.5 pr-3 font-medium text-gray-600 w-[180px] align-top">{{ col.label || col.field }}</td>
-                    <td class="py-1.5 text-gray-400 italic">- sample data -</td>
-                  </tr>
-                </tbody>
-              </table>
-              <!-- Signature -->
-              <div class="grid grid-cols-3 gap-4 text-center text-[10px] mt-6">
-                <div><p class="font-semibold mb-8">Dibuat Oleh</p><div class="border-t border-black pt-0.5 mx-2 text-gray-400">Nama / Tanggal</div></div>
-                <div><p class="font-semibold mb-8">Diperiksa Oleh</p><div class="border-t border-black pt-0.5 mx-2 text-gray-400">Nama / Tanggal</div></div>
-                <div><p class="font-semibold mb-8">Disetujui Oleh</p><div class="border-t border-black pt-0.5 mx-2 text-gray-400">Nama / Tanggal</div></div>
+              <div class="space-y-1.5">
+                <label class="text-xs font-semibold text-muted-foreground">Orientasi</label>
+                <select
+                  v-model="printConfig.orientation"
+                  class="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
+                >
+                  <option value="portrait">Portrait</option>
+                  <option value="landscape">Landscape</option>
+                </select>
+              </div>
+              <div class="space-y-1.5">
+                <label class="text-xs font-semibold text-muted-foreground">Margin (mm)</label>
+                <input
+                  type="number"
+                  min="5"
+                  max="40"
+                  v-model.number="printConfig.marginMm"
+                  class="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
+                />
+              </div>
+              <label class="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm">
+                <input
+                  type="checkbox"
+                  v-model="printConfig.exportPdf"
+                  class="h-4 w-4 rounded border-border accent-primary"
+                />
+                Support PDF
+              </label>
+              <label class="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm">
+                <input
+                  type="checkbox"
+                  v-model="printConfig.exportDocx"
+                  class="h-4 w-4 rounded border-border accent-primary"
+                />
+                Support DOCX
+              </label>
+            </div>
+
+            <div class="rounded-lg border border-border p-4 space-y-3">
+              <div class="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <p class="text-sm font-semibold">Builder Layout</p>
+                  <p class="text-xs text-muted-foreground">Susun block seperti Google Docs versi builder: heading, teks, field, tabel, signature, atau HTML custom.</p>
+                </div>
+                <Button type="button" variant="outline" size="sm" class="gap-2" @click="showPrintHelp = !showPrintHelp">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.82 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
+                  {{ showPrintHelp ? 'Sembunyikan Help' : 'Help Print Builder' }}
+                </Button>
+              </div>
+
+              <div v-if="showPrintHelp" class="rounded-lg border border-sky-200 bg-sky-50/80 px-4 py-4 text-sm text-slate-700 space-y-4">
+                <div>
+                  <p class="font-semibold text-slate-900 mb-1">Cara kerja print builder</p>
+                  <p>Printout sekarang opsional. Aktifkan toggle <strong>Aktifkan Printout</strong>, lalu susun block sesuai kebutuhan. Hasil block di kiri akan langsung terlihat di preview kanan.</p>
+                </div>
+
+                <div>
+                  <p class="font-semibold text-slate-900 mb-1">Block yang tersedia</p>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-[13px]">
+                    <div><strong>Company Header</strong>: kop surat resmi berisi logo, nama perusahaan, alamat, dan garis bawah.</div>
+                    <div><strong>Heading</strong>: judul besar seperti nama dokumen.</div>
+                    <div><strong>Paragraph</strong>: teks bebas, deskripsi, catatan, alamat.</div>
+                    <div><strong>Field</strong>: satu field tampil sendiri, cocok untuk nomor dokumen atau status.</div>
+                    <div><strong>Field Table</strong>: daftar field berbentuk tabel label dan value.</div>
+                    <div><strong>Detail Table</strong>: cetak tabel detail dari tab detail yang sudah kamu buat.</div>
+                    <div><strong>Image / Logo</strong>: tampilkan logo perusahaan, stempel, atau gambar lain.</div>
+                    <div><strong>Divider / Spacer</strong>: garis pemisah atau jarak kosong.</div>
+                    <div><strong>Signature</strong>: area tanda tangan beberapa kolom.</div>
+                    <div><strong>HTML / Custom</strong>: isi HTML bebas untuk layout khusus.</div>
+                  </div>
+                </div>
+
+                <div>
+                  <p class="font-semibold text-slate-900 mb-1">Token yang bisa dipakai</p>
+                  <div class="flex flex-wrap gap-2 mb-2 text-[12px]">
+                    <code class="rounded bg-white px-2 py-1 border border-sky-200">&#123;&#123;page_title&#125;&#125;</code>
+                    <code class="rounded bg-white px-2 py-1 border border-sky-200">&#123;&#123;current_date&#125;&#125;</code>
+                    <code class="rounded bg-white px-2 py-1 border border-sky-200">&#123;&#123;current_datetime&#125;&#125;</code>
+                    <code class="rounded bg-white px-2 py-1 border border-sky-200">&#123;&#123;nama_field&#125;&#125;</code>
+                  </div>
+                  <p class="text-[13px]">Untuk ambil data dari record, pakai nama field persis seperti field name di form. Contoh: <code class="rounded bg-white px-2 py-1 border border-sky-200">&#123;&#123;{{ printTokenExamples.createdField }}&#125;&#125;</code> atau <code class="rounded bg-white px-2 py-1 border border-sky-200">&#123;&#123;{{ printTokenExamples.userField }}&#125;&#125;</code>.</p>
+                </div>
+
+                <div>
+                  <p class="font-semibold text-slate-900 mb-1">Contoh yang kamu tanyakan: Nama / Tanggal</p>
+                  <div class="space-y-2 text-[13px]">
+                    <p>Kalau mau isi caption tanda tangan dengan nama user dan tanggal hari ini, isi field <strong>Caption</strong> pada block Signature dengan:</p>
+                    <pre class="rounded bg-white border border-sky-200 px-3 py-2 overflow-auto">{{ printTokenExamples.signatureExample }}</pre>
+                    <p>Kalau mau tampilkan tanggal created dari data, pakai Paragraph atau HTML dan isi dengan:</p>
+                    <pre class="rounded bg-white border border-sky-200 px-3 py-2 overflow-auto">{{ printTokenExamples.createdExample }}</pre>
+                    <p>Kalau field di API kamu namanya beda, ganti tokennya sesuai field name asli. Misal pakai <code class="rounded bg-white px-2 py-1 border border-sky-200">&#123;&#123;createdAt&#125;&#125;</code>, <code class="rounded bg-white px-2 py-1 border border-sky-200">&#123;&#123;tanggal_buat&#125;&#125;</code>, atau <code class="rounded bg-white px-2 py-1 border border-sky-200">&#123;&#123;nama_kary&#125;&#125;</code>.</p>
+                  </div>
+                </div>
+
+                <div>
+                  <p class="font-semibold text-slate-900 mb-1">Cara pakai per block</p>
+                  <div class="space-y-2 text-[13px]">
+                    <p><strong>Heading</strong>: isi judul dokumen. Contoh: Surat Jalan, Purchase Order, Berita Acara.</p>
+                    <p><strong>Company Header</strong>: isi nama perusahaan, alamat, kontak, dan logo untuk membuat kop surat resmi.</p>
+                    <p><strong>Paragraph</strong>: isi teks bebas seperti “Dicetak pada &#123;&#123;current_date&#125;&#125; oleh &#123;&#123;{{ printTokenExamples.userField }}&#125;&#125;”.</p>
+                    <p><strong>Field Table</strong>: satu baris satu field. Format: <code class="rounded bg-white px-2 py-1 border border-sky-200">field_name|Label Custom</code>.</p>
+                    <p><strong>Detail Table</strong>: pilih responseKey dari detail yang sudah kamu setup di bawah builder.</p>
+                    <p><strong>Image / Logo</strong>: isi URL gambar/logo, lalu atur ukuran dan posisi.</p>
+                    <p><strong>Signature</strong>: satu baris = satu kolom tanda tangan. Misal isi Judul Signature dengan 3 baris: Dibuat Oleh, Diperiksa Oleh, Disetujui Oleh.</p>
+                    <p><strong>HTML / Custom</strong>: cocok untuk layout surat, kop perusahaan, tabel custom, atau block multi-column.</p>
+                  </div>
+                </div>
+
+                <div>
+                  <p class="font-semibold text-slate-900 mb-1">Export</p>
+                  <p class="text-[13px]">Kalau <strong>Support PDF</strong> aktif, halaman print hasil generate akan punya tombol Export PDF. Kalau <strong>Support DOCX</strong> aktif, akan ada tombol Export DOCX untuk Microsoft Word.</p>
+                </div>
+              </div>
+
+              <div class="flex flex-wrap gap-2">
+                <Button v-for="blockType in PRINT_BLOCK_TYPES" :key="blockType.value" type="button" variant="outline" size="sm" @click="addPrintBlock(blockType.value)">
+                  <Plus class="h-3.5 w-3.5 mr-1" /> {{ blockType.label }}
+                </Button>
               </div>
             </div>
-          </div>
+
+            <div class="grid grid-cols-1 xl:grid-cols-[minmax(340px,460px)_minmax(0,1fr)] gap-5 items-start">
+              <div class="space-y-3">
+                <div
+                  v-for="(block, blockIndex) in printConfig.blocks"
+                  :key="block.id"
+                  class="rounded-lg border border-border bg-card p-4 space-y-3"
+                >
+                  <div class="flex items-center justify-between gap-3">
+                    <div>
+                      <p class="text-sm font-semibold capitalize">{{ block.type.replace('_', ' ') }}</p>
+                      <p class="text-[11px] text-muted-foreground">Block #{{ blockIndex + 1 }}</p>
+                    </div>
+                    <div class="flex items-center gap-1">
+                      <Button type="button" variant="ghost" size="icon" class="h-8 w-8" :disabled="blockIndex === 0" @click="movePrintBlock(blockIndex, -1)">
+                        <ChevronUp class="h-4 w-4" />
+                      </Button>
+                      <Button type="button" variant="ghost" size="icon" class="h-8 w-8" :disabled="blockIndex === printConfig.blocks.length - 1" @click="movePrintBlock(blockIndex, 1)">
+                        <ChevronDown class="h-4 w-4" />
+                      </Button>
+                      <Button type="button" variant="ghost" size="icon" class="h-8 w-8" @click="duplicatePrintBlock(blockIndex)">
+                        <Copy class="h-4 w-4" />
+                      </Button>
+                      <Button type="button" variant="ghost" size="icon" class="h-8 w-8 text-destructive" @click="removePrintBlock(blockIndex)">
+                        <Trash2 class="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  <template v-if="block.type === 'heading'">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div class="md:col-span-3 space-y-1.5">
+                        <label class="text-xs font-semibold text-muted-foreground">Text</label>
+                        <input v-model="printConfig.blocks[blockIndex].text" class="h-9 w-full rounded-md border border-border bg-background px-3 text-sm" />
+                      </div>
+                      <div class="space-y-1.5">
+                        <label class="text-xs font-semibold text-muted-foreground">Level</label>
+                        <select v-model.number="printConfig.blocks[blockIndex].level" class="h-9 w-full rounded-md border border-border bg-background px-3 text-sm">
+                          <option :value="1">H1</option>
+                          <option :value="2">H2</option>
+                          <option :value="3">H3</option>
+                        </select>
+                      </div>
+                      <div class="space-y-1.5">
+                        <label class="text-xs font-semibold text-muted-foreground">Align</label>
+                        <select v-model="printConfig.blocks[blockIndex].align" class="h-9 w-full rounded-md border border-border bg-background px-3 text-sm">
+                          <option value="left">Left</option>
+                          <option value="center">Center</option>
+                          <option value="right">Right</option>
+                        </select>
+                      </div>
+                    </div>
+                  </template>
+
+                  <template v-else-if="block.type === 'company_header'">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div class="space-y-1.5 md:col-span-2">
+                        <label class="text-xs font-semibold text-muted-foreground">URL Logo</label>
+                        <input v-model="printConfig.blocks[blockIndex].logoUrl" class="h-9 w-full rounded-md border border-border bg-background px-3 text-sm" placeholder="https://.../logo.png atau /logo.png" />
+                      </div>
+                      <div class="space-y-1.5">
+                        <label class="text-xs font-semibold text-muted-foreground">Nama Perusahaan</label>
+                        <input v-model="printConfig.blocks[blockIndex].companyName" class="h-9 w-full rounded-md border border-border bg-background px-3 text-sm" />
+                      </div>
+                      <div class="space-y-1.5">
+                        <label class="text-xs font-semibold text-muted-foreground">Sub Title / Divisi</label>
+                        <input v-model="printConfig.blocks[blockIndex].companySubtitle" class="h-9 w-full rounded-md border border-border bg-background px-3 text-sm" />
+                      </div>
+                      <div class="space-y-1.5 md:col-span-2">
+                        <label class="text-xs font-semibold text-muted-foreground">Alamat</label>
+                        <textarea v-model="printConfig.blocks[blockIndex].address" rows="3" class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
+                      </div>
+                      <div class="space-y-1.5 md:col-span-2">
+                        <label class="text-xs font-semibold text-muted-foreground">Info Tambahan</label>
+                        <input v-model="printConfig.blocks[blockIndex].meta" class="h-9 w-full rounded-md border border-border bg-background px-3 text-sm" placeholder="Telp, Email, Website, NPWP, dll" />
+                      </div>
+                      <div class="space-y-1.5">
+                        <label class="text-xs font-semibold text-muted-foreground">Align</label>
+                        <select v-model="printConfig.blocks[blockIndex].align" class="h-9 w-full rounded-md border border-border bg-background px-3 text-sm">
+                          <option value="left">Left</option>
+                          <option value="center">Center</option>
+                        </select>
+                      </div>
+                      <label class="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm">
+                        <input v-model="printConfig.blocks[blockIndex].showDivider" type="checkbox" class="h-4 w-4 rounded border-border accent-primary" />
+                        Tampilkan Garis Separator
+                      </label>
+                    </div>
+                  </template>
+
+                  <template v-else-if="block.type === 'paragraph'">
+                    <div class="space-y-1.5">
+                      <label class="text-xs font-semibold text-muted-foreground">Isi Teks</label>
+                      <textarea v-model="printConfig.blocks[blockIndex].text" rows="4" class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
+                      <p class="text-[11px] text-muted-foreground">Token: <code>&#123;&#123;page_title&#125;&#125;</code>, <code>&#123;&#123;current_date&#125;&#125;</code>, <code>&#123;&#123;nama_field&#125;&#125;</code></p>
+                    </div>
+                    <div class="space-y-1.5">
+                      <label class="text-xs font-semibold text-muted-foreground">Align</label>
+                      <select v-model="printConfig.blocks[blockIndex].align" class="h-9 w-full rounded-md border border-border bg-background px-3 text-sm">
+                        <option value="left">Left</option>
+                        <option value="center">Center</option>
+                        <option value="right">Right</option>
+                        <option value="justify">Justify</option>
+                      </select>
+                    </div>
+                  </template>
+
+                  <template v-else-if="block.type === 'field'">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div class="space-y-1.5">
+                        <label class="text-xs font-semibold text-muted-foreground">Field</label>
+                        <select v-model="printConfig.blocks[blockIndex].field" class="h-9 w-full rounded-md border border-border bg-background px-3 text-sm">
+                          <option v-for="field in printableFields" :key="field.field" :value="field.field">{{ field.label || field.field }}</option>
+                        </select>
+                      </div>
+                      <div class="space-y-1.5">
+                        <label class="text-xs font-semibold text-muted-foreground">Layout</label>
+                        <select v-model="printConfig.blocks[blockIndex].layout" class="h-9 w-full rounded-md border border-border bg-background px-3 text-sm">
+                          <option value="row">Row</option>
+                          <option value="stacked">Stacked</option>
+                        </select>
+                      </div>
+                      <div class="md:col-span-2 space-y-1.5">
+                        <label class="text-xs font-semibold text-muted-foreground">Label Override</label>
+                        <input v-model="printConfig.blocks[blockIndex].label" class="h-9 w-full rounded-md border border-border bg-background px-3 text-sm" />
+                      </div>
+                    </div>
+                  </template>
+
+                  <template v-else-if="block.type === 'field_table'">
+                    <div class="space-y-1.5">
+                      <label class="text-xs font-semibold text-muted-foreground">Judul Section</label>
+                      <input v-model="printConfig.blocks[blockIndex].title" class="h-9 w-full rounded-md border border-border bg-background px-3 text-sm" />
+                    </div>
+                    <div class="space-y-1.5">
+                      <label class="text-xs font-semibold text-muted-foreground">Daftar Field</label>
+                      <textarea v-model="printConfig.blocks[blockIndex].itemsText" rows="8" class="w-full rounded-md border border-border bg-background px-3 py-2 text-xs font-mono" />
+                      <p class="text-[11px] text-muted-foreground">Format per baris: <code>field_name|Label Custom</code></p>
+                    </div>
+                  </template>
+
+                  <template v-else-if="block.type === 'detail_table'">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div class="space-y-1.5">
+                        <label class="text-xs font-semibold text-muted-foreground">Judul</label>
+                        <input v-model="printConfig.blocks[blockIndex].title" class="h-9 w-full rounded-md border border-border bg-background px-3 text-sm" />
+                      </div>
+                      <div class="space-y-1.5">
+                        <label class="text-xs font-semibold text-muted-foreground">Sumber Detail</label>
+                        <select v-model="printConfig.blocks[blockIndex].responseKey" class="h-9 w-full rounded-md border border-border bg-background px-3 text-sm">
+                          <option v-for="detail in printableDetails" :key="detail.responseKey" :value="detail.responseKey">{{ detail.tabLabel || detail.responseKey }}</option>
+                        </select>
+                      </div>
+                    </div>
+                  </template>
+
+                  <template v-else-if="block.type === 'image'">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div class="space-y-1.5 md:col-span-2">
+                        <label class="text-xs font-semibold text-muted-foreground">Image URL</label>
+                        <input v-model="printConfig.blocks[blockIndex].src" class="h-9 w-full rounded-md border border-border bg-background px-3 text-sm" placeholder="https://.../image.png atau /logo.png" />
+                      </div>
+                      <div class="space-y-1.5">
+                        <label class="text-xs font-semibold text-muted-foreground">Alt Text</label>
+                        <input v-model="printConfig.blocks[blockIndex].alt" class="h-9 w-full rounded-md border border-border bg-background px-3 text-sm" />
+                      </div>
+                      <div class="space-y-1.5">
+                        <label class="text-xs font-semibold text-muted-foreground">Align</label>
+                        <select v-model="printConfig.blocks[blockIndex].align" class="h-9 w-full rounded-md border border-border bg-background px-3 text-sm">
+                          <option value="left">Left</option>
+                          <option value="center">Center</option>
+                          <option value="right">Right</option>
+                        </select>
+                      </div>
+                      <div class="space-y-1.5">
+                        <label class="text-xs font-semibold text-muted-foreground">Width (px)</label>
+                        <input type="number" min="40" max="400" v-model.number="printConfig.blocks[blockIndex].width" class="h-9 w-full rounded-md border border-border bg-background px-3 text-sm" />
+                      </div>
+                      <div class="space-y-1.5">
+                        <label class="text-xs font-semibold text-muted-foreground">Height (px)</label>
+                        <input type="number" min="40" max="400" v-model.number="printConfig.blocks[blockIndex].height" class="h-9 w-full rounded-md border border-border bg-background px-3 text-sm" />
+                      </div>
+                    </div>
+                  </template>
+
+                  <template v-else-if="block.type === 'divider'">
+                    <div class="space-y-1.5">
+                      <label class="text-xs font-semibold text-muted-foreground">Ketebalan Garis</label>
+                      <input type="number" min="1" max="6" v-model.number="printConfig.blocks[blockIndex].thickness" class="h-9 w-full rounded-md border border-border bg-background px-3 text-sm" />
+                    </div>
+                  </template>
+
+                  <template v-else-if="block.type === 'spacer'">
+                    <div class="space-y-1.5">
+                      <label class="text-xs font-semibold text-muted-foreground">Tinggi Spacer (px)</label>
+                      <input type="number" min="8" max="120" v-model.number="printConfig.blocks[blockIndex].height" class="h-9 w-full rounded-md border border-border bg-background px-3 text-sm" />
+                    </div>
+                  </template>
+
+                  <template v-else-if="block.type === 'signature'">
+                    <div class="space-y-1.5">
+                      <label class="text-xs font-semibold text-muted-foreground">Judul Signature</label>
+                      <textarea v-model="printConfig.blocks[blockIndex].titlesText" rows="4" class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
+                      <p class="text-[11px] text-muted-foreground">Satu baris = satu kolom tanda tangan</p>
+                    </div>
+                    <div class="space-y-1.5">
+                      <label class="text-xs font-semibold text-muted-foreground">Caption</label>
+                      <input v-model="printConfig.blocks[blockIndex].caption" class="h-9 w-full rounded-md border border-border bg-background px-3 text-sm" />
+                    </div>
+                  </template>
+
+                  <template v-else-if="block.type === 'html'">
+                    <div class="space-y-1.5">
+                      <label class="text-xs font-semibold text-muted-foreground">HTML Custom</label>
+                      <textarea v-model="printConfig.blocks[blockIndex].html" rows="8" class="w-full rounded-md border border-border bg-background px-3 py-2 text-xs font-mono" />
+                      <p class="text-[11px] text-muted-foreground">Bisa isi bebas. Token tetap jalan, misal <code>&#123;&#123;nama_kary&#125;&#125;</code>.</p>
+                    </div>
+                  </template>
+                </div>
+              </div>
+
+              <div class="space-y-2">
+                <p class="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Preview Layout Print</p>
+                <div class="rounded-xl border border-border bg-[#0b1220] p-4 overflow-auto">
+                  <div class="mx-auto rounded-lg bg-white text-black shadow-sm" :style="printPreviewStyle">
+                    <template v-for="block in printConfig.blocks" :key="'preview-' + block.id">
+                      <div
+                        v-if="block.type === 'company_header'"
+                        class="mb-5"
+                      >
+                        <div class="flex gap-4 items-start" :class="block.align === 'center' ? 'justify-center text-center' : 'justify-start text-left'">
+                          <div v-if="block.logoUrl" class="shrink-0">
+                            <img :src="block.logoUrl" alt="logo" class="object-contain max-h-20 max-w-24" />
+                          </div>
+                          <div>
+                            <h2 class="text-xl font-bold uppercase tracking-wide">{{ renderPrintTokens(block.companyName) }}</h2>
+                            <p v-if="block.companySubtitle" class="text-sm font-semibold mt-1">{{ renderPrintTokens(block.companySubtitle) }}</p>
+                            <p v-if="block.address" class="text-xs mt-1 whitespace-pre-wrap">{{ renderPrintTokens(block.address) }}</p>
+                            <p v-if="block.meta" class="text-[11px] mt-1 text-slate-600">{{ renderPrintTokens(block.meta) }}</p>
+                          </div>
+                        </div>
+                        <div v-if="block.showDivider" class="mt-3 border-b-2 border-black"></div>
+                      </div>
+
+                      <component
+                        :is="`h${Math.min(3, Math.max(1, Number(block.level || 1)))}`"
+                        v-else-if="block.type === 'heading'"
+                        class="font-bold tracking-wide mb-3"
+                        :class="{
+                          'text-center': block.align === 'center',
+                          'text-right': block.align === 'right',
+                        }"
+                      >{{ renderPrintTokens(block.text) }}</component>
+
+                      <p
+                        v-else-if="block.type === 'paragraph'"
+                        class="mb-3 whitespace-pre-wrap text-sm leading-6"
+                        :class="{
+                          'text-center': block.align === 'center',
+                          'text-right': block.align === 'right',
+                          'text-justify': block.align === 'justify',
+                        }"
+                      >{{ renderPrintTokens(block.text) }}</p>
+
+                      <div v-else-if="block.type === 'field'" class="mb-3" :class="block.layout === 'stacked' ? 'space-y-1' : 'grid grid-cols-[180px_minmax(0,1fr)] gap-3'">
+                        <div class="font-semibold text-sm">{{ block.label || getPrintableFieldLabel(block.field) }}</div>
+                        <div class="text-sm text-slate-500 italic">{{ getPreviewFieldValue(block.field) }}</div>
+                      </div>
+
+                      <div v-else-if="block.type === 'field_table'" class="mb-4">
+                        <h3 v-if="block.title" class="text-sm font-bold uppercase mb-2">{{ renderPrintTokens(block.title) }}</h3>
+                        <table class="w-full text-sm border-collapse">
+                          <tbody>
+                            <tr v-for="item in parsePrintFieldTable(block.itemsText)" :key="`${block.id}-${item.field}`" class="border-b border-slate-300">
+                              <td class="py-2 pr-4 w-45 font-medium text-slate-700 align-top">{{ item.label || getPrintableFieldLabel(item.field) }}</td>
+                              <td class="py-2 text-slate-500 italic">{{ getPreviewFieldValue(item.field) }}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div v-else-if="block.type === 'detail_table'" class="mb-4">
+                        <h3 class="text-sm font-bold uppercase mb-2">{{ renderPrintTokens(block.title || 'Detail') }}</h3>
+                        <div class="rounded border border-slate-300 overflow-hidden">
+                          <table class="w-full text-xs border-collapse">
+                            <thead class="bg-slate-100">
+                              <tr>
+                                <th class="border border-slate-300 px-2 py-1.5 text-left">No</th>
+                                <th class="border border-slate-300 px-2 py-1.5 text-left">Preview</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr>
+                                <td class="border border-slate-300 px-2 py-1.5">1</td>
+                                <td class="border border-slate-300 px-2 py-1.5 text-slate-500 italic">Tabel detail akan mengikuti konfigurasi detail <strong>{{ block.responseKey || '-' }}</strong></td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+
+                      <div v-else-if="block.type === 'image'" class="mb-4" :class="{ 'text-center': block.align === 'center', 'text-right': block.align === 'right' }">
+                        <img v-if="block.src" :src="block.src" :alt="block.alt || 'image'" class="inline-block object-contain" :style="{ width: `${Number(block.width || 120)}px`, height: `${Number(block.height || 120)}px` }" />
+                        <div v-else class="inline-flex items-center justify-center border border-dashed border-slate-300 text-slate-400 text-xs" :style="{ width: `${Number(block.width || 120)}px`, height: `${Number(block.height || 120)}px` }">Image Placeholder</div>
+                      </div>
+
+                      <div v-else-if="block.type === 'divider'" class="mb-4 border-b border-black" :style="{ borderBottomWidth: `${Number(block.thickness || 1)}px` }"></div>
+
+                      <div v-else-if="block.type === 'spacer'" :style="{ height: `${Number(block.height || 20)}px` }"></div>
+
+                      <div v-else-if="block.type === 'signature'" class="mt-8 grid gap-6 text-center text-xs" :style="{ gridTemplateColumns: `repeat(${Math.max(1, parseSignatureTitles(block.titlesText).length)}, minmax(0, 1fr))` }">
+                        <div v-for="(title, titleIndex) in parseSignatureTitles(block.titlesText)" :key="`${block.id}-${titleIndex}`">
+                          <p class="font-semibold mb-14">{{ title }}</p>
+                          <div class="border-t border-black pt-1 text-slate-400">{{ block.caption || 'Nama / Tanggal' }}</div>
+                        </div>
+                      </div>
+
+                      <div v-else-if="block.type === 'html'" class="mb-3 prose prose-sm max-w-none" v-html="renderPrintHtmlPreview(block.html)"></div>
+                    </template>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </template>
         </CardContent>
       </Card>
-      <div v-else class="text-center py-12 text-muted-foreground">
-        <Printer class="h-10 w-10 mx-auto mb-3 opacity-30" />
-        <p class="text-sm">Belum ada field. Tambahkan field di tab Form Builder terlebih dahulu.</p>
-      </div>
         </TabsContent>
       </Tabs>
 

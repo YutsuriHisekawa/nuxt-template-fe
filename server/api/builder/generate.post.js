@@ -1063,6 +1063,183 @@ ${tds.join('\n')}
   return sections.join('\n')
 }
 
+function isPrintableField(field) {
+  const entry = getRegistryEntry(field?.type)
+  return !entry?.isSpace && !entry?.isSection && !entry?.isFieldGroup && !entry?.isFieldGroupEnd && !!field?.field?.trim()
+}
+
+function buildFieldTableText(items, fields) {
+  return (items || [])
+    .filter((item) => item?.visible !== false)
+    .map((item) => {
+      const source = fields.find((field) => field.field === item.field)
+      return `${item.field}|${item.label || source?.label || item.field}`
+    })
+    .join('\n')
+}
+
+function createDefaultPrintBlocks(fields, details, title) {
+  const printable = fields.filter(isPrintableField)
+  const firstDetail = (details || []).find((detail) => detail?.responseKey)
+  const blocks = [
+    { id: 'heading-default', type: 'heading', text: title || 'Dokumen', level: 1, align: 'center' },
+    { id: 'paragraph-default', type: 'paragraph', text: 'Dicetak pada {{current_date}}', align: 'center' },
+    {
+      id: 'field-table-default',
+      type: 'field_table',
+      title: '',
+      itemsText: buildFieldTableText(printable.slice(0, 10).map((field) => ({ field: field.field, label: field.label || field.field, visible: true })), printable),
+      variant: 'plain',
+    },
+  ]
+
+  if (firstDetail) {
+    blocks.push({
+      id: 'detail-default',
+      type: 'detail_table',
+      title: firstDetail.tabLabel || 'Detail',
+      responseKey: firstDetail.responseKey,
+    })
+  }
+
+  blocks.push({
+    id: 'signature-default',
+    type: 'signature',
+    titlesText: 'Dibuat Oleh\nDiperiksa Oleh\nDisetujui Oleh',
+    caption: 'Nama / Tanggal',
+  })
+
+  return blocks
+}
+
+function normalizePrintBlock(block, fields, details, title) {
+  const printable = fields.filter(isPrintableField)
+  const firstField = printable[0]?.field || ''
+  const firstDetail = (details || []).find((detail) => detail?.responseKey)
+  const base = {
+    id: block?.id || `pb_${Math.random().toString(36).slice(2, 10)}`,
+    type: block?.type || 'paragraph',
+  }
+
+  switch (base.type) {
+    case 'company_header':
+      return {
+        ...base,
+        logoUrl: block?.logoUrl || '',
+        companyName: block?.companyName || 'Nama Perusahaan',
+        companySubtitle: block?.companySubtitle || '',
+        address: block?.address || '',
+        meta: block?.meta || '',
+        showDivider: block?.showDivider !== false,
+        align: block?.align === 'center' ? 'center' : 'left',
+      }
+    case 'heading':
+      return { ...base, text: block?.text || title || 'Dokumen', level: Number(block?.level || 1), align: block?.align || 'center' }
+    case 'paragraph':
+      return { ...base, text: block?.text || '', align: block?.align || 'left' }
+    case 'field':
+      return { ...base, field: block?.field || firstField, label: block?.label || '', layout: block?.layout || 'row' }
+    case 'field_table':
+      return { ...base, title: block?.title || '', itemsText: block?.itemsText || buildFieldTableText(printable.slice(0, 10).map((field) => ({ field: field.field, label: field.label || field.field, visible: true })), printable), variant: block?.variant || 'plain' }
+    case 'detail_table':
+      return { ...base, title: block?.title || firstDetail?.tabLabel || 'Detail', responseKey: block?.responseKey || firstDetail?.responseKey || '' }
+    case 'image':
+      return {
+        ...base,
+        src: block?.src || '',
+        alt: block?.alt || 'image',
+        width: Number(block?.width || 120),
+        height: Number(block?.height || 120),
+        fit: block?.fit || 'contain',
+        align: ['left', 'center', 'right'].includes(block?.align) ? block.align : 'left',
+      }
+    case 'divider':
+      return { ...base, thickness: Number(block?.thickness || 1) }
+    case 'spacer':
+      return { ...base, height: Number(block?.height || 20) }
+    case 'signature':
+      return { ...base, titlesText: block?.titlesText || 'Dibuat Oleh\nDiperiksa Oleh\nDisetujui Oleh', caption: block?.caption || 'Nama / Tanggal' }
+    case 'html':
+      return { ...base, html: block?.html || '<p>{{page_title}}</p>' }
+    default:
+      return { ...base, type: 'paragraph', text: block?.text || '', align: block?.align || 'left' }
+  }
+}
+
+function normalizePrintConfigServer(rawConfig, fields, details, title) {
+  const fallback = {
+    enabled: false,
+    paperSize: 'A4',
+    orientation: 'portrait',
+    marginMm: 15,
+    exportPdf: true,
+    exportDocx: true,
+    blocks: createDefaultPrintBlocks(fields, details, title),
+  }
+
+  if (Array.isArray(rawConfig)) {
+    return {
+      ...fallback,
+      enabled: rawConfig.length > 0,
+      blocks: [
+        normalizePrintBlock({ type: 'heading', text: title || 'Dokumen', level: 1, align: 'center' }, fields, details, title),
+        normalizePrintBlock({ type: 'paragraph', text: 'Dicetak pada {{current_date}}', align: 'center' }, fields, details, title),
+        normalizePrintBlock({ type: 'field_table', itemsText: buildFieldTableText(rawConfig, fields) }, fields, details, title),
+        normalizePrintBlock({ type: 'signature' }, fields, details, title),
+      ],
+    }
+  }
+
+  if (!rawConfig || typeof rawConfig !== 'object') {
+    return fallback
+  }
+
+  return {
+    ...fallback,
+    ...rawConfig,
+    enabled: rawConfig.enabled === true,
+    paperSize: ['A4', 'A5', 'Letter', 'Legal'].includes(rawConfig.paperSize) ? rawConfig.paperSize : 'A4',
+    orientation: rawConfig.orientation === 'landscape' ? 'landscape' : 'portrait',
+    marginMm: Number(rawConfig.marginMm || 15),
+    exportPdf: rawConfig.exportPdf !== false,
+    exportDocx: rawConfig.exportDocx !== false,
+    blocks: Array.isArray(rawConfig.blocks) && rawConfig.blocks.length
+      ? rawConfig.blocks.map((block) => normalizePrintBlock(block, fields, details, title))
+      : fallback.blocks,
+  }
+}
+
+function toSafeJson(value) {
+  return JSON.stringify(value).replace(/</g, '\\u003c')
+}
+
+function buildPrintFieldMeta(fields) {
+  const result = {}
+  fields.forEach((field) => {
+    if (!field?.field) return
+    result[field.field] = {
+      field: field.field,
+      label: field.label || field.field,
+      type: field.type,
+      labelTrue: field.labelTrue || 'Aktif',
+      labelFalse: field.labelFalse || 'Tidak Aktif',
+      displayField: field.displayField || 'name',
+    }
+  })
+  return result
+}
+
+function buildPrintDetailMeta(details) {
+  return (details || []).map((detail) => ({
+    tabLabel: detail.tabLabel || 'Detail',
+    responseKey: detail.responseKey || '',
+    mode: detail.mode || 'add_to_list',
+    foreignDisplay: detail.foreignDisplay || '',
+    displayColumns: detail.displayColumns || [],
+    detailFields: detail.detailFields || [],
+  }))
+}
+
 // ── Handler ────────────────────────────────────────────────────────────────
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
@@ -1090,6 +1267,8 @@ export default defineEventHandler(async (event) => {
   const landingTpl = readFileSync(resolve(root, 'template', 'Landing.vue.tpl'), 'utf-8')
   const printTplPath = resolve(root, 'template', 'Print.vue.tpl')
   const printTpl = existsSync(printTplPath) ? readFileSync(printTplPath, 'utf-8') : null
+  const normalizedPrintConfig = printTpl ? normalizePrintConfigServer(printConfig, fields, details, readableName) : null
+  const printEnabled = !!normalizedPrintConfig?.enabled
 
   // ── Build replacements ─────────────────────────────────────────────────
   const hasSwitch = fields.some(f => f.type === 'switch')
@@ -1128,7 +1307,7 @@ export default defineEventHandler(async (event) => {
     __DETAIL_LOAD_DATA__: buildDetailLoadData(details),
     __DETAIL_PAYLOAD__: buildDetailPayload(details),
     __DETAIL_TEMPLATE__: buildDetailTemplate(details),
-    __PRINT_BUTTON__: printTpl
+    __PRINT_BUTTON__: printTpl && printEnabled
       ? `        <Button
           v-if="isViewMode && perms.is_print !== false"
           type="button"
@@ -1142,6 +1321,9 @@ export default defineEventHandler(async (event) => {
       : '',
     __PRINT_FIELDS__: printTpl ? buildPrintFields(fields, printConfig) : '',
     __PRINT_DETAIL_TABLES__: printTpl ? buildPrintDetailTables(details) : '',
+    __PRINT_CONFIG_JSON__: printTpl ? toSafeJson(normalizedPrintConfig) : '{}',
+    __PRINT_FIELD_META_JSON__: printTpl ? toSafeJson(buildPrintFieldMeta(fields)) : '{}',
+    __PRINT_DETAIL_META_JSON__: printTpl ? toSafeJson(buildPrintDetailMeta(details)) : '[]',
     __HAS_SWITCH_COLUMN__: hasSwitch ? `\n\t\t{\n\t\t\theaderName: "Aktif",\n\t\t\tfield: "${switchField?.field || 'is_active'}",\n\t\t\tminWidth: 110,\n\t\t\tcellRenderer: (params) => {\n\t\t\t\tconst isActive = checkActive(params?.value)\n\t\t\t\tconst label = isActive ? "${switchField?.labelTrue || 'Aktif'}" : "${switchField?.labelFalse || 'Nonaktif'}"\n\t\t\t\tconst cls = isActive ? "font-bold text-green-600" : "font-bold text-red-600"\n\t\t\t\treturn \`<span class="\${cls}">\${label}</span>\`\n\t\t\t},\n\t\t},` : '',
 
     // ── Unit Bisnis auto-filter & auto-fill ────────────────────────────
@@ -1260,7 +1442,7 @@ const companyNameDisplay = computed(() => {
   }
 
   // ── Print page ───────────────────────────────────────────────────────
-  if (printTpl) {
+  if (printTpl && printEnabled) {
     mkdirSync(printDir, { recursive: true })
     const printFile = resolve(printDir, '[[id]].vue')
     let printContent = printTpl
