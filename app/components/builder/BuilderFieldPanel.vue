@@ -12,6 +12,42 @@ const emit = defineEmits(['update:field', 'remove', 'close'])
 
 const entry = computed(() => getRegistryEntry(props.field.type))
 
+// ── Help modal ───────────────────────────────────────────────────────────
+const panelHelp = ref('')
+const PANEL_HELP = {
+  computedFormula: {
+    title: 'Formula / Computed Field',
+    desc: 'Buat field yang nilainya otomatis dihitung berdasarkan field lain. Cocok untuk subtotal, diskon, PPN, dll.',
+    steps: [
+      'Pilih template cepat (Kali, Tambah, Diskon%, PPN 11%, dll) lalu assign field A, B, C sesuai kebutuhan',
+      'Atau bangun manual: klik Field → Operator (+ − × ÷) → Angka → Kurung',
+      'Token formula akan muncul sebagai badge warna-warni di area formula',
+      'Klik tombol ✕ pada badge untuk menghapus satu token, atau "Hapus Formula" untuk reset semua',
+      'Field yang punya formula otomatis menjadi DISABLED (readonly) — nilainya diisi otomatis saat runtime',
+      'Formula bisa berantai: Field A (formula) bisa jadi sumber untuk Field B (formula lain)',
+    ],
+    example: 'Contoh: qty × harga_satuan = subtotal\nTemplate: Kali → A = qty, B = harga_satuan → Apply\nHasil: subtotal auto-computed setiap qty atau harga berubah',
+  },
+  defaultValueFrom: {
+    title: 'Auto-Fill dari Field Lain',
+    desc: 'Otomatis mengisi field ini ketika user memilih nilai dari field Select/Popup tertentu. Berguna untuk mengambil data dari object response API.',
+    steps: [
+      'Pilih "Field Sumber" — harus bertipe FieldSelect atau FieldPopUp',
+      'Isi "Property yang Diambil" — nama property di object API response (contoh: nama_comp, alamat, kode)',
+      'Untuk tahu property apa saja yang tersedia, cek struktur API. Biasanya: id, nama_comp, alamat, kode, telp, email, dll',
+      'Ketika user memilih item dari Select/Popup sumber, field ini otomatis terisi dari property yang dipilih',
+      'Auto-fill juga berlaku untuk Detail Tab — bisa ambil dari header field atau detail field di baris yang sama',
+    ],
+    example: 'Contoh: Field "Nama Company" auto-fill dari "Unit Bisnis" (select)\n→ Field Sumber: m_unit_bisnis_id (select)\n→ Property: nama_comp\n\nKetika user pilih Unit Bisnis "PT BEST", maka Nama Company otomatis terisi "PT BEST" dari response API',
+    tips: [
+      'Cek nama property di API response — buka endpoint di browser atau gunakan Auto-Detect di builder',
+      'Property yang umum: nama_comp, alamat, kode, telp, email, no_rekening, npwp',
+      'Satu field sumber bisa mengisi banyak field target sekaligus',
+      'Auto-fill terjadi saat user memilih, bukan saat load halaman',
+    ],
+  },
+}
+
 // ── Computed formula visual builder ──────────────────────────────────────
 const formulaFieldSelect = ref('')
 const formulaNumberInput = ref('')
@@ -1044,7 +1080,12 @@ function addColumnItem(key) {
 
       <!-- Computed Formula — Visual Token Builder -->
       <div v-else-if="pf.type === 'computedFormula'">
-        <label class="block mb-1 font-medium text-muted-foreground">{{ pf.label }}</label>
+        <div class="flex items-center gap-1.5 mb-1">
+          <label class="font-medium text-muted-foreground">{{ pf.label }}</label>
+          <button type="button" class="text-muted-foreground/50 hover:text-primary transition-colors" title="Bantuan Formula" @click="panelHelp = 'computedFormula'">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          </button>
+        </div>
         <div class="space-y-2">
 
           <!-- ═══ Quick Formula Templates ═══ -->
@@ -1203,6 +1244,59 @@ function addColumnItem(key) {
         <p v-if="pf.hint" class="text-xs text-muted-foreground/70 mt-1">{{ pf.hint }}</p>
       </div>
 
+      <!-- Auto-Fill Default Value from Another Field -->
+      <div v-else-if="pf.type === 'defaultValueFrom'">
+        <div class="flex items-center gap-1.5 mb-1">
+          <label class="font-medium text-muted-foreground">{{ pf.label }}</label>
+          <button type="button" class="text-muted-foreground/50 hover:text-primary transition-colors" title="Bantuan Auto-Fill" @click="panelHelp = 'defaultValueFrom'">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          </button>
+        </div>
+        <div class="space-y-2">
+          <!-- Source field picker -->
+          <div>
+            <label class="block mb-0.5 text-xs text-muted-foreground">Field Sumber</label>
+            <select
+              :value="field.defaultValueFrom?.field || ''"
+              class="w-full rounded bg-muted border border-border text-foreground px-2 py-1.5 text-sm focus:border-primary focus:ring-1 focus:ring-primary"
+              @change="updateField('defaultValueFrom', { ...field.defaultValueFrom, field: $event.target.value, property: '' })"
+            >
+              <option value="">-- Tidak ada --</option>
+              <option
+                v-for="f in allFields.filter(af => af.field && af.field !== field.field && ['select', 'select_creatable', 'popup'].includes(af.type))"
+                :key="f.field"
+                :value="f.field"
+              >{{ f.label || f.field }} ({{ f.type }})</option>
+            </select>
+            <p class="text-[10px] text-muted-foreground/60 mt-0.5">Pilih field bertipe Select/Popup yang datanya mau diambil</p>
+          </div>
+          <!-- Property picker (free text, with hint) -->
+          <div v-if="field.defaultValueFrom?.field">
+            <label class="block mb-0.5 text-xs text-muted-foreground">Property yang Diambil</label>
+            <input
+              type="text"
+              :value="field.defaultValueFrom?.property || ''"
+              placeholder="nama_comp, alamat, kode, id, dll"
+              class="w-full rounded bg-muted border border-border text-foreground px-2 py-1.5 text-sm focus:border-primary focus:ring-1 focus:ring-primary"
+              @input="updateField('defaultValueFrom', { ...field.defaultValueFrom, property: $event.target.value })"
+            />
+            <p class="text-[10px] text-muted-foreground/60 mt-0.5">Property dari response object (cek struktur API). Misal: <span class="font-mono">nama_comp</span>, <span class="font-mono">alamat</span></p>
+          </div>
+          <!-- Preview -->
+          <div v-if="field.defaultValueFrom?.field && field.defaultValueFrom?.property" class="text-[10px] bg-muted/60 border border-border rounded px-2 py-1.5 font-mono text-muted-foreground">
+            Ketika <span class="text-blue-500">{{ field.defaultValueFrom.field }}</span> dipilih → <span class="text-emerald-500">{{ field.field || '?' }}</span> = data.<span class="text-amber-500">{{ field.defaultValueFrom.property }}</span>
+          </div>
+          <!-- Clear button -->
+          <button
+            v-if="field.defaultValueFrom?.field"
+            type="button"
+            class="text-[10px] text-red-500 hover:text-red-400 underline"
+            @click="updateField('defaultValueFrom', { field: '', property: '' })"
+          >Hapus Auto-Fill</button>
+        </div>
+        <p v-if="pf.hint" class="text-xs text-muted-foreground/70 mt-1">{{ pf.hint }}</p>
+      </div>
+
       <!-- Select Field (pick another field as parent for cascading) -->
       <div v-else-if="pf.type === 'selectField'">
         <label :for="'panel-' + pf.key" class="block mb-1 font-medium text-muted-foreground">
@@ -1250,5 +1344,56 @@ function addColumnItem(key) {
     >
       Hapus Field
     </button>
+
+    <!-- Help Modal Overlay -->
+    <Teleport to="body">
+      <div v-if="panelHelp && PANEL_HELP[panelHelp]" class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm" @click.self="panelHelp = ''">
+        <div class="bg-background border border-border rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden">
+          <!-- Header -->
+          <div class="flex items-center justify-between gap-3 px-5 py-4 border-b border-border bg-muted/30">
+            <div class="flex items-center gap-2.5">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              <p class="font-bold text-base">{{ PANEL_HELP[panelHelp].title }}</p>
+            </div>
+            <button type="button" class="rounded-full p-1.5 hover:bg-muted transition-colors" @click="panelHelp = ''">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <!-- Body -->
+          <div class="px-5 py-4 space-y-4 max-h-[70vh] overflow-y-auto">
+            <p class="text-sm text-muted-foreground leading-relaxed">{{ PANEL_HELP[panelHelp].desc }}</p>
+            <!-- Steps -->
+            <div>
+              <p class="text-xs font-bold text-foreground uppercase tracking-wide mb-2">Cara Penggunaan</p>
+              <ol class="space-y-1.5">
+                <li v-for="(step, si) in PANEL_HELP[panelHelp].steps" :key="si" class="flex gap-2.5 text-sm">
+                  <span class="shrink-0 flex items-center justify-center w-5 h-5 rounded-full bg-primary/15 text-primary text-[11px] font-bold mt-0.5">{{ si + 1 }}</span>
+                  <span class="text-muted-foreground leading-relaxed">{{ step }}</span>
+                </li>
+              </ol>
+            </div>
+            <!-- Example -->
+            <div v-if="PANEL_HELP[panelHelp].example">
+              <p class="text-xs font-bold text-foreground uppercase tracking-wide mb-2">Contoh</p>
+              <pre class="text-xs bg-muted/60 border border-border rounded-lg p-3 font-mono text-muted-foreground whitespace-pre-wrap leading-relaxed">{{ PANEL_HELP[panelHelp].example }}</pre>
+            </div>
+            <!-- Tips -->
+            <div v-if="PANEL_HELP[panelHelp].tips?.length">
+              <p class="text-xs font-bold text-foreground uppercase tracking-wide mb-2">Tips</p>
+              <ul class="space-y-1">
+                <li v-for="(tip, ti) in PANEL_HELP[panelHelp].tips" :key="ti" class="flex gap-2 text-sm text-muted-foreground">
+                  <span class="text-amber-500 shrink-0">💡</span>
+                  <span class="leading-relaxed">{{ tip }}</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+          <!-- Footer -->
+          <div class="px-5 py-3 border-t border-border bg-muted/20 flex justify-end">
+            <button type="button" class="px-4 py-1.5 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors" @click="panelHelp = ''">Mengerti</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>

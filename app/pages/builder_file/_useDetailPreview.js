@@ -30,6 +30,14 @@ export function useDetailPreview(details) {
         if (df.type === 'checkbox' || df.type === 'status') row[df.key] = df.default !== false
         else if (['number', 'fieldnumber', 'fieldnumber_decimal', 'currency', 'slider'].includes(df.type)) row[df.key] = df.default || 0
         else row[df.key] = df.default || ''
+        // Auto-fill from display column property on row creation
+        if (df.defaultValueFrom?.field && df.defaultValueFrom?.property) {
+          const sourceIsDisplayCol = (detail.displayColumns || []).some(dc => dc.key === df.defaultValueFrom.field)
+          if (sourceIsDisplayCol) {
+            const val = item[df.defaultValueFrom.property]
+            if (val !== undefined && val !== null) row[df.key] = val
+          }
+        }
       })
       arr.push(row)
       added++
