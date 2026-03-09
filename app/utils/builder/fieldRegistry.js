@@ -242,17 +242,22 @@ const PANEL = {
     hint: 'Pilih field & operator untuk auto-hitung. Field ini otomatis disabled.',
     hideWhen: (f) => ['switch', 'fieldbox', 'upload', 'multi_upload', 'select', 'select_creatable', 'popup', 'radio', 'date', 'datetime', 'slider'].includes(f.type),
   },
+  defaultValueFrom: {
+    key: 'defaultValueFrom', label: 'Auto-Fill dari Field Lain', type: 'defaultValueFrom',
+    hint: 'Isi otomatis dari data field lain (misal: pilih Supplier → isi Alamat dari supplier.alamat)',
+    hideWhen: (f) => ['switch', 'fieldbox', 'upload', 'multi_upload', 'section', 'divider', 'fieldgroup', 'fieldgroup_end'].includes(f.type),
+  },
 }
 
 // ── Common panel sets ──────────────────────────────────────────────────────
-const COMMON_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.defaultValue, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.readonlyWhen, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.computedFormula, PANEL.minLength, PANEL.maxLength, PANEL.minValue, PANEL.maxValue, PANEL.pattern, PANEL.patternMessage]
+const COMMON_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.defaultValue, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.readonlyWhen, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.computedFormula, PANEL.defaultValueFrom, PANEL.minLength, PANEL.maxLength, PANEL.minValue, PANEL.maxValue, PANEL.pattern, PANEL.patternMessage]
 const SELECT_PANELS = [...COMMON_PANELS, PANEL.sourceType, PANEL.apiUrl, PANEL.apiParams, PANEL.dependsOnParam, PANEL.displayField, PANEL.valueField, PANEL.staticOptions]
 const SWITCH_PANELS = [PANEL.fieldName, PANEL.label, PANEL.defaultValue, PANEL.labelTrue, PANEL.labelFalse, PANEL.disabled, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen]
 const BOX_PANELS = [PANEL.fieldName, PANEL.label, PANEL.defaultValue, PANEL.labelTrue, PANEL.labelFalse, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen]
 const DATE_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.dateDefaultValue, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.readonlyWhen, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen]
 const RADIO_PANELS = [PANEL.fieldName, PANEL.label, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.readonlyWhen, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.radioOptions]
 const POPUP_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.readonlyWhen, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.apiUrl, PANEL.apiParams, PANEL.dependsOnParam, PANEL.displayField, PANEL.valueField, PANEL.popupColumns, PANEL.searchFields, PANEL.dialogTitle]
-const CURRENCY_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.defaultValue, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.readonlyWhen, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.computedFormula, PANEL.currencyPrefix, PANEL.allowDecimal, PANEL.minValue, PANEL.maxValue]
+const CURRENCY_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.defaultValue, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.readonlyWhen, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.computedFormula, PANEL.defaultValueFrom, PANEL.currencyPrefix, PANEL.allowDecimal, PANEL.minValue, PANEL.maxValue]
 const SLIDER_PANELS = [PANEL.fieldName, PANEL.label, PANEL.defaultValue, PANEL.required, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.sliderMin, PANEL.sliderMax, PANEL.sliderStep, PANEL.sliderUnit]
 const SECTION_PANELS = [PANEL.sectionTitle, PANEL.visibleWhen]
 const UPLOAD_PANELS = [PANEL.fieldName, PANEL.label, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.readonlyWhen, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.uploadAccept, PANEL.maxSizeMB]
@@ -419,6 +424,14 @@ function genSelect(f, component = 'FieldSelect', allFields = []) {
     inputHandler = `@input="(v) => (values.${f.field} = v)"`
   }
 
+  // ── @update:valueFull handler (for defaultValueFrom auto-fill) ──
+  const autoFillTargets = allFields.filter(af => af.defaultValueFrom?.field === f.field && af.defaultValueFrom?.property)
+  let valueFullAttr = ''
+  if (autoFillTargets.length > 0) {
+    const fills = autoFillTargets.map(af => `values.${af.field} = obj?.${af.defaultValueFrom.property} || ''`).join('; ')
+    valueFullAttr = `\n              @update:valueFull="(obj) => { ${fills} }"`
+  }
+
   // ── :disabled binding ──
   let disabledAttr
   if (hasDependsOn || hasSimpleDependsOn) {
@@ -438,7 +451,7 @@ function genSelect(f, component = 'FieldSelect', allFields = []) {
               label="${f.label}"
               :value="values.${f.field}"
               :errorname="errors.${f.field} ? 'failed' : ''"
-              ${inputHandler}
+              ${inputHandler}${valueFullAttr}
               :hints="errors.${f.field}"
               :required="${f.required ? '!isReadOnly' : 'false'}"
               ${disabledAttr}
@@ -537,6 +550,14 @@ function genPopup(f, allFields = []) {
     inputHandler = `@input="(v) => (values.${f.field} = v)"`
   }
 
+  // ── @update:valueFull handler (for defaultValueFrom auto-fill) ──
+  const autoFillTargets = allFields.filter(af => af.defaultValueFrom?.field === f.field && af.defaultValueFrom?.property)
+  let valueFullAttr = ''
+  if (autoFillTargets.length > 0) {
+    const fills = autoFillTargets.map(af => `values.${af.field} = obj?.${af.defaultValueFrom.property} || ''`).join('; ')
+    valueFullAttr = `\n              @update:valueFull="(obj) => { ${fills} }"`
+  }
+
   let apiParamsAttr = ''
   if (hasDependsOn) {
     apiParamsAttr = `\n              :apiParams="{ ${f.dependsOnParam}: values.${f.dependsOn} }"`
@@ -550,7 +571,7 @@ function genPopup(f, allFields = []) {
               label="${f.label}"
               :value="values.${f.field}"
               :errorname="errors.${f.field} ? 'failed' : ''"
-              ${inputHandler}
+              ${inputHandler}${valueFullAttr}
               :hints="errors.${f.field}"
               :required="${f.required ? '!isReadOnly' : 'false'}"
               ${getDisabledAttr(f)}
@@ -1112,6 +1133,7 @@ export function createBlankField() {
     readonlyWhenField: '',
     readonlyWhenValue: '',
     computedFormula: [],
+    defaultValueFrom: { field: '', property: '' },
     step: 0,
     ...allMetaKeys,
     defaultValue: '', // always blank for new fields; boolean fields get their default when type is selected
@@ -1196,5 +1218,9 @@ export function createBlankDetailField() {
     staticOptions: [], radioOptions: [],
     // PopUp specific
     popupColumns: [], popupSearchKey: 'name', popupDisplayKey: 'name',
+    // Formula per-row (same token format as header: [{type:'field',value:'qty'},{type:'op',value:'*'},{type:'field',value:'price'}])
+    computedFormula: [],
+    // Default value from header field (auto-fill)
+    defaultValueFrom: { field: '', property: '' },
   }
 }

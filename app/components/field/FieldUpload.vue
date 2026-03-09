@@ -169,7 +169,7 @@ const handlePreview = () => { if (hasImage.value) showPreview.value = true }
     <!-- Preview Popup -->
     <Teleport to="body">
       <Transition name="fade">
-        <div v-if="showPreview" class="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4" @click="showPreview = false">
+        <div v-if="showPreview" class="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 p-4" @click="showPreview = false">
           <div class="relative w-full h-full max-w-[95vw] max-h-[95vh] flex flex-col items-center justify-center gap-4">
             <button class="absolute top-0 right-0 text-white hover:bg-white/20 p-2 rounded-md z-10" @click="showPreview = false">
               <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>

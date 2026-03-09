@@ -171,6 +171,32 @@ const props = defineProps({
       </div>
     </div>
 
+    <!-- Header (Kop Halaman) -->
+    <div
+      v-else-if="block.type === 'header'"
+      class="mb-3"
+      :class="{ 'text-center': block.align === 'center', 'text-right': block.align === 'right' }"
+    >
+      <p
+        class="whitespace-pre-wrap leading-6"
+        :style="{ fontSize: block.fontSize ? `${block.fontSize}px` : '0.75rem', fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 'bold' : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined, color: block.color || undefined }"
+      >{{ renderTokens(block.text) }}</p>
+      <div v-if="block.showLine !== false" class="mt-1 border-b border-black"></div>
+    </div>
+
+    <!-- Footer (Kaki Halaman) -->
+    <div
+      v-else-if="block.type === 'footer'"
+      class="mt-3"
+      :class="{ 'text-center': block.align === 'center', 'text-right': block.align === 'right' }"
+    >
+      <div v-if="block.showLine !== false" class="mb-1 border-t border-black"></div>
+      <p
+        class="whitespace-pre-wrap leading-6"
+        :style="{ fontSize: block.fontSize ? `${block.fontSize}px` : '0.75rem', fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 'bold' : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined, color: block.color || undefined }"
+      >{{ renderTokens(block.text.replace('{page}', '1').replace('{pages}', '1')) }}</p>
+    </div>
+
     <!-- HTML Custom -->
     <div v-else-if="block.type === 'html'" class="mb-3 prose prose-sm max-w-none" v-html="renderHtml(block.html)"></div>
   </div>

@@ -364,6 +364,21 @@ const handleBack = () => {
         </template>
 
         <div style="position:relative;z-index:1">
+        <!-- Header blocks (rendered before content) -->
+        <template v-for="block in printConfig.blocks" :key="'hdr-' + block.id">
+          <div
+            v-if="block.type === 'header'"
+            :class="{ 'text-center': block.align === 'center', 'text-right': block.align === 'right' }"
+            :style="getBlockWrapperStyle(block)"
+          >
+            <p
+              class="whitespace-pre-wrap leading-6"
+              :style="{ fontSize: block.fontSize ? `${block.fontSize}px` : '0.75rem', fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 'bold' : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined, color: block.color || undefined }"
+            >{{ renderTokens(block.text) }}</p>
+            <div v-if="block.showLine !== false" style="margin-top: 4px; border-bottom: 1px solid #000;"></div>
+          </div>
+        </template>
+
         <template v-for="block in printConfig.blocks" :key="block.id">
           <div
             v-if="block.type === 'company_header'"
@@ -507,6 +522,24 @@ const handleBack = () => {
           </div>
 
           <div v-else-if="block.type === 'html'" class="mb-3 prose prose-sm max-w-none" :style="getBlockWrapperStyle(block)" v-html="renderHtmlBlock(block.html)"></div>
+
+          <!-- Skip header/footer in main block loop (rendered separately) -->
+          <template v-else-if="block.type === 'header' || block.type === 'footer'"></template>
+        </template>
+
+        <!-- Footer blocks (rendered after content) -->
+        <template v-for="block in printConfig.blocks" :key="'ftr-' + block.id">
+          <div
+            v-if="block.type === 'footer'"
+            :class="{ 'text-center': block.align === 'center', 'text-right': block.align === 'right' }"
+            :style="getBlockWrapperStyle(block)"
+          >
+            <div v-if="block.showLine !== false" style="margin-bottom: 4px; border-top: 1px solid #000;"></div>
+            <p
+              class="whitespace-pre-wrap leading-6"
+              :style="{ fontSize: block.fontSize ? `${block.fontSize}px` : '0.75rem', fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 'bold' : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined, color: block.color || undefined }"
+            >{{ renderTokens((block.text || '').replace('{page}', '1').replace('{pages}', '1')) }}</p>
+          </div>
         </template>
         </div>
       </div>

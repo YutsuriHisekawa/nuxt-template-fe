@@ -42,7 +42,7 @@ const props = defineProps({
   previewValues: { type: Object, default: () => ({}) },
 })
 
-const emit = defineEmits(['previewChange'])
+const emit = defineEmits(['previewChange', 'previewValueFull'])
 
 const entry = computed(() => getRegistryEntry(props.field.type))
 
@@ -94,6 +94,12 @@ const handlePreviewInput = (v) => {
   // Emit so parent can track this field's preview value (for cascading)
   if (props.field.field) {
     emit('previewChange', props.field.field, v)
+  }
+}
+
+const handlePreviewValueFull = (obj) => {
+  if (props.field.field) {
+    emit('previewValueFull', props.field.field, obj)
   }
 }
 
@@ -203,6 +209,7 @@ function toggleSwitch(e) {
     :is="resolvedComponent"
     v-bind="previewProps"
     @input="handlePreviewInput"
+    @update:valueFull="handlePreviewValueFull"
     class="w-full"
   />
 </template>

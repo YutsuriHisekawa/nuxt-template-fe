@@ -195,7 +195,7 @@ const handleKeyPress = (e) => {
     <!-- Preview Carousel -->
     <Teleport to="body">
       <Transition name="fade">
-        <div v-if="showPreview" class="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4" @click="showPreview = false" @keydown="handleKeyPress" tabindex="0">
+        <div v-if="showPreview" class="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 p-4" @click="showPreview = false" @keydown="handleKeyPress" tabindex="0">
           <div class="relative w-full h-full max-w-[95vw] max-h-[95vh] flex flex-col items-center justify-center gap-4">
             <!-- Close -->
             <button class="absolute top-4 right-4 text-white hover:bg-white/20 p-2 rounded-md z-10" @click="showPreview = false">

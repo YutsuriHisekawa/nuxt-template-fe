@@ -248,7 +248,7 @@ const fetchData = async (reset = false) => {
     <!-- Modal Dialog -->
     <Teleport to="body">
       <Transition name="modal">
-        <div v-if="open" class="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4" @click.self="closeDialog">
+        <div v-if="open" class="fixed inset-0 z-[200] flex items-center justify-center p-2 sm:p-4" @click.self="closeDialog">
           <!-- Backdrop -->
           <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="closeDialog" />
 

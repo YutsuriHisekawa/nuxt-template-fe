@@ -172,7 +172,7 @@ ${watchSources}
   return '\n// ── Computed / Auto-Fill Fields ──\n' + watchers.join('\n\n')
 }
 
-function buildFieldTemplate(f, fields, fullClass) {
+function buildFieldTemplate(f, fields, fullClass, details) {
   const entry = getRegistryEntry(f.type)
   let tpl
   if (entry?.generateTemplate) {
@@ -201,6 +201,32 @@ function buildFieldTemplate(f, fields, fullClass) {
   if (hasFormula) {
     tpl = tpl.replace(':disabled="loading || isReadOnly"', ':disabled="true"')
   }
+  // Post-process: auto-fill via @update:valueFull (header→header + header→detail)
+  if (['select', 'select_creatable', 'popup'].includes(f.type)) {
+    const headerTargets = fields.filter(af => af.defaultValueFrom?.field === f.field && af.defaultValueFrom?.property)
+    const detailTargets = []
+    if (Array.isArray(details)) {
+      details.forEach((d, di) => {
+        const varName = di === 0 ? 'detailArr' : `detailArr${di + 1}`
+        ;(d.detailFields || []).forEach(df => {
+          if (df.defaultValueFrom?.field === f.field && df.defaultValueFrom?.property) {
+            detailTargets.push({ key: df.key, property: df.defaultValueFrom.property, varName })
+          }
+        })
+      })
+    }
+    if (headerTargets.length || detailTargets.length) {
+      const fills = []
+      headerTargets.forEach(af => fills.push(`values.${af.field} = obj?.${af.defaultValueFrom.property} || ''`))
+      detailTargets.forEach(dt => fills.push(`${dt.varName}.value.forEach(row => { row.${dt.key} = obj?.${dt.property} || '' })`))
+      const handler = `@update:valueFull="(obj) => { ${fills.join('; ')} }"`
+      if (tpl.includes('@update:valueFull')) {
+        tpl = tpl.replace(/@update:valueFull="[^"]*"/, handler)
+      } else {
+        tpl = tpl.replace(/(@input="[^"]*")/, `$1\n              ${handler}`)
+      }
+    }
+  }
   tpl = wrapVisibleWhen(tpl, f)
   if (entry?.isSection) {
     return fullClass ? `            <div class="${fullClass}">\n${tpl}\n            </div>` : tpl
@@ -211,7 +237,7 @@ function buildFieldTemplate(f, fields, fullClass) {
   return tpl
 }
 
-function buildFormFields(fields, columnLayout) {
+function buildFormFields(fields, columnLayout, details) {
   const colsFull = { 1: '', 2: 'md:col-span-2', 3: 'md:col-span-3' }
   const fullClass = colsFull[columnLayout] || colsFull[2]
   const gridCols = { 1: 'grid grid-cols-1 gap-6', 2: 'grid grid-cols-1 md:grid-cols-2 gap-6', 3: 'grid grid-cols-1 md:grid-cols-3 gap-6' }
@@ -234,18 +260,18 @@ function buildFormFields(fields, columnLayout) {
       lines.push(`              </div>\n            </div>`)
       return
     }
-    lines.push(buildFieldTemplate(f, fields, fullClass))
+    lines.push(buildFieldTemplate(f, fields, fullClass, details))
   })
   return lines.join('\n\n')
 }
 
-function buildFormContent(fields, columnLayout, wizardSteps) {
+function buildFormContent(fields, columnLayout, wizardSteps, details) {
   const gridCols = { 1: 'grid grid-cols-1 gap-6', 2: 'grid grid-cols-1 md:grid-cols-2 gap-6', 3: 'grid grid-cols-1 md:grid-cols-3 gap-6' }
   const gridClass = gridCols[columnLayout] || gridCols[2]
 
   if (!wizardSteps || !wizardSteps.length) {
     // No wizard — single grid
-    const fieldsHtml = buildFormFields(fields, columnLayout)
+    const fieldsHtml = buildFormFields(fields, columnLayout, details)
     return `          <div class="${gridClass}">\n${fieldsHtml}\n          </div>`
   }
 
@@ -261,7 +287,7 @@ function buildFormContent(fields, columnLayout, wizardSteps) {
   ).join('\n')
 
   const stepContents = stepGroups.map((sf, i) => {
-    const fieldsHtml = buildFormFields(sf, columnLayout)
+    const fieldsHtml = buildFormFields(sf, columnLayout, details)
     return `          <div v-show="wizardStep === ${i}" class="${gridClass}">\n${fieldsHtml}\n          </div>`
   }).join('\n\n')
 
@@ -379,6 +405,47 @@ function buildDetailImports(details) {
   return `import { ${icons.join(', ')} } from "lucide-vue-next";`
 }
 
+function buildDetailComputedWatchers(details) {
+  if (!hasDetails(details)) return ''
+  const blocks = []
+  details.forEach((d, i) => {
+    const varName = i === 0 ? 'detailArr' : `detailArr${i + 1}`
+    const detailFields = d.detailFields || []
+    const formulaFields = detailFields.filter(df => Array.isArray(df.computedFormula) && df.computedFormula.length > 0)
+    if (!formulaFields.length) return
+
+    // Build a deep watcher on the detail array that recalculates formula fields
+    const computations = formulaFields.map(df => {
+      const expr = df.computedFormula.map(t => {
+        if (t.type === 'field') return `(Number(row.${t.value}) || 0)`
+        if (t.type === 'op') return ` ${t.value} `
+        if (t.type === 'number') return t.value
+        if (t.type === 'paren') return t.value
+        return ''
+      }).join('')
+      const formulaDisplay = df.computedFormula.map(t => t.value).join(' ')
+      return `      // ${df.key} = ${formulaDisplay}\n      row.${df.key} = ${expr};`
+    }).join('\n')
+
+    blocks.push(`
+// Auto-compute detail formula fields for ${varName}
+watch(${varName}, (arr) => {
+  if (isReadOnly.value) return;
+  arr.forEach((row) => {
+${computations}
+  });
+}, { deep: true, immediate: true });`)
+  })
+  if (!blocks.length) return ''
+  return '\n// ── Detail Computed (Per-Row Formula) ──\n' + blocks.join('\n')
+}
+
+function buildDefaultValueFromWatchers(fields) {
+  // Header auto-fill is handled via @update:valueFull in genSelect/genPopup
+  // This function is kept for potential future use
+  return ''
+}
+
 function buildDetailState(details) {
   if (!hasDetails(details)) return ''
   const lines = []
@@ -438,8 +505,14 @@ const ${removeName} = (index) => {
       const fk = d.foreignKey || 'id'
       const fkDisplay = d.foreignDisplay || ''
       const uk = d.uniqueKey || 'id'
+      const displayCols = d.displayColumns || []
+      const displayColKeys = new Set(displayCols.map(dc => dc.key))
 
       const fieldDefaults = detailFields.map(df => {
+        // If this field auto-fills from a displayColumn, use item property
+        if (df.defaultValueFrom?.field && df.defaultValueFrom?.property && displayColKeys.has(df.defaultValueFrom.field)) {
+          return `      ${df.key}: item.${df.defaultValueFrom.property} || ${['number', 'fieldnumber', 'fieldnumber_decimal', 'currency', 'slider'].includes(df.type) ? '0' : '""'},`
+        }
         if (df.type === 'checkbox' || df.type === 'status') return `      ${df.key}: ${df.default !== false},`
         if (['number', 'fieldnumber', 'fieldnumber_decimal', 'currency', 'slider'].includes(df.type)) return `      ${df.key}: ${df.default || 0},`
         return `      ${df.key}: "${df.default || ''}",`
@@ -566,7 +639,17 @@ ${fieldMappings}
   return '\n' + lines.join('\n')
 }
 
-function buildDetailFieldTd(df) {
+function buildDetailFieldTd(df, allDetailFields) {
+  // If field has a formula, render as readonly computed value
+  const hasFormula = Array.isArray(df.computedFormula) && df.computedFormula.length > 0
+  if (hasFormula) {
+    const isCurrency = df.type === 'currency'
+    const fmt = isCurrency ? `Number(detail.${df.key} || 0).toLocaleString('id-ID')` : `detail.${df.key}`
+    return `                      <td class="px-2 py-2 text-right">
+                        <span class="text-xs sm:text-sm font-medium text-foreground/80">{{ ${fmt} }}</span>
+                      </td>`
+  }
+
   if (df.type === 'checkbox') {
     return `                      <td class="px-2 py-2 text-center">
                         <FieldBox
@@ -617,12 +700,17 @@ function buildDetailFieldTd(df) {
   }
   if (df.type === 'select') {
     const src = df.sourceType || 'api'
+    // Check if any other detail field auto-fills from this field
+    const detailAutoFills = (allDetailFields || []).filter(af => af.defaultValueFrom?.field === df.key && af.defaultValueFrom?.property)
+    const valueFullAttr = detailAutoFills.length > 0
+      ? `\n                          @update:valueFull="(obj) => { ${detailAutoFills.map(af => `detail.${af.key} = obj?.${af.defaultValueFrom.property} || ''`).join('; ')} }"`
+      : ''
     if (src === 'api') {
       return `                      <td class="px-2 py-2">
                         <FieldSelect
                           v-if="!isReadOnly"
                           :value="detail.${df.key}"
-                          @input="(v) => (detail.${df.key} = v)"
+                          @input="(v) => (detail.${df.key} = v)"${valueFullAttr}
                           apiUrl="${df.apiUrl || ''}"
                           displayField="${df.displayField || 'name'}"
                           valueField="${df.valueField || 'id'}"
@@ -636,7 +724,7 @@ function buildDetailFieldTd(df) {
                         <FieldSelect
                           v-if="!isReadOnly"
                           :value="detail.${df.key}"
-                          @input="(v) => (detail.${df.key} = v)"
+                          @input="(v) => (detail.${df.key} = v)"${valueFullAttr}
                           sourceType="static"
                           :staticOptions="[${opts}]"
                           class="w-full"
@@ -645,11 +733,16 @@ function buildDetailFieldTd(df) {
                       </td>`
   }
   if (df.type === 'popup') {
+    // Check if any other detail field auto-fills from this field
+    const detailAutoFills = (allDetailFields || []).filter(af => af.defaultValueFrom?.field === df.key && af.defaultValueFrom?.property)
+    const valueFullAttr = detailAutoFills.length > 0
+      ? `\n                          @update:valueFull="(obj) => { ${detailAutoFills.map(af => `detail.${af.key} = obj?.${af.defaultValueFrom.property} || ''`).join('; ')} }"`
+      : ''
     return `                      <td class="px-2 py-2">
                         <FieldPopUp
                           v-if="!isReadOnly"
                           :value="detail.${df.key}"
-                          @input="(v) => (detail.${df.key} = v)"
+                          @input="(v) => (detail.${df.key} = v)"${valueFullAttr}
                           apiUrl="${df.apiUrl || ''}"
                           displayField="${df.displayField || 'name'}"
                           valueField="${df.valueField || 'id'}"
@@ -801,7 +894,7 @@ function buildDetailTemplate(details) {
     ).join('\n')
 
     // Detail field <td> — using real field components
-    const fieldTds = detailFields.map(df => buildDetailFieldTd(df)).join('\n')
+    const fieldTds = detailFields.map(df => buildDetailFieldTd(df, detailFields)).join('\n')
 
     if (d.mode === 'add_to_list') {
       // ── ADD TO LIST MODE ──
@@ -1133,9 +1226,9 @@ function normalizePrintBlock(block, fields, details, title) {
         ...base,
         logoUrl: block?.logoUrl || '',
         companyName: block?.companyName || 'Nama Perusahaan',
-        companySubtitle: block?.companySubtitle || '',
-        address: block?.address || '',
-        meta: block?.meta || '',
+        companySubtitle: block?.companySubtitle || 'Alamat / Divisi / Cabang',
+        address: block?.address || 'Jl. Contoh Alamat No. 123, Kota, Indonesia',
+        meta: block?.meta || 'Telp: 021-000000 | Email: info@company.com',
         align: block?.align === 'center' ? 'center' : 'left',
       }
     case 'heading':
@@ -1154,7 +1247,7 @@ function normalizePrintBlock(block, fields, details, title) {
     case 'paragraph':
       return {
         ...base,
-        text: block?.text || '',
+        text: block?.text || 'Isi teks di sini. Bisa menggunakan token seperti {{current_date}} atau {{nama_field}}.',
         align: block?.align || 'left',
         fontSize: Number(block?.fontSize || 0),
         fontFamily: block?.fontFamily || '',
@@ -1186,7 +1279,7 @@ function normalizePrintBlock(block, fields, details, title) {
         gap: Number(block?.gap || 16),
         columnsHtml: Array.isArray(block?.columnsHtml)
           ? block.columnsHtml.map(h => h || '')
-          : Array(Number(block?.colCount || 2)).fill(''),
+          : ['<strong>Kolom 1</strong><br>Isi konten kolom kiri', '<strong>Kolom 2</strong><br>Isi konten kolom kanan'],
       }
     case 'list':
       return {
@@ -1202,7 +1295,7 @@ function normalizePrintBlock(block, fields, details, title) {
         ...base,
         rows: Number(block?.rows || 3),
         cols: Number(block?.cols || 3),
-        cellsText: block?.cellsText || '',
+        cellsText: block?.cellsText || 'Kolom 1|Kolom 2|Kolom 3\nData A1|Data A2|Data A3\nData B1|Data B2|Data B3',
         showBorder: block?.showBorder !== false,
         headerRow: block?.headerRow !== false,
       }
@@ -1231,7 +1324,35 @@ function normalizePrintBlock(block, fields, details, title) {
     case 'signature':
       return { ...base, titlesText: block?.titlesText || 'Dibuat Oleh\nDiperiksa Oleh\nDisetujui Oleh', caption: block?.caption || 'Nama / Tanggal' }
     case 'html':
-      return { ...base, html: block?.html || '<p>{{page_title}}</p>' }
+      return { ...base, html: block?.html || '<p style="font-size:12px;">Konten HTML custom. Bisa pakai token: <strong>{{page_title}}</strong></p>' }
+    case 'header':
+      return {
+        ...base,
+        text: block?.text || '{{page_title}}',
+        align: block?.align || 'left',
+        fontSize: Number(block?.fontSize || 0),
+        fontFamily: block?.fontFamily || '',
+        bold: !!block?.bold,
+        italic: !!block?.italic,
+        underline: !!block?.underline,
+        color: block?.color || '',
+        showLine: block?.showLine !== false,
+        showOnFirstPage: block?.showOnFirstPage !== false,
+      }
+    case 'footer':
+      return {
+        ...base,
+        text: block?.text || 'Halaman {page}',
+        align: block?.align || 'center',
+        fontSize: Number(block?.fontSize || 0),
+        fontFamily: block?.fontFamily || '',
+        bold: !!block?.bold,
+        italic: !!block?.italic,
+        underline: !!block?.underline,
+        color: block?.color || '',
+        showLine: block?.showLine !== false,
+        showOnFirstPage: block?.showOnFirstPage !== false,
+      }
     default:
       return { ...base, type: 'paragraph', text: block?.text || '', align: block?.align || 'left' }
   }
@@ -1282,7 +1403,7 @@ function normalizePrintConfigServer(rawConfig, fields, details, title) {
     footerText: rawConfig.footerText || '',
     showPageNumber: !!rawConfig.showPageNumber,
     pageNumberPosition: rawConfig.pageNumberPosition || 'bottom-center',
-    blocks: Array.isArray(rawConfig.blocks) && rawConfig.blocks.length
+    blocks: Array.isArray(rawConfig.blocks)
       ? rawConfig.blocks.map((block) => normalizePrintBlock(block, fields, details, title))
       : fallback.blocks,
   }
@@ -1369,7 +1490,7 @@ export default defineEventHandler(async (event) => {
     __VALIDATION__: buildValidation(fields),
     __PAYLOAD__: buildPayload(fields),
     __RESET_VALUES__: buildResetValues(fields),
-    __FORM_CONTENT__: buildFormContent(fields, columnLayout || 2, wizardSteps || []),
+    __FORM_CONTENT__: buildFormContent(fields, columnLayout || 2, wizardSteps || [], details),
     __WIZARD_STATE__: (wizardSteps && wizardSteps.length > 0) ? `const wizardStep = ref(0);` : '',
     __COLUMN_LAYOUT__: String(columnLayout || 2),
     __COLUMNS__: buildColumns(fields, landingConfig),
@@ -1382,6 +1503,7 @@ export default defineEventHandler(async (event) => {
     __DETAIL_SELECTED_IDS__: buildDetailSelectedIds(details),
     __DETAIL_METHODS__: buildDetailMethods(details),
     __COMPUTED_WATCHERS__: buildComputedWatchers(fields),
+    __DETAIL_COMPUTED_WATCHERS__: buildDetailComputedWatchers(details),
     __DETAIL_RESET__: buildDetailReset(details),
     __DETAIL_LOAD_DATA__: buildDetailLoadData(details),
     __DETAIL_PAYLOAD__: buildDetailPayload(details),
