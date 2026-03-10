@@ -409,16 +409,25 @@ const handleRespoChanged = () => {
   loadMenus(true)
 }
 
+const handleMenuUpdated = () => {
+  if (!authStore.isSuperAdmin) return
+
+  resetMenuCache()
+  loadMenus(true)
+}
+
 onMounted(() => {
   loadMenus()
   if (import.meta.client) {
     window.addEventListener('respoChanged', handleRespoChanged)
+    window.addEventListener('menuUpdated', handleMenuUpdated)
   }
 })
 
 onUnmounted(() => {
   if (import.meta.client) {
     window.removeEventListener('respoChanged', handleRespoChanged)
+    window.removeEventListener('menuUpdated', handleMenuUpdated)
   }
 })
 </script>

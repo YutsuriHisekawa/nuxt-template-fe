@@ -1,10 +1,22 @@
 <script setup lang="js">
-import { toast } from 'vue-sonner'
-import { Trash2, Eye, Edit, Copy } from 'lucide-vue-next'
+import { toast } from "vue-sonner"
+import { Trash2, Eye, Edit, Copy } from "lucide-vue-next"
 
 const api = useApi()
 const router = useRouter()
 const route = useRoute()
+const authStore = useAuthStore()
+
+// Permission check for current menu
+const currentMenu = computed(() => {
+	return authStore.selectRespo?.menus?.find(m => m.path === '/setup/user_default')
+})
+const perms = computed(() => {
+	if (authStore.isSuperAdmin) return { is_read: true, is_create: true, is_update: true, is_delete: true, is_print: true }
+	const menuId = currentMenu.value?.id
+	if (!menuId) return { is_read: true, is_create: true, is_update: true, is_delete: true, is_print: true }
+	return authStore.selectRespo?.permissions?.[menuId] || {}
+})
 
 const rowData = ref([])
 const loading = ref(false)
@@ -31,7 +43,7 @@ const checkActive = (val) => val === true || val === 1 || val === "1" || val ===
 
 const landing = reactive({
 	api: {
-		url: "/api/dynamic/m_menu",
+		url: "/api/dynamic/user_default",
 		async fetch({ page = 1, pageSize = 25, search = '', searchfield = '' } = {}) {
 			loading.value = true
 			errorMessage.value = ""
@@ -40,6 +52,7 @@ const landing = reactive({
 					page: String(page),
 					paginate: String(pageSize),
 					join: "true",
+					include: "m_kary>m_unit_bisnis"
 				})
 				params.set("order_by", "createdAt")
 				params.set("order_type", "DESC")
@@ -54,10 +67,10 @@ const landing = reactive({
 					rowData.value = response.data
 					paginationData.value = response.pagination || null
 				} else {
-					errorMessage.value = response?.message || "Gagal memuat data menu"
+					errorMessage.value = response?.message || "Gagal memuat data"
 				}
 			} catch (error) {
-				errorMessage.value = error?.message || "Gagal memuat data menu"
+				errorMessage.value = error?.message || "Gagal memuat data"
 			} finally {
 				loading.value = false
 			}
@@ -67,10 +80,7 @@ const landing = reactive({
 			if (!target?.id) return
 			try {
 				await api.del(`${landing.api.url}/${target.id}`)
-				if (import.meta.client) {
-					window.dispatchEvent(new CustomEvent('menuUpdated'))
-				}
-				toast.success('Menu berhasil dihapus')
+				toast.success("Data berhasil dihapus")
 				deleteDialogOpen.value = false
 				deleteTarget.value = null
 				if (isMobile.value) {
@@ -79,8 +89,8 @@ const landing = reactive({
 					dataTable.value?.refresh()
 				}
 			} catch (error) {
-				toast.error('Gagal menghapus menu', {
-					description: error?.message || 'Terjadi kesalahan'
+				toast.error("Gagal menghapus data", {
+					description: error?.message || "Terjadi kesalahan",
 				})
 			}
 		},
@@ -90,7 +100,7 @@ const landing = reactive({
 			icon: "trash",
 			title: "Hapus",
 			variant: "destructive",
-			show: (row) => row.is_active !== false,
+			show: (row) => row.is_active !== false && perms.value.is_delete !== false,
 			click(row) {
 				if (!row?.id) return
 				deleteTarget.value = row
@@ -109,6 +119,7 @@ const landing = reactive({
 			icon: "edit",
 			title: "Edit",
 			variant: "primary",
+			show: () => perms.value.is_update !== false,
 			click(row) {
 				router.push(`${route.path}/form/${row.id}?action=Edit`)
 			},
@@ -117,25 +128,27 @@ const landing = reactive({
 			icon: "copy",
 			title: "Copy",
 			variant: "outline",
+			show: () => perms.value.is_create !== false,
 			click(row) {
 				router.push(`${route.path}/form/${row.id}?action=Copy`)
 			},
 		},
 	],
 	columns: [
-		{ headerName: "Name", field: "name", minWidth: 200 },
-		{ headerName: "Module", field: "modul", minWidth: 140 },
-		{ headerName: "Sub Module", field: "sub_modul", minWidth: 160 },
-		{ headerName: "Path", field: "path", minWidth: 220 },
-		{ headerName: "Icon", field: "icon", minWidth: 140 },
-		{ headerName: "Seq", field: "seq", minWidth: 100 },
+		{ headerName: "Company", field: "karyawan.m_unit_bisni.nama_comp", minWidth: 140 },
+		{ headerName: "Name", field: "name", minWidth: 140 },
+		{ headerName: "Username", field: "username", minWidth: 140 },
+		// { headerName: "Password", field: "password", minWidth: 140 },
+		{ headerName: "Tipe User", field: "tipe.value1", minWidth: 140 },
+		{ headerName: "Karyawan", field: "karyawan.nama_kary", minWidth: 140 },
+		{ headerName: "Catatan", field: "catatan", minWidth: 140 },
 		{
 			headerName: "Aktif",
 			field: "is_active",
 			minWidth: 110,
 			cellRenderer: (params) => {
 				const isActive = checkActive(params?.value)
-				const label = isActive ? "Aktif" : "Nonaktif"
+				const label = isActive ? "Aktif" : "Tidak Aktif"
 				const cls = isActive ? "font-bold text-green-600" : "font-bold text-red-600"
 				return `<span class="${cls}">${label}</span>`
 			},
@@ -165,8 +178,8 @@ const actionIcons = { trash: Trash2, eye: Eye, edit: Edit, copy: Copy }
 	<div class="space-y-4 pt-5">
 		<!-- Page Header -->
 		<div class="px-1">
-			<h1 class="text-xl sm:text-2xl font-bold tracking-tight">Master Menu</h1>
-			<p class="text-xs sm:text-sm text-muted-foreground">Kelola Menu aplikasi</p>
+			<h1 class="text-xl sm:text-2xl font-bold tracking-tight">Master User Default</h1>
+			<p class="text-xs sm:text-sm text-muted-foreground">Kelola master user default aplikasi</p>
 		</div>
 
 		<div class="rounded-lg border border-border bg-card p-2">
@@ -203,8 +216,8 @@ const actionIcons = { trash: Trash2, eye: Eye, edit: Edit, copy: Copy }
 					actionsPlacement="toolbar"
 					:showSearch="true"
 					:showRowNumber="true"
-					searchPlaceholder="Search menu..."
-					:showCreateButton="true"
+					searchPlaceholder="Search master user default..."
+					:showCreateButton="perms.is_create !== false"
 					createButtonText="Create New"
 					@request="landing.api.fetch"
 					@create="router.push(route.path + '/form')"
@@ -219,11 +232,12 @@ const actionIcons = { trash: Trash2, eye: Eye, edit: Edit, copy: Copy }
 						<input
 							v-model="searchInput"
 							type="text"
-							placeholder="Search menu..."
+							placeholder="Search master user default..."
 							class="h-9 w-full rounded-md border border-border bg-background px-3 text-sm placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary"
 						/>
 					</form>
 					<button
+						v-if="perms.is_create !== false"
 						type="button"
 						class="inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 whitespace-nowrap"
 						@click="router.push(route.path + '/form')"
@@ -252,11 +266,11 @@ const actionIcons = { trash: Trash2, eye: Eye, edit: Edit, copy: Copy }
 						:key="row.id || idx"
 						class="rounded-lg border border-border bg-background p-3 space-y-2"
 					>
-						<!-- Header: Name + Status -->
+						<!-- Header -->
 						<div class="flex items-start justify-between gap-2">
 							<div class="min-w-0 flex-1">
 								<p class="text-sm font-semibold truncate">{{ row.name || '-' }}</p>
-								<p class="text-xs text-muted-foreground truncate">{{ row.modul || '' }} {{ row.sub_modul ? '/ ' + row.sub_modul : '' }}</p>
+								<p class="text-xs text-muted-foreground truncate">{{ row.username || '-' }}</p>
 							</div>
 							<span
 								class="shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold"
@@ -267,10 +281,10 @@ const actionIcons = { trash: Trash2, eye: Eye, edit: Edit, copy: Copy }
 						</div>
 
 						<!-- Info rows -->
-						<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-							<div><span class="text-muted-foreground">Path:</span> <span class="font-medium break-all">{{ row.path || '-' }}</span></div>
-							<div><span class="text-muted-foreground">Icon:</span> <span class="font-medium">{{ row.icon || '-' }}</span></div>
-							<div><span class="text-muted-foreground">Seq:</span> <span class="font-medium">{{ row.seq ?? '-' }}</span></div>
+						<div class="grid grid-cols-1 gap-y-0.5 text-xs">
+							<div v-if="row.password"><span class="text-muted-foreground">Password:</span> <span class="font-medium">{{ row.password }}</span></div>
+							<div v-if="row.catatan"><span class="text-muted-foreground">Catatan:</span> <span class="font-medium">{{ row.catatan }}</span></div>
+							<div v-if="row.tipe_user_id"><span class="text-muted-foreground">Tipe User:</span> <span class="font-medium">{{ row.tipe_user_id }}</span></div>
 						</div>
 
 						<!-- Action buttons -->
@@ -307,9 +321,9 @@ const actionIcons = { trash: Trash2, eye: Eye, edit: Edit, copy: Copy }
 			<AlertDialog v-model:open="deleteDialogOpen">
 				<AlertDialogContent class="max-w-[90vw] sm:max-w-lg">
 					<AlertDialogHeader>
-						<AlertDialogTitle>Hapus menu?</AlertDialogTitle>
+						<AlertDialogTitle>Hapus data?</AlertDialogTitle>
 						<AlertDialogDescription>
-							Menu "{{ deleteTarget?.name || deleteTarget?.id || '-' }}" akan dihapus permanen.
+							Data "{{ deleteTarget?.name || deleteTarget?.id || '-' }}" akan dihapus permanen.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>
