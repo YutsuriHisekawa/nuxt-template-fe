@@ -199,6 +199,10 @@ const onSave = async () => {
       toast.success("Data berhasil dibuat");
     }
 
+    if (import.meta.client) {
+      window.dispatchEvent(new CustomEvent("menuUpdated"));
+    }
+
     router.replace("/setup/menu");
   } catch (error) {
     toast.error(

@@ -67,6 +67,9 @@ const landing = reactive({
 			if (!target?.id) return
 			try {
 				await api.del(`${landing.api.url}/${target.id}`)
+				if (import.meta.client) {
+					window.dispatchEvent(new CustomEvent('menuUpdated'))
+				}
 				toast.success('Menu berhasil dihapus')
 				deleteDialogOpen.value = false
 				deleteTarget.value = null
