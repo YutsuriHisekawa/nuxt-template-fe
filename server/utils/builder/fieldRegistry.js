@@ -20,6 +20,22 @@ function parseStaticOptionsLiteral(items, includeParentValue = false) {
   }).join(', ') + ']'
 }
 
+function normalizeDecimalPlaces(value, fallback = 2) {
+  const parsed = Number.parseInt(value, 10)
+  if (!Number.isFinite(parsed)) return fallback
+  return Math.min(6, Math.max(0, parsed))
+}
+
+function getDecimalPlacesAttr(field) {
+  if (field.type === 'decimal' || field.type === 'fieldnumber_decimal') {
+    return `\n              :decimalPlaces="${normalizeDecimalPlaces(field.decimalPlaces, 2)}"`
+  }
+  if (field.type === 'currency' && field.allowDecimal !== false) {
+    return `\n              :decimalPlaces="${normalizeDecimalPlaces(field.decimalPlaces, 2)}"`
+  }
+  return ''
+}
+
 // ── Generate helpers ───────────────────────────────────────────────────────
 function getDisabledAttr(f) {
   if (f.dependsOn) return `:disabled="!values.${f.dependsOn} || loading || isReadOnly"`
@@ -38,6 +54,7 @@ function getReadonlyAttr(f) {
 function genFieldX(f) {
   const typeAttr = f.type !== 'text' ? `\n              type="${f.type}"` : ''
   const readonlyAttr = getReadonlyAttr(f)
+  const decimalPlacesAttr = getDecimalPlacesAttr(f)
   return `            <FieldX
               id="${f.field}"
               label="${f.label}"${typeAttr}
@@ -48,6 +65,7 @@ function genFieldX(f) {
               :required="${f.required ? '!isReadOnly' : 'false'}"
               ${getDisabledAttr(f)}
               ${readonlyAttr}
+              ${decimalPlacesAttr}
               placeholder="${f.placeholder || f.label}"
               class="w-full"
             />`
@@ -73,6 +91,7 @@ function genTextarea(f) {
 function genFieldNumber(f) {
   const fnType = f.type === 'fieldnumber_decimal' ? 'decimal' : 'integer'
   const readonlyAttr = getReadonlyAttr(f)
+  const decimalPlacesAttr = getDecimalPlacesAttr(f)
   return `            <FieldNumber
               id="${f.field}"
               label="${f.label}"
@@ -81,6 +100,7 @@ function genFieldNumber(f) {
               @input="(v) => (values.${f.field} = v)"
               ${getDisabledAttr(f)}
               ${readonlyAttr}
+              ${decimalPlacesAttr}
               class="w-full"
             />`
 }
@@ -199,6 +219,7 @@ function genFieldCurrency(f) {
   const readonlyAttr = getReadonlyAttr(f)
   const prefix = f.currencyPrefix || 'Rp'
   const allowDecimal = f.allowDecimal !== false
+  const decimalPlacesAttr = allowDecimal ? getDecimalPlacesAttr(f) : ''
   return `            <FieldCurrency
               id="${f.field}"
               label="${f.label}"
@@ -211,6 +232,7 @@ function genFieldCurrency(f) {
               ${readonlyAttr}
               prefix="${prefix}"
               :allowDecimal="${allowDecimal}"
+              ${decimalPlacesAttr}
               placeholder="${f.placeholder || f.label}"
               class="w-full"
             />`

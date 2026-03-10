@@ -49,6 +49,11 @@ const props = defineProps({
     type: Boolean,
     default: true
   },
+  /** Maximum decimal digits */
+  decimalPlaces: {
+    type: Number,
+    default: 2
+  },
 })
 
 const emit = defineEmits(['input', 'update:modelValue'])
@@ -56,6 +61,37 @@ const emit = defineEmits(['input', 'update:modelValue'])
 const hasError = computed(() => props.errorname === 'failed')
 
 const currentValue = computed(() => props.modelValue ?? props.value ?? '')
+const normalizedDecimalPlaces = computed(() => {
+  const parsed = Number.parseInt(props.decimalPlaces, 10)
+  if (!Number.isFinite(parsed)) return 2
+  return Math.min(6, Math.max(0, parsed))
+})
+
+const sanitizeDecimalValue = (value) => {
+  const raw = String(value ?? '').replace(/,/g, '.').replace(/[^0-9.\-]/g, '')
+  const negative = raw.startsWith('-') ? '-' : ''
+  const unsigned = raw.replace(/-/g, '')
+  const [integerPart = '', ...decimalParts] = unsigned.split('.')
+  const decimalPart = decimalParts.join('').slice(0, normalizedDecimalPlaces.value)
+
+  if (!integerPart && !decimalPart) {
+    return negative || ''
+  }
+  if (unsigned.endsWith('.') && normalizedDecimalPlaces.value > 0 && decimalParts.length === 0) {
+    return `${negative}${integerPart || '0'}.`
+  }
+  if (decimalPart.length > 0) {
+    return `${negative}${integerPart || '0'}.${decimalPart}`
+  }
+  return `${negative}${integerPart}`
+}
+
+const roundDecimalValue = (value) => {
+  const num = Number.parseFloat(String(value ?? '').replace(',', '.'))
+  if (!Number.isFinite(num)) return ''
+  if (normalizedDecimalPlaces.value <= 0) return String(Math.round(num))
+  return String(Number(num.toFixed(normalizedDecimalPlaces.value)))
+}
 
 // Format number with thousand separators (Indonesian: dot) and optional comma decimal
 const formatNumber = (value) => {
@@ -65,14 +101,17 @@ const formatNumber = (value) => {
   if (isNaN(num)) return ''
 
   if (props.allowDecimal) {
-    const parts = num.toFixed(10).split('.')
-    const integerPart = parts[0] || '0'
-    let decimalPart = (parts[1] || '').replace(/0+$/, '')
-    const formattedInteger = parseInt(integerPart).toLocaleString('id-ID')
-    if (decimalPart.length > 0) {
-      return `${formattedInteger},${decimalPart}`
+    const cleanValue = sanitizeDecimalValue(strValue)
+    if (!cleanValue || cleanValue === '-' || cleanValue === '0.') return cleanValue === '0.' ? '0,' : cleanValue
+
+    const negative = cleanValue.startsWith('-') ? '-' : ''
+    const unsigned = cleanValue.replace('-', '')
+    const [integerPart = '0', decimalPart = ''] = unsigned.split('.')
+    const formattedInteger = Number.parseInt(integerPart || '0', 10).toLocaleString('id-ID')
+    if (decimalPart.length > 0 || unsigned.endsWith('.')) {
+      return `${negative}${formattedInteger},${decimalPart}`
     }
-    return formattedInteger
+    return `${negative}${formattedInteger}`
   }
 
   return Math.round(num).toLocaleString('id-ID')
@@ -85,7 +124,7 @@ const handleInput = (val) => {
   let inputValue = String(val)
 
   if (props.allowDecimal) {
-    inputValue = inputValue.replace(/\./g, '').replace(',', '.')
+    inputValue = sanitizeDecimalValue(inputValue.replace(/\./g, '').replace(',', '.'))
     if (inputValue === '' || inputValue === '-' || inputValue === '.') {
       emit('input', inputValue === '.' ? '0.' : inputValue)
       emit('update:modelValue', inputValue === '.' ? '0.' : inputValue)
@@ -115,15 +154,21 @@ const handleBlur = (event) => {
   if (props.readonly || props.disabled) return
   const target = event.target
   let cleanValue = target.value.replace(/\./g, '').replace(',', '.')
+  if (props.allowDecimal) {
+    cleanValue = sanitizeDecimalValue(cleanValue)
+  }
 
   if (cleanValue === '' || cleanValue === '-') {
     target.value = ''
     return
   }
 
-  const numValue = parseFloat(cleanValue)
+  const normalizedValue = props.allowDecimal ? roundDecimalValue(cleanValue) : cleanValue
+  const numValue = parseFloat(normalizedValue)
   if (!isNaN(numValue)) {
-    const stringValue = String(numValue)
+    const stringValue = props.allowDecimal
+      ? normalizedValue
+      : String(numValue)
     emit('input', stringValue)
     emit('update:modelValue', stringValue)
     target.value = formatNumber(stringValue)

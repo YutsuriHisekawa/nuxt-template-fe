@@ -48,6 +48,11 @@ const props = defineProps({
     type: Number,
     default: 1
   },
+  /** Maximum decimal digits */
+  decimalPlaces: {
+    type: Number,
+    default: 2
+  },
   /** Input type: 'integer' (default) or 'decimal' for decimal numbers */
   type: {
     type: String,
@@ -65,6 +70,37 @@ const currentValue = computed(() => props.modelValue ?? props.value ?? '')
 
 // Check if decimal mode
 const isDecimal = computed(() => props.type === 'decimal')
+const normalizedDecimalPlaces = computed(() => {
+  const parsed = Number.parseInt(props.decimalPlaces, 10)
+  if (!Number.isFinite(parsed)) return 2
+  return Math.min(6, Math.max(0, parsed))
+})
+
+const sanitizeDecimalValue = (value) => {
+  const raw = String(value ?? '').replace(/,/g, '.').replace(/[^0-9.\-]/g, '')
+  const negative = raw.startsWith('-') ? '-' : ''
+  const unsigned = raw.replace(/-/g, '')
+  const [integerPart = '', ...decimalParts] = unsigned.split('.')
+  const decimalPart = decimalParts.join('').slice(0, normalizedDecimalPlaces.value)
+
+  if (!integerPart && !decimalPart) {
+    return negative || ''
+  }
+  if (unsigned.endsWith('.') && normalizedDecimalPlaces.value > 0 && decimalParts.length === 0) {
+    return `${negative}${integerPart || '0'}.`
+  }
+  if (decimalPart.length > 0) {
+    return `${negative}${integerPart || '0'}.${decimalPart}`
+  }
+  return `${negative}${integerPart}`
+}
+
+const roundDecimalValue = (value) => {
+  const num = Number.parseFloat(String(value ?? '').replace(',', '.'))
+  if (!Number.isFinite(num)) return ''
+  if (normalizedDecimalPlaces.value <= 0) return String(Math.round(num))
+  return String(Number(num.toFixed(normalizedDecimalPlaces.value)))
+}
 
 // Format number with thousand separators (1000 -> 1.000)
 // For decimal type, preserve the decimal part (1000,32 -> 1.000,32)
@@ -75,27 +111,18 @@ const formatNumber = (value) => {
   
   // For decimal type, format with thousand separators AND comma as decimal separator
   if (isDecimal.value) {
-    // Parse the number (handles both dot and comma as decimal separator)
-    const cleanValue = strValue.replace(',', '.')
-    const num = parseFloat(cleanValue)
-    if (isNaN(num)) return ''
-    
-    // Split into integer and decimal parts
-    const parts = num.toFixed(10).split('.') // Use high precision to preserve decimals
-    const integerPart = parts[0] || '0'
-    let decimalPart = parts[1] || ''
-    
-    // Remove trailing zeros from decimal part
-    decimalPart = decimalPart.replace(/0+$/, '')
-    
-    // Format integer part with thousand separators (Indonesian format: dot)
-    const formattedInteger = parseInt(integerPart).toLocaleString('id-ID')
-    
-    // Combine with comma as decimal separator
-    if (decimalPart && decimalPart.length > 0) {
-      return `${formattedInteger},${decimalPart}`
+    const cleanValue = sanitizeDecimalValue(strValue)
+    if (!cleanValue || cleanValue === '-' || cleanValue === '0.') return cleanValue === '0.' ? '0,' : cleanValue
+
+    const negative = cleanValue.startsWith('-') ? '-' : ''
+    const unsigned = cleanValue.replace('-', '')
+    const [integerPart = '0', decimalPart = ''] = unsigned.split('.')
+    const formattedInteger = Number.parseInt(integerPart || '0', 10).toLocaleString('id-ID')
+
+    if (decimalPart.length > 0 || unsigned.endsWith('.')) {
+      return `${negative}${formattedInteger},${decimalPart}`
     }
-    return formattedInteger
+    return `${negative}${formattedInteger}`
   }
   
   // Integer mode: format with thousand separators
@@ -120,8 +147,7 @@ const handleInput = (val) => {
   let inputValue = String(val)
   
   if (isDecimal.value) {
-    // Decimal mode: remove thousand separators (dots), replace comma with dot for internal storage
-    inputValue = inputValue.replace(/\./g, '').replace(',', '.')
+    inputValue = sanitizeDecimalValue(inputValue.replace(/\./g, '').replace(',', '.'))
     
     // Validate it's a valid decimal number
     if (inputValue === '' || inputValue === '-' || inputValue === '.') {
@@ -172,7 +198,7 @@ const handleBlur = (event) => {
   
   if (isDecimal.value) {
     // Decimal mode: clean up and format with thousand separators
-    let cleanValue = target.value.replace(/\./g, '').replace(',', '.')
+    let cleanValue = sanitizeDecimalValue(target.value.replace(/\./g, '').replace(',', '.'))
     
     if (cleanValue === '' || cleanValue === '-') {
       target.value = ''
@@ -180,7 +206,8 @@ const handleBlur = (event) => {
     }
     
     // Parse and validate
-    const numValue = parseFloat(cleanValue)
+    const roundedValue = roundDecimalValue(cleanValue)
+    const numValue = parseFloat(roundedValue)
     if (!isNaN(numValue)) {
       // Check min/max bounds
       let finalValue = numValue
@@ -188,7 +215,7 @@ const handleBlur = (event) => {
       if (props.max !== undefined && finalValue > props.max) finalValue = props.max
       
       // Emit the clean value
-      const stringValue = String(finalValue)
+      const stringValue = normalizedDecimalPlaces.value <= 0 ? String(Math.round(finalValue)) : String(finalValue)
       emit('input', stringValue)
       emit('update:modelValue', stringValue)
       
@@ -281,12 +308,15 @@ const handleFocus = (event) => {
     <Input
       :id="id"
       type="text"
-      inputmode="numeric"
+      :inputmode="isDecimal ? 'decimal' : 'numeric'"
       :value="displayValue"
       :placeholder="placeholder"
       :disabled="disabled"
       :readonly="readonly"
-      :class="{ 'border-destructive': hasError }"
+      :class="[
+        { 'border-destructive': hasError },
+        'text-right tabular-nums'
+      ]"
       class="h-10"
       @input="(e) => handleInput(e.target.value)"
       @blur="handleBlur"
