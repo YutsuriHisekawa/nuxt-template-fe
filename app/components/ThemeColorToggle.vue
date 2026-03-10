@@ -31,38 +31,40 @@ const selectedTheme = computed({
 </script>
 
 <template>
-  <Tooltip>
-    <DropdownMenu>
-      <TooltipTrigger as-child>
-        <DropdownMenuTrigger as-child>
-          <button
-            type="button"
-            class="inline-flex h-10 w-10 items-center justify-center rounded-full border bg-background text-foreground shadow-xs transition hover:bg-accent"
-            aria-label="Pilih tema warna"
-          >
-            <Palette class="h-5 w-5" />
-          </button>
-        </DropdownMenuTrigger>
-      </TooltipTrigger>
-    <DropdownMenuContent align="end" class="w-44">
-      <DropdownMenuLabel>Theme</DropdownMenuLabel>
-      <DropdownMenuSeparator />
-      <DropdownMenuRadioGroup v-model="selectedTheme">
-        <DropdownMenuRadioItem
-          v-for="theme in themes"
-          :key="theme.value"
-          :value="theme.value"
-          class="flex items-center gap-2"
-        >
-          <span
-            class="h-3 w-3 rounded-full border"
-            :style="{ backgroundColor: theme.swatch }"
-          />
-          {{ theme.label }}
-        </DropdownMenuRadioItem>
-      </DropdownMenuRadioGroup>
-    </DropdownMenuContent>
-    </DropdownMenu>
-    <TooltipContent>Tema Warna</TooltipContent>
-  </Tooltip>
+  <TooltipProvider>
+    <Tooltip>
+      <DropdownMenu>
+        <TooltipTrigger as-child>
+          <DropdownMenuTrigger as-child>
+            <button
+              type="button"
+              class="inline-flex h-10 w-10 items-center justify-center rounded-full border bg-background text-foreground shadow-xs transition hover:bg-accent"
+              aria-label="Pilih tema warna"
+            >
+              <Palette class="h-5 w-5" />
+            </button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <DropdownMenuContent align="end" class="w-44">
+          <DropdownMenuLabel>Theme</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuRadioGroup v-model="selectedTheme">
+            <DropdownMenuRadioItem
+              v-for="theme in themes"
+              :key="theme.value"
+              :value="theme.value"
+              class="flex items-center gap-2"
+            >
+              <span
+                class="h-3 w-3 rounded-full border"
+                :style="{ backgroundColor: theme.swatch }"
+              />
+              {{ theme.label }}
+            </DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <TooltipContent>Tema Warna</TooltipContent>
+    </Tooltip>
+  </TooltipProvider>
 </template>
