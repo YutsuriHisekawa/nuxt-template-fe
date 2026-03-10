@@ -209,6 +209,12 @@ const fetchDetailById = async (id) => {
   detailLoading.value = true
   try {
     const params = new URLSearchParams()
+    // Include apiParams (e.g. join=true)
+    if (props.apiParams) {
+      Object.entries(props.apiParams).forEach(([key, value]) => {
+        if (value !== undefined && value !== '') params.append(key, String(value))
+      })
+    }
     params.append(`filter_column_${props.valueField}`, String(id))
     params.append('paginate', '1')
 

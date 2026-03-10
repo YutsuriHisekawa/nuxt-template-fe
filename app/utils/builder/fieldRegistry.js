@@ -261,7 +261,7 @@ const SWITCH_PANELS = [PANEL.fieldName, PANEL.label, PANEL.defaultValue, PANEL.l
 const BOX_PANELS = [PANEL.fieldName, PANEL.label, PANEL.defaultValue, PANEL.labelTrue, PANEL.labelFalse, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen]
 const DATE_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.dateDefaultValue, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.readonlyWhen, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen]
 const RADIO_PANELS = [PANEL.fieldName, PANEL.label, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.readonlyWhen, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.radioOptions]
-const POPUP_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.readonlyWhen, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.apiUrl, PANEL.apiParams, PANEL.dependsOnParam, PANEL.displayField, PANEL.valueField, PANEL.popupColumns, PANEL.searchFields, PANEL.dialogTitle]
+const POPUP_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.readonlyWhen, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.defaultValueFrom, PANEL.apiUrl, PANEL.apiParams, PANEL.dependsOnParam, PANEL.displayField, PANEL.valueField, PANEL.popupColumns, PANEL.searchFields, PANEL.dialogTitle]
 const CURRENCY_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.defaultValue, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.readonlyWhen, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.computedFormula, PANEL.defaultValueFrom, PANEL.currencyPrefix, PANEL.allowDecimal, PANEL.decimalPlaces, PANEL.minValue, PANEL.maxValue]
 const SLIDER_PANELS = [PANEL.fieldName, PANEL.label, PANEL.defaultValue, PANEL.required, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.sliderMin, PANEL.sliderMax, PANEL.sliderStep, PANEL.sliderUnit]
 const SECTION_PANELS = [PANEL.sectionTitle, PANEL.visibleWhen]
@@ -913,6 +913,11 @@ export const FIELD_REGISTRY = [
     defaultMeta: { apiUrl: '', apiParams: [], displayField: 'name', valueField: 'id', popupColumns: [], searchFields: '', dialogTitle: '', dependsOn: '', dependsOnParam: '' },
     panelFields: POPUP_PANELS,
     previewProps: (f, previewValues) => {
+      // Build apiParams from user-configured params (same pattern as FieldSelect)
+      const extraParams = {}
+      if (Array.isArray(f.apiParams)) {
+        f.apiParams.forEach(p => { if (p.key) extraParams[p.key] = p.value || '' })
+      }
       const result = {
         label: f.label || 'Label',
         value: '',
@@ -922,21 +927,23 @@ export const FIELD_REGISTRY = [
         required: f.required,
         clearable: true,
         apiUrl: f.apiUrl || '',
+        apiParams: { ...extraParams },
         columns: f.popupColumns || [],
         searchFields: f.searchFields || '',
         dialogTitle: f.dialogTitle || '',
       }
       if (f.dependsOn && f.dependsOnParam && previewValues) {
         const parentVal = previewValues[f.dependsOn] || ''
-        result.apiParams = { [f.dependsOnParam]: parentVal }
+        result.apiParams[f.dependsOnParam] = parentVal
         if (!parentVal) result.disabled = true
       }
       return result
     },
     generateTemplate: (f, allFields) => genPopup(f, allFields),
+    generateDefault: (f) => `  ${f.field}: '',`,
+    generateReset: (f) => `    ${f.field}: '',`,
+    generatePayload: (f) => `    ${f.field}: values.${f.field} || null,`,
   },
-
-  // ── Space (layout spacer) ─────────────────────────────────
   {
     value: 'space', label: 'Space', component: null, category: 'layout',
     searchable: false, showInMobile: false, hasError: false,

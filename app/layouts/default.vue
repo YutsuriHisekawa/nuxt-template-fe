@@ -74,19 +74,58 @@ const pageLabel = computed(() => {
 useHead(() => ({
   title: `${appName} - ${pageLabel.value}`,
 }))
+
+const HARI = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu']
+
+const now = ref(new Date())
+let timer: ReturnType<typeof setInterval> | null = null
+
+onMounted(() => {
+  timer = setInterval(() => { now.value = new Date() }, 60_000)
+})
+onUnmounted(() => { if (timer) clearInterval(timer) })
+
+const dateLabel = computed(() => {
+  const d = now.value
+  const day = HARI[d.getDay()]
+  const dd = String(d.getDate()).padStart(2, '0')
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const yyyy = d.getFullYear()
+  return `${day}, ${dd}/${mm}/${yyyy}`
+})
+
+const timeLabel = computed(() => {
+  const d = now.value
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mm = String(d.getMinutes()).padStart(2, '0')
+  return `${hh}:${mm}`
+})
+
+const greeting = computed(() => {
+  const h = now.value.getHours()
+  if (h < 11) return 'Selamat Pagi'
+  if (h < 15) return 'Selamat Siang'
+  if (h < 18) return 'Selamat Sore'
+  return 'Selamat Malam'
+})
+
+const userName = computed(() => {
+  const u = authStore.user as Record<string, any> | null
+  return u?.name || u?.username || 'User'
+})
 </script>
 
 <template>
   <SidebarProvider>
     <AppSidebar />
-    
-        <SidebarInset class="overflow-hidden">
-          <header class="bg-sidebar text-sidebar-foreground sticky top-0 z-50 flex h-16 shrink-0 items-center gap-2 border-b border-sidebar-border">
+
+    <SidebarInset class="overflow-hidden">
+      <header class="bg-sidebar text-sidebar-foreground sticky top-0 z-50 flex h-16 shrink-0 items-center gap-2 border-b border-sidebar-border">
         <div class="flex items-center gap-2 px-4">
           <SidebarTrigger class="-ml-1" />
           <Separator
             orientation="vertical"
-            class="mr-2 data-[orientation=vertical]:h-4"
+            class="mr-2 bg-primary/60 data-[orientation=vertical]:h-4 data-[orientation=vertical]:w-px"
           />
           <Breadcrumb>
             <BreadcrumbList>
@@ -105,11 +144,16 @@ useHead(() => ({
         <div class="ml-auto flex items-center gap-2 px-4">
           <ThemeColorToggle />
           <ThemeToggle />
+          <RespoSwitcher />
+          <Separator orientation="vertical" class="mx-1 bg-primary/60 data-[orientation=vertical]:h-8 data-[orientation=vertical]:w-px" />
+          <div class="hidden sm:flex flex-col items-end text-right leading-tight max-w-48 lg:max-w-64">
+            <span class="text-xs text-muted-foreground">{{ dateLabel }} • {{ timeLabel }}</span>
+            <span class="truncate w-full text-right text-sm font-medium">{{ greeting }}, {{ userName }}</span>
+          </div>
         </div>
       </header>
 
       <div class="app-scroll flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-6">
-
         <slot />
       </div>
     </SidebarInset>

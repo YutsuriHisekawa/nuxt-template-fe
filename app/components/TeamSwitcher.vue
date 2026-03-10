@@ -8,6 +8,28 @@ const isHydrated = ref(false)
 
 const isCollapsed = computed(() => state.value === 'collapsed')
 
+const getUserDetails = () => {
+  const candidates = [
+    authStore.userDefault,
+    authStore.user,
+  ]
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate?.user_details)) {
+      return candidate.user_details
+    }
+    if (Array.isArray(candidate?.user_detail)) {
+      return candidate.user_detail
+    }
+  }
+
+  return []
+}
+
+const userDetails = computed(() => {
+  return getUserDetails().filter(detail => detail?.is_active && detail?.m_respo)
+})
+
 // List of respos from userDefault.user_details
 const respos = computed(() => {
   if (authStore.isSuperAdmin) {
@@ -19,11 +41,7 @@ const respos = computed(() => {
     }]
   }
 
-  const ud = authStore.userDefault
-  if (!ud?.user_details) return []
-
-  return ud.user_details
-    .filter(d => d.is_active)
+  return userDetails.value
     .map(detail => ({
       id: detail.id,
       name: detail.m_respo?.nama || 'Unknown',
@@ -64,7 +82,7 @@ const displayRespoName = computed(() => {
 })
 
 // Switch respo
-function switchRespo(respo) {
+async function switchRespo(respo) {
   if (respo.id === activeRespo.value?.id) return
 
   // Re-initialize selectRespo with the chosen userDetailId
@@ -80,10 +98,16 @@ function switchRespo(respo) {
 
   // Dispatch event for other components
   window.dispatchEvent(new CustomEvent('respoChanged', { detail: respo.id }))
+
+  await navigateTo('/dashboard', { replace: true })
 }
 
-onMounted(() => {
+onMounted(async () => {
   isHydrated.value = true
+
+  if (!authStore.isSuperAdmin && userDetails.value.length === 0 && authStore.user?.id) {
+    await authStore.refreshUserDefault(true)
+  }
 })
 </script>
 
