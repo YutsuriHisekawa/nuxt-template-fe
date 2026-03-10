@@ -1,6 +1,6 @@
 <script setup>
 import { Trash2, Copy, GripVertical, ChevronDown, ChevronRight } from 'lucide-vue-next'
-import { createBlankColumn, createBlankDisplayColumn, createBlankDetailField, DETAIL_FIELD_TYPES } from '~/utils/builder/fieldRegistry'
+import { createBlankColumn, createBlankDisplayColumn, createBlankDetailField, DETAIL_FIELD_TYPES, getDetailFieldDefaultWidth } from '~/utils/builder/fieldRegistry'
 
 const props = defineProps({
   detail: { type: Object, required: true },
@@ -687,6 +687,10 @@ function applyDetailTemplate(fieldIndex) {
               <label class="block mb-0.5 text-xs text-muted-foreground">Default Value</label>
               <input type="number" :value="df.default || 0" placeholder="0" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'default', Number($event.target.value))" />
             </div>
+            <div class="flex-1">
+              <label class="block mb-0.5 text-xs text-muted-foreground">Digit Desimal</label>
+              <input type="number" min="0" max="6" :value="df.decimalPlaces ?? 2" placeholder="2" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'decimalPlaces', Math.min(6, Math.max(0, Number($event.target.value || 0))))" />
+            </div>
           </div>
 
           <!-- Text/Number/FieldNumber: default value -->
@@ -694,6 +698,40 @@ function applyDetailTemplate(fieldIndex) {
             <div class="flex-1">
               <label class="block mb-0.5 text-xs text-muted-foreground">Default Value</label>
               <input :type="['number', 'fieldnumber', 'fieldnumber_decimal'].includes(df.type) ? 'number' : 'text'" :value="df.default || ''" :placeholder="['number', 'fieldnumber', 'fieldnumber_decimal'].includes(df.type) ? '0' : ''" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'default', ['number', 'fieldnumber', 'fieldnumber_decimal'].includes(df.type) ? Number($event.target.value) : $event.target.value)" />
+            </div>
+            <div v-if="df.type === 'fieldnumber_decimal'" class="flex-1">
+              <label class="block mb-0.5 text-xs text-muted-foreground">Digit Desimal</label>
+              <input type="number" min="0" max="6" :value="df.decimalPlaces ?? 2" placeholder="2" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'decimalPlaces', Math.min(6, Math.max(0, Number($event.target.value || 0))))" />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2 border-t border-border/50 pt-2">
+            <div>
+              <label class="block mb-0.5 text-xs text-muted-foreground">Readonly</label>
+              <div class="flex rounded border border-border overflow-hidden h-[26px]">
+                <button
+                  class="flex-1 text-xs transition-colors"
+                  :class="df.readonly ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'"
+                  @click="updateDetailField(i, 'readonly', true)"
+                >Ya</button>
+                <button
+                  class="flex-1 text-xs transition-colors border-l border-border"
+                  :class="!df.readonly ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'"
+                  @click="updateDetailField(i, 'readonly', false)"
+                >Tidak</button>
+              </div>
+              <p class="text-[9px] text-muted-foreground/50 mt-0.5">Formula computed akan tetap readonly otomatis.</p>
+            </div>
+            <div>
+              <label class="block mb-0.5 text-xs text-muted-foreground">Lebar Kolom</label>
+              <input
+                type="text"
+                :value="df.width || ''"
+                :placeholder="getDetailFieldDefaultWidth(df.type)"
+                class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary"
+                @input="updateDetailField(i, 'width', $event.target.value)"
+              />
+              <p class="text-[9px] text-muted-foreground/50 mt-0.5">Kosong = default {{ getDetailFieldDefaultWidth(df.type) }}</p>
             </div>
           </div>
 

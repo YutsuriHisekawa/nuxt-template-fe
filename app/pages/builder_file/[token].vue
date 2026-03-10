@@ -35,6 +35,9 @@ import {
   createBlankDetail,
   getComponentBadge,
   getRegistryEntry,
+  getDetailFieldDefaultWidth,
+  getDetailFieldDecimalPlaces,
+  isDetailNumericFieldType,
 } from "~/utils/builder/fieldRegistry";
 import { Layers, Printer } from "lucide-vue-next";
 import { AgGridVue } from "ag-grid-vue3";
@@ -184,6 +187,43 @@ function computeDetailRowFormulas(dIdx, rIdx) {
 function updateCellAndCompute(dIdx, rIdx, key, val) {
   updatePreviewCell(dIdx, rIdx, key, val);
   computeDetailRowFormulas(dIdx, rIdx);
+}
+
+function isDetailFieldReadonly(df) {
+  return Boolean(df?.readonly) ||
+    (Array.isArray(df?.computedFormula) && df.computedFormula.length > 0);
+}
+
+function getDetailFieldWidth(df) {
+  return df?.width || getDetailFieldDefaultWidth(df?.type);
+}
+
+function getDetailFieldCellStyle(df) {
+  const width = getDetailFieldWidth(df);
+  return width ? { width, minWidth: width } : {};
+}
+
+function getDetailFieldHeaderClass(df) {
+  return [
+    "px-2 py-2 font-medium text-xs",
+    isDetailNumericFieldType(df?.type) ? "text-right" : "text-center",
+  ].join(" ");
+}
+
+function getDetailFieldCellClass(df) {
+  return [
+    "px-2 py-1.5 align-top",
+    isDetailNumericFieldType(df?.type) ? "text-right" : "",
+  ].join(" ");
+}
+
+function formatDetailPreviewNumber(value, df) {
+  const num = Number(value ?? 0);
+  if (!Number.isFinite(num)) return "0";
+  return num.toLocaleString("id-ID", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: getDetailFieldDecimalPlaces(df),
+  });
 }
 
 // ── Live formula computation for builder preview ───────────────────────────
@@ -1846,6 +1886,10 @@ node add_route.cjs setup/m_supplier</pre
                           (Array.isArray(fields[idx].computedFormula)
                             ? fields[idx].computedFormula.length
                             : fields[idx].computedFormula) ||
+                          fields[idx].apiUrl ||
+                          (Array.isArray(fields[idx].apiParams) && fields[idx].apiParams.some(p => p.key)) ||
+                          fields[idx].dependsOn ||
+                          fields[idx].defaultValueFrom?.field ||
                           (wizardSteps.length > 0 &&
                             !getRegistryEntry(fields[idx].type)?.isSpace &&
                             !getRegistryEntry(fields[idx].type)
@@ -1912,6 +1956,38 @@ node add_route.cjs setup/m_supplier</pre
                                   .join(" ")
                               : fields[idx].computedFormula
                           }}
+                        </span>
+                        <!-- API Endpoint badge -->
+                        <span
+                          v-if="fields[idx].apiUrl"
+                          class="text-[9px] font-medium px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 truncate max-w-[50%]"
+                          :title="`API: ${fields[idx].apiUrl}`"
+                        >
+                          🔗 {{ fields[idx].apiUrl }}
+                        </span>
+                        <!-- API Params badge -->
+                        <span
+                          v-if="Array.isArray(fields[idx].apiParams) && fields[idx].apiParams.some(p => p.key)"
+                          class="text-[9px] font-medium px-1.5 py-0.5 rounded bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400"
+                          :title="`Params: ${fields[idx].apiParams.filter(p => p.key).map(p => p.key + '=' + p.value).join(', ')}`"
+                        >
+                          ⚙ {{ fields[idx].apiParams.filter(p => p.key).map(p => p.key + '=' + p.value).join(', ') }}
+                        </span>
+                        <!-- DependsOn badge -->
+                        <span
+                          v-if="fields[idx].dependsOn"
+                          class="text-[9px] font-medium px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400"
+                          :title="`Tergantung: ${fields[idx].dependsOn}${fields[idx].dependsOnParam ? ' → param: ' + fields[idx].dependsOnParam : ''}`"
+                        >
+                          🔗 → {{ fields[idx].dependsOn }}
+                        </span>
+                        <!-- DefaultValueFrom badge -->
+                        <span
+                          v-if="fields[idx].defaultValueFrom?.field"
+                          class="text-[9px] font-medium px-1.5 py-0.5 rounded bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400"
+                          :title="`Auto-fill: ${fields[idx].defaultValueFrom.field} → ${fields[idx].defaultValueFrom.property}`"
+                        >
+                          ⚡ {{ fields[idx].defaultValueFrom.field }}.{{ fields[idx].defaultValueFrom.property }}
                         </span>
                         <div
                           class="ml-auto"
@@ -2097,7 +2173,8 @@ node add_route.cjs setup/m_supplier</pre
                             <th
                               v-for="df in detail.detailFields || []"
                               :key="'dfh-' + df.key"
-                              class="px-2 py-2 text-center font-medium text-xs"
+                              :class="getDetailFieldHeaderClass(df)"
+                              :style="getDetailFieldCellStyle(df)"
                             >
                               {{ df.label || df.key }}
                             </th>
@@ -2149,7 +2226,8 @@ node add_route.cjs setup/m_supplier</pre
                             <td
                               v-for="df in detail.detailFields || []"
                               :key="'dfv-' + df.key"
-                              class="px-2 py-1.5"
+                              :class="getDetailFieldCellClass(df)"
+                              :style="getDetailFieldCellStyle(df)"
                             >
                               <FieldBox
                                 v-if="df.type === 'checkbox'"
@@ -2158,6 +2236,7 @@ node add_route.cjs setup/m_supplier</pre
                                   (v) =>
                                     updateCellAndCompute(dIdx, rIdx, df.key, v)
                                 "
+                                :readonly="isDetailFieldReadonly(df)"
                                 :labelTrue="df.labelTrue || 'Ya'"
                                 :labelFalse="df.labelFalse || 'Tidak'"
                               />
@@ -2168,6 +2247,7 @@ node add_route.cjs setup/m_supplier</pre
                                   (v) =>
                                     updateCellAndCompute(dIdx, rIdx, df.key, v)
                                 "
+                                :readonly="isDetailFieldReadonly(df)"
                                 :activeText="df.labelTrue || 'Aktif'"
                                 :inactiveText="df.labelFalse || 'Tidak Aktif'"
                               />
@@ -2187,7 +2267,8 @@ node add_route.cjs setup/m_supplier</pre
                                 :displayField="df.displayField || 'name'"
                                 :valueField="df.valueField || 'id'"
                                 :staticOptions="df.staticOptions || []"
-                                class="w-full min-w-[140px]"
+                                :readonly="isDetailFieldReadonly(df)"
+                                class="w-full"
                               />
                               <FieldPopUp
                                 v-else-if="df.type === 'popup'"
@@ -2203,7 +2284,8 @@ node add_route.cjs setup/m_supplier</pre
                                 :apiUrl="df.apiUrl || ''"
                                 :displayField="df.displayField || 'name'"
                                 :valueField="df.valueField || 'id'"
-                                class="w-full min-w-[140px]"
+                                :readonly="isDetailFieldReadonly(df)"
+                                class="w-full"
                               />
                               <FieldNumber
                                 v-else-if="
@@ -2220,7 +2302,9 @@ node add_route.cjs setup/m_supplier</pre
                                     ? 'decimal'
                                     : 'integer'
                                 "
-                                class="w-full min-w-[100px]"
+                                :decimalPlaces="df.decimalPlaces ?? 2"
+                                :readonly="isDetailFieldReadonly(df)"
+                                class="w-full"
                               />
                               <FieldX
                                 v-else-if="df.type === 'number'"
@@ -2230,7 +2314,8 @@ node add_route.cjs setup/m_supplier</pre
                                     updateCellAndCompute(dIdx, rIdx, df.key, v)
                                 "
                                 type="number"
-                                class="w-full min-w-[100px]"
+                                :readonly="isDetailFieldReadonly(df)"
+                                class="w-full"
                               />
                               <FieldDate
                                 v-else-if="df.type === 'date'"
@@ -2239,7 +2324,8 @@ node add_route.cjs setup/m_supplier</pre
                                   (v) =>
                                     updateCellAndCompute(dIdx, rIdx, df.key, v)
                                 "
-                                class="w-full min-w-[140px]"
+                                :readonly="isDetailFieldReadonly(df)"
+                                class="w-full"
                               />
                               <FieldDateTime
                                 v-else-if="df.type === 'datetime'"
@@ -2248,7 +2334,8 @@ node add_route.cjs setup/m_supplier</pre
                                   (v) =>
                                     updateCellAndCompute(dIdx, rIdx, df.key, v)
                                 "
-                                class="w-full min-w-[140px]"
+                                :readonly="isDetailFieldReadonly(df)"
+                                class="w-full"
                               />
                               <FieldRadio
                                 v-else-if="df.type === 'radio'"
@@ -2263,6 +2350,7 @@ node add_route.cjs setup/m_supplier</pre
                                     label: o.label || o.value,
                                   }))
                                 "
+                                :readonly="isDetailFieldReadonly(df)"
                               />
                               <FieldCurrency
                                 v-else-if="df.type === 'currency'"
@@ -2271,7 +2359,9 @@ node add_route.cjs setup/m_supplier</pre
                                   (v) =>
                                     updateCellAndCompute(dIdx, rIdx, df.key, v)
                                 "
-                                class="w-full min-w-[120px]"
+                                :readonly="isDetailFieldReadonly(df)"
+                                :decimalPlaces="df.decimalPlaces ?? 2"
+                                class="w-full"
                               />
                               <FieldSlider
                                 v-else-if="df.type === 'slider'"
@@ -2280,7 +2370,8 @@ node add_route.cjs setup/m_supplier</pre
                                   (v) =>
                                     updateCellAndCompute(dIdx, rIdx, df.key, v)
                                 "
-                                class="w-full min-w-[120px]"
+                                :readonly="isDetailFieldReadonly(df)"
+                                class="w-full"
                               />
                               <FieldTextarea
                                 v-else-if="df.type === 'textarea'"
@@ -2289,7 +2380,8 @@ node add_route.cjs setup/m_supplier</pre
                                   (v) =>
                                     updateCellAndCompute(dIdx, rIdx, df.key, v)
                                 "
-                                class="w-full min-w-[140px]"
+                                :readonly="isDetailFieldReadonly(df)"
+                                class="w-full"
                               />
                               <FieldX
                                 v-else
@@ -2299,7 +2391,8 @@ node add_route.cjs setup/m_supplier</pre
                                     updateCellAndCompute(dIdx, rIdx, df.key, v)
                                 "
                                 :placeholder="df.label || df.key"
-                                class="w-full min-w-[120px]"
+                                :readonly="isDetailFieldReadonly(df)"
+                                class="w-full"
                               />
                             </td>
                             <td class="px-2 py-2 text-center">
@@ -2331,11 +2424,11 @@ node add_route.cjs setup/m_supplier</pre
                               class="px-2 py-2 text-right"
                             >
                               <template v-if="df.summaryType === 'SUM'">
-                                {{ getPreviewArr(dIdx).reduce((acc, row) => acc + (Number(row[df.key]) || 0), 0).toLocaleString('id-ID') }}
+                                {{ formatDetailPreviewNumber(getPreviewArr(dIdx).reduce((acc, row) => acc + (Number(row[df.key]) || 0), 0), df) }}
                               </template>
                               <template v-else-if="df.summaryType === 'AVG'">
                                 {{ getPreviewArr(dIdx).length
-                                  ? (getPreviewArr(dIdx).reduce((acc, row) => acc + (Number(row[df.key]) || 0), 0) / getPreviewArr(dIdx).length).toLocaleString('id-ID', { maximumFractionDigits: 2 })
+                                  ? formatDetailPreviewNumber(getPreviewArr(dIdx).reduce((acc, row) => acc + (Number(row[df.key]) || 0), 0) / getPreviewArr(dIdx).length, df)
                                   : 0 }}
                               </template>
                               <template v-else-if="df.summaryType === 'COUNT'">

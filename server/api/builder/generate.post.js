@@ -640,22 +640,53 @@ ${fieldMappings}
 }
 
 function buildDetailFieldTd(df, allDetailFields) {
+  const detailWidth = df.width || ({
+    checkbox: '110px',
+    status: '120px',
+    text: '180px',
+    number: '140px',
+    fieldnumber: '140px',
+    fieldnumber_decimal: '150px',
+    textarea: '240px',
+    select: '180px',
+    popup: '180px',
+    date: '170px',
+    datetime: '190px',
+    radio: '220px',
+    currency: '170px',
+    slider: '200px',
+  }[df.type] || '160px')
+  const cellStyleAttr = ` style="width: ${detailWidth}; min-width: ${detailWidth};"`
+  const numericTypes = ['number', 'fieldnumber', 'fieldnumber_decimal', 'currency', 'slider']
+  const isNumeric = numericTypes.includes(df.type)
+  const tdClass = isNumeric ? 'px-2 py-2 text-right' : 'px-2 py-2'
+  const isReadonlyField = Boolean(df.readonly)
+  const decimalPlaces = (() => {
+    const parsed = Number.parseInt(df.decimalPlaces, 10)
+    if (!Number.isFinite(parsed)) return 2
+    return Math.min(6, Math.max(0, parsed))
+  })()
+  const formatValueExpr = (expr) => {
+    if (!isNumeric) return expr
+    return `Number(${expr} || 0).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: ${['fieldnumber_decimal', 'currency'].includes(df.type) ? decimalPlaces : 0} })`
+  }
+
   // If field has a formula, render as readonly computed value
   const hasFormula = Array.isArray(df.computedFormula) && df.computedFormula.length > 0
   if (hasFormula) {
-    const isCurrency = df.type === 'currency'
-    const fmt = isCurrency ? `Number(detail.${df.key} || 0).toLocaleString('id-ID')` : `detail.${df.key}`
-    return `                      <td class="px-2 py-2 text-right">
+    const fmt = formatValueExpr(`detail.${df.key}`)
+    return `                      <td class="${tdClass}"${cellStyleAttr}>
                         <span class="text-xs sm:text-sm font-medium text-foreground/80">{{ ${fmt} }}</span>
                       </td>`
   }
 
   if (df.type === 'checkbox') {
-    return `                      <td class="px-2 py-2 text-center">
+    return `                      <td class="px-2 py-2 text-center"${cellStyleAttr}>
                         <FieldBox
                           v-if="!isReadOnly"
                           :value="detail.${df.key}"
                           @input="(v) => (detail.${df.key} = v)"
+                          :readonly="${isReadonlyField ? 'true' : 'false'}"
                           labelTrue="${df.labelTrue || 'Ya'}"
                           labelFalse="${df.labelFalse || 'Tidak'}"
                         />
@@ -664,35 +695,39 @@ function buildDetailFieldTd(df, allDetailFields) {
   }
   if (df.type === 'fieldnumber' || df.type === 'fieldnumber_decimal') {
     const fnType = df.type === 'fieldnumber_decimal' ? 'decimal' : 'integer'
-    return `                      <td class="px-2 py-2">
+    const decimalPlacesAttr = df.type === 'fieldnumber_decimal' ? `\n                          :decimalPlaces="${decimalPlaces}"` : ''
+    return `                      <td class="${tdClass}"${cellStyleAttr}>
                         <FieldNumber
                           v-if="!isReadOnly"
                           :value="detail.${df.key}"
                           @input="(v) => (detail.${df.key} = v)"
                           type="${fnType}"
+                          :readonly="${isReadonlyField ? 'true' : 'false'}"${decimalPlacesAttr}
                           class="w-full"
                         />
-                        <span v-else>{{ detail.${df.key} }}</span>
+                        <span v-else>{{ ${formatValueExpr(`detail.${df.key}`)} }}</span>
                       </td>`
   }
   if (df.type === 'number') {
-    return `                      <td class="px-2 py-2">
+    return `                      <td class="${tdClass}"${cellStyleAttr}>
                         <FieldX
                           v-if="!isReadOnly"
                           :value="detail.${df.key}"
                           @input="(v) => (detail.${df.key} = v)"
                           type="number"
+                          :readonly="${isReadonlyField ? 'true' : 'false'}"
                           class="w-full"
                         />
-                        <span v-else>{{ detail.${df.key} }}</span>
+                        <span v-else>{{ ${formatValueExpr(`detail.${df.key}`)} }}</span>
                       </td>`
   }
   if (df.type === 'textarea') {
-    return `                      <td class="px-2 py-2">
+    return `                      <td class="${tdClass}"${cellStyleAttr}>
                         <FieldTextarea
                           v-if="!isReadOnly"
                           :value="detail.${df.key}"
                           @input="(v) => (detail.${df.key} = v)"
+                          :readonly="${isReadonlyField ? 'true' : 'false'}"
                           class="w-full"
                         />
                         <span v-else>{{ detail.${df.key} || '-' }}</span>
@@ -706,7 +741,7 @@ function buildDetailFieldTd(df, allDetailFields) {
       ? `\n                          @update:valueFull="(obj) => { ${detailAutoFills.map(af => `detail.${af.key} = obj?.${af.defaultValueFrom.property} || ''`).join('; ')} }"`
       : ''
     if (src === 'api') {
-      return `                      <td class="px-2 py-2">
+      return `                      <td class="${tdClass}"${cellStyleAttr}>
                         <FieldSelect
                           v-if="!isReadOnly"
                           :value="detail.${df.key}"
@@ -714,19 +749,21 @@ function buildDetailFieldTd(df, allDetailFields) {
                           apiUrl="${df.apiUrl || ''}"
                           displayField="${df.displayField || 'name'}"
                           valueField="${df.valueField || 'id'}"
+                          :readonly="${isReadonlyField ? 'true' : 'false'}"
                           class="w-full"
                         />
                         <span v-else>{{ detail.${df.key} || '-' }}</span>
                       </td>`
     }
     const opts = (df.staticOptions || []).map(o => `{ value: '${o.value}', label: '${o.label}' }`).join(', ')
-    return `                      <td class="px-2 py-2">
+    return `                      <td class="${tdClass}"${cellStyleAttr}>
                         <FieldSelect
                           v-if="!isReadOnly"
                           :value="detail.${df.key}"
                           @input="(v) => (detail.${df.key} = v)"${valueFullAttr}
                           sourceType="static"
                           :staticOptions="[${opts}]"
+                          :readonly="${isReadonlyField ? 'true' : 'false'}"
                           class="w-full"
                         />
                         <span v-else>{{ detail.${df.key} || '-' }}</span>
@@ -738,7 +775,7 @@ function buildDetailFieldTd(df, allDetailFields) {
     const valueFullAttr = detailAutoFills.length > 0
       ? `\n                          @update:valueFull="(obj) => { ${detailAutoFills.map(af => `detail.${af.key} = obj?.${af.defaultValueFrom.property} || ''`).join('; ')} }"`
       : ''
-    return `                      <td class="px-2 py-2">
+    return `                      <td class="${tdClass}"${cellStyleAttr}>
                         <FieldPopUp
                           v-if="!isReadOnly"
                           :value="detail.${df.key}"
@@ -746,39 +783,43 @@ function buildDetailFieldTd(df, allDetailFields) {
                           apiUrl="${df.apiUrl || ''}"
                           displayField="${df.displayField || 'name'}"
                           valueField="${df.valueField || 'id'}"
+                          :readonly="${isReadonlyField ? 'true' : 'false'}"
                           class="w-full"
                         />
                         <span v-else>{{ detail.${df.key} || '-' }}</span>
                       </td>`
   }
   if (df.type === 'status') {
-    return `                      <td class="px-2 py-2 text-center">
+    return `                      <td class="px-2 py-2 text-center"${cellStyleAttr}>
                         <FieldStatus
                           v-if="!isReadOnly"
                           v-model="detail.${df.key}"
                           active-text="${df.labelTrue || 'Aktif'}"
                           inactive-text="${df.labelFalse || 'Tidak Aktif'}"
+                          :readonly="${isReadonlyField ? 'true' : 'false'}"
                         />
                         <span v-else :class="detail.${df.key} ? 'text-green-600 font-semibold' : 'text-red-500'">{{ detail.${df.key} ? '${df.labelTrue || 'Aktif'}' : '${df.labelFalse || 'Tidak Aktif'}' }}</span>
                       </td>`
   }
   if (df.type === 'date') {
-    return `                      <td class="px-2 py-2">
+    return `                      <td class="${tdClass}"${cellStyleAttr}>
                         <FieldDate
                           v-if="!isReadOnly"
                           :value="detail.${df.key}"
                           @input="(v) => (detail.${df.key} = v)"
+                          :readonly="${isReadonlyField ? 'true' : 'false'}"
                           class="w-full"
                         />
                         <span v-else>{{ detail.${df.key} || '-' }}</span>
                       </td>`
   }
   if (df.type === 'datetime') {
-    return `                      <td class="px-2 py-2">
+    return `                      <td class="${tdClass}"${cellStyleAttr}>
                         <FieldDateTime
                           v-if="!isReadOnly"
                           :value="detail.${df.key}"
                           @input="(v) => (detail.${df.key} = v)"
+                          :readonly="${isReadonlyField ? 'true' : 'false'}"
                           class="w-full"
                         />
                         <span v-else>{{ detail.${df.key} || '-' }}</span>
@@ -786,46 +827,51 @@ function buildDetailFieldTd(df, allDetailFields) {
   }
   if (df.type === 'radio') {
     const opts = (df.radioOptions || []).map(o => `{ value: '${o.value}', label: '${o.label}' }`).join(', ')
-    return `                      <td class="px-2 py-2">
+    return `                      <td class="${tdClass}"${cellStyleAttr}>
                         <FieldRadio
                           v-if="!isReadOnly"
                           :value="detail.${df.key}"
                           @input="(v) => (detail.${df.key} = v)"
                           :options="[${opts}]"
+                          :readonly="${isReadonlyField ? 'true' : 'false'}"
                           class="w-full"
                         />
                         <span v-else>{{ detail.${df.key} || '-' }}</span>
                       </td>`
   }
   if (df.type === 'currency') {
-    return `                      <td class="px-2 py-2">
+    return `                      <td class="${tdClass}"${cellStyleAttr}>
                         <FieldCurrency
                           v-if="!isReadOnly"
                           :value="detail.${df.key}"
                           @input="(v) => (detail.${df.key} = v)"
+                          :readonly="${isReadonlyField ? 'true' : 'false'}"
+                          :decimalPlaces="${decimalPlaces}"
                           class="w-full"
                         />
-                        <span v-else>{{ Number(detail.${df.key} || 0).toLocaleString('id-ID') }}</span>
+                        <span v-else>{{ ${formatValueExpr(`detail.${df.key}`)} }}</span>
                       </td>`
   }
   if (df.type === 'slider') {
-    return `                      <td class="px-2 py-2">
+    return `                      <td class="${tdClass}"${cellStyleAttr}>
                         <FieldSlider
                           v-if="!isReadOnly"
                           :value="detail.${df.key}"
                           @input="(v) => (detail.${df.key} = v)"
+                          :readonly="${isReadonlyField ? 'true' : 'false'}"
                           class="w-full"
                         />
-                        <span v-else>{{ detail.${df.key} }}</span>
+                        <span v-else>{{ ${formatValueExpr(`detail.${df.key}`)} }}</span>
                       </td>`
   }
   // Default: FieldX text
-  return `                      <td class="px-2 py-2">
+  return `                      <td class="${tdClass}"${cellStyleAttr}>
                         <FieldX
                           v-if="!isReadOnly"
                           :value="detail.${df.key}"
                           @input="(v) => (detail.${df.key} = v)"
                           placeholder="${df.label || df.key}"
+                          :readonly="${isReadonlyField ? 'true' : 'false'}"
                           class="w-full"
                         />
                         <span v-else>{{ detail.${df.key} || '-' }}</span>
@@ -837,16 +883,26 @@ function buildDetailFooter(detailFields, varName, prefixCols, suffixCols) {
   if (!hasSummary) return ''
 
   const footerTds = detailFields.map(df => {
+    const decimalPlaces = (() => {
+      const parsed = Number.parseInt(df.decimalPlaces, 10)
+      if (!Number.isFinite(parsed)) return 2
+      return Math.min(6, Math.max(0, parsed))
+    })()
+    const formatSummaryExpr = (expr) => {
+      if (!['number', 'fieldnumber', 'fieldnumber_decimal', 'currency', 'slider'].includes(df.type)) return expr
+      return `Number(${expr} || 0).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: ${['fieldnumber_decimal', 'currency'].includes(df.type) ? decimalPlaces : 0} })`
+    }
     if (!df.summaryType) return `                      <td class="px-2 py-2"></td>`
-    const fmt = df.type === 'currency' ? `.toLocaleString('id-ID')` : ''
     if (df.summaryType === 'SUM') {
+      const sumExpr = `${varName}.reduce((s, d) => s + (Number(d.${df.key}) || 0), 0)`
       return `                      <td class="px-2 py-2 text-right font-semibold text-xs sm:text-sm">
-                        {{ ${varName}.reduce((s, d) => s + (Number(d.${df.key}) || 0), 0)${fmt} }}
+                        {{ ${formatSummaryExpr(sumExpr)} }}
                       </td>`
     }
     if (df.summaryType === 'AVG') {
+      const avgExpr = `${varName}.length ? (${varName}.reduce((s, d) => s + (Number(d.${df.key}) || 0), 0) / ${varName}.length) : 0`
       return `                      <td class="px-2 py-2 text-right font-semibold text-xs sm:text-sm">
-                        {{ ${varName}.length ? (${varName}.reduce((s, d) => s + (Number(d.${df.key}) || 0), 0) / ${varName}.length)${fmt ? `.toLocaleString('id-ID')` : '.toFixed(2)'} : 0 }}
+                        {{ ${formatSummaryExpr(avgExpr)} }}
                       </td>`
     }
     if (df.summaryType === 'COUNT') {
@@ -889,9 +945,28 @@ function buildDetailTemplate(details) {
     const detailFields = d.detailFields || []
 
     // Detail field <th>
-    const fieldThs = detailFields.map(df =>
-      `                      <th class="px-2 py-2 text-center font-medium text-xs sm:text-sm">${df.label || df.key}</th>`
-    ).join('\n')
+    const fieldThs = detailFields.map(df => {
+      const width = df.width || ({
+        checkbox: '110px',
+        status: '120px',
+        text: '180px',
+        number: '140px',
+        fieldnumber: '140px',
+        fieldnumber_decimal: '150px',
+        textarea: '240px',
+        select: '180px',
+        popup: '180px',
+        date: '170px',
+        datetime: '190px',
+        radio: '220px',
+        currency: '170px',
+        slider: '200px',
+      }[df.type] || '160px')
+      const alignClass = ['number', 'fieldnumber', 'fieldnumber_decimal', 'currency', 'slider'].includes(df.type)
+        ? 'text-right'
+        : 'text-center'
+      return `                      <th class="px-2 py-2 ${alignClass} font-medium text-xs sm:text-sm" style="width: ${width}; min-width: ${width};">${df.label || df.key}</th>`
+    }).join('\n')
 
     // Detail field <td> — using real field components
     const fieldTds = detailFields.map(df => buildDetailFieldTd(df, detailFields)).join('\n')

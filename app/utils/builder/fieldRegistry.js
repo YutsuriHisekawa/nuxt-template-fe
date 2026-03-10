@@ -138,6 +138,11 @@ const PANEL = {
   allowDecimal: {
     key: 'allowDecimal', label: 'Boleh Desimal', type: 'checkbox',
   },
+  decimalPlaces: {
+    key: 'decimalPlaces', label: 'Digit Desimal', type: 'text', placeholder: '2',
+    hint: 'Batas maksimum digit di belakang koma (0-6)',
+    hideWhen: (f) => !['decimal', 'fieldnumber_decimal', 'currency'].includes(f.type) || (f.type === 'currency' && f.allowDecimal === false),
+  },
   // ── Slider-specific ──
   sliderMin: {
     key: 'sliderMin', label: 'Min', type: 'text', placeholder: '0',
@@ -250,14 +255,14 @@ const PANEL = {
 }
 
 // ── Common panel sets ──────────────────────────────────────────────────────
-const COMMON_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.defaultValue, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.readonlyWhen, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.computedFormula, PANEL.defaultValueFrom, PANEL.minLength, PANEL.maxLength, PANEL.minValue, PANEL.maxValue, PANEL.pattern, PANEL.patternMessage]
+const COMMON_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.defaultValue, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.readonlyWhen, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.computedFormula, PANEL.defaultValueFrom, PANEL.minLength, PANEL.maxLength, PANEL.minValue, PANEL.maxValue, PANEL.decimalPlaces, PANEL.pattern, PANEL.patternMessage]
 const SELECT_PANELS = [...COMMON_PANELS, PANEL.sourceType, PANEL.apiUrl, PANEL.apiParams, PANEL.dependsOnParam, PANEL.displayField, PANEL.valueField, PANEL.staticOptions]
 const SWITCH_PANELS = [PANEL.fieldName, PANEL.label, PANEL.defaultValue, PANEL.labelTrue, PANEL.labelFalse, PANEL.disabled, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen]
 const BOX_PANELS = [PANEL.fieldName, PANEL.label, PANEL.defaultValue, PANEL.labelTrue, PANEL.labelFalse, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen]
 const DATE_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.dateDefaultValue, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.readonlyWhen, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen]
 const RADIO_PANELS = [PANEL.fieldName, PANEL.label, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.readonlyWhen, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.radioOptions]
-const POPUP_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.readonlyWhen, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.apiUrl, PANEL.apiParams, PANEL.dependsOnParam, PANEL.displayField, PANEL.valueField, PANEL.popupColumns, PANEL.searchFields, PANEL.dialogTitle]
-const CURRENCY_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.defaultValue, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.readonlyWhen, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.computedFormula, PANEL.defaultValueFrom, PANEL.currencyPrefix, PANEL.allowDecimal, PANEL.minValue, PANEL.maxValue]
+const POPUP_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.readonlyWhen, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.defaultValueFrom, PANEL.apiUrl, PANEL.apiParams, PANEL.dependsOnParam, PANEL.displayField, PANEL.valueField, PANEL.popupColumns, PANEL.searchFields, PANEL.dialogTitle]
+const CURRENCY_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.defaultValue, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.readonlyWhen, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.computedFormula, PANEL.defaultValueFrom, PANEL.currencyPrefix, PANEL.allowDecimal, PANEL.decimalPlaces, PANEL.minValue, PANEL.maxValue]
 const SLIDER_PANELS = [PANEL.fieldName, PANEL.label, PANEL.defaultValue, PANEL.required, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.sliderMin, PANEL.sliderMax, PANEL.sliderStep, PANEL.sliderUnit]
 const SECTION_PANELS = [PANEL.sectionTitle, PANEL.visibleWhen]
 const UPLOAD_PANELS = [PANEL.fieldName, PANEL.label, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.readonlyWhen, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.uploadAccept, PANEL.maxSizeMB]
@@ -278,6 +283,26 @@ function parseStaticOptionsLiteral(items, includeParentValue = false) {
   }).join(', ') + ']'
 }
 
+export function normalizeDecimalPlaces(value, fallback = 2) {
+  const parsed = Number.parseInt(value, 10)
+  if (!Number.isFinite(parsed)) return fallback
+  return Math.min(6, Math.max(0, parsed))
+}
+
+function getDecimalPlacesValue(field, fallback = 2) {
+  return normalizeDecimalPlaces(field?.decimalPlaces, fallback)
+}
+
+function getDecimalPlacesAttr(field) {
+  if (field.type === 'decimal' || field.type === 'fieldnumber_decimal') {
+    return `\n              :decimalPlaces="${getDecimalPlacesValue(field)}"`
+  }
+  if (field.type === 'currency' && field.allowDecimal !== false) {
+    return `\n              :decimalPlaces="${getDecimalPlacesValue(field)}"`
+  }
+  return ''
+}
+
 // ── Generate helpers ───────────────────────────────────────────────────────
 function getDisabledAttr(f) {
   if (f.dependsOn) return `:disabled="!values.${f.dependsOn} || loading || isReadOnly"`
@@ -296,6 +321,7 @@ function getReadonlyAttr(f) {
 function genFieldX(f) {
   const typeAttr = f.type !== 'text' ? `\n              type="${f.type}"` : ''
   const readonlyAttr = getReadonlyAttr(f)
+  const decimalPlacesAttr = getDecimalPlacesAttr(f)
   return `            <FieldX
               id="${f.field}"
               label="${f.label}"${typeAttr}
@@ -306,6 +332,7 @@ function genFieldX(f) {
               :required="${f.required ? '!isReadOnly' : 'false'}"
               ${getDisabledAttr(f)}
               ${readonlyAttr}
+              ${decimalPlacesAttr}
               placeholder="${f.placeholder || f.label}"
               class="w-full"
             />`
@@ -331,6 +358,7 @@ function genTextarea(f) {
 function genFieldNumber(f) {
   const fnType = f.type === 'fieldnumber_decimal' ? 'decimal' : 'integer'
   const readonlyAttr = getReadonlyAttr(f)
+  const decimalPlacesAttr = getDecimalPlacesAttr(f)
   return `            <FieldNumber
               id="${f.field}"
               label="${f.label}"
@@ -339,6 +367,7 @@ function genFieldNumber(f) {
               @input="(v) => (values.${f.field} = v)"
               ${getDisabledAttr(f)}
               ${readonlyAttr}
+              ${decimalPlacesAttr}
               class="w-full"
             />`
 }
@@ -608,6 +637,7 @@ function genFieldCurrency(f) {
   const readonlyAttr = getReadonlyAttr(f)
   const prefix = f.currencyPrefix || 'Rp'
   const allowDecimal = f.allowDecimal !== false
+  const decimalPlacesAttr = allowDecimal ? getDecimalPlacesAttr(f) : ''
   return `            <FieldCurrency
               id="${f.field}"
               label="${f.label}"
@@ -620,6 +650,7 @@ function genFieldCurrency(f) {
               ${readonlyAttr}
               prefix="${prefix}"
               :allowDecimal="${allowDecimal}"
+              ${decimalPlacesAttr}
               placeholder="${f.placeholder || f.label}"
               class="w-full"
             />`
@@ -735,9 +766,9 @@ export const FIELD_REGISTRY = [
   {
     value: 'decimal', label: 'FieldX (Decimal)', component: 'FieldX', category: 'input',
     searchable: true, showInMobile: true, hasError: true,
-    defaultMeta: {},
+    defaultMeta: { decimalPlaces: 2 },
     panelFields: COMMON_PANELS,
-    previewProps: (f) => ({ label: f.label || 'Label', type: 'decimal', value: '', placeholder: f.placeholder || f.label, required: f.required }),
+    previewProps: (f) => ({ label: f.label || 'Label', type: 'decimal', value: '', placeholder: f.placeholder || f.label, required: f.required, decimalPlaces: getDecimalPlacesValue(f) }),
     generateTemplate: genFieldX,
   },
   {
@@ -787,9 +818,9 @@ export const FIELD_REGISTRY = [
   {
     value: 'fieldnumber_decimal', label: 'FieldNumber (Decimal)', component: 'FieldNumber', category: 'number',
     searchable: false, showInMobile: false, hasError: false,
-    defaultMeta: {},
+    defaultMeta: { decimalPlaces: 2 },
     panelFields: COMMON_PANELS,
-    previewProps: (f) => ({ label: f.label || 'Label', value: '', type: 'decimal' }),
+    previewProps: (f) => ({ label: f.label || 'Label', value: '', type: 'decimal', decimalPlaces: getDecimalPlacesValue(f) }),
     generateTemplate: genFieldNumber,
   },
 
@@ -882,6 +913,11 @@ export const FIELD_REGISTRY = [
     defaultMeta: { apiUrl: '', apiParams: [], displayField: 'name', valueField: 'id', popupColumns: [], searchFields: '', dialogTitle: '', dependsOn: '', dependsOnParam: '' },
     panelFields: POPUP_PANELS,
     previewProps: (f, previewValues) => {
+      // Build apiParams from user-configured params (same pattern as FieldSelect)
+      const extraParams = {}
+      if (Array.isArray(f.apiParams)) {
+        f.apiParams.forEach(p => { if (p.key) extraParams[p.key] = p.value || '' })
+      }
       const result = {
         label: f.label || 'Label',
         value: '',
@@ -891,21 +927,23 @@ export const FIELD_REGISTRY = [
         required: f.required,
         clearable: true,
         apiUrl: f.apiUrl || '',
+        apiParams: { ...extraParams },
         columns: f.popupColumns || [],
         searchFields: f.searchFields || '',
         dialogTitle: f.dialogTitle || '',
       }
       if (f.dependsOn && f.dependsOnParam && previewValues) {
         const parentVal = previewValues[f.dependsOn] || ''
-        result.apiParams = { [f.dependsOnParam]: parentVal }
+        result.apiParams[f.dependsOnParam] = parentVal
         if (!parentVal) result.disabled = true
       }
       return result
     },
     generateTemplate: (f, allFields) => genPopup(f, allFields),
+    generateDefault: (f) => `  ${f.field}: '',`,
+    generateReset: (f) => `    ${f.field}: '',`,
+    generatePayload: (f) => `    ${f.field}: values.${f.field} || null,`,
   },
-
-  // ── Space (layout spacer) ─────────────────────────────────
   {
     value: 'space', label: 'Space', component: null, category: 'layout',
     searchable: false, showInMobile: false, hasError: false,
@@ -965,11 +1003,11 @@ export const FIELD_REGISTRY = [
   {
     value: 'currency', label: 'FieldCurrency', component: 'FieldCurrency', category: 'number',
     searchable: false, showInMobile: false, hasError: true,
-    defaultMeta: { currencyPrefix: 'Rp', allowDecimal: true },
+    defaultMeta: { currencyPrefix: 'Rp', allowDecimal: true, decimalPlaces: 2 },
     panelFields: CURRENCY_PANELS,
     previewProps: (f) => ({
       label: f.label || 'Label', value: '', prefix: f.currencyPrefix || 'Rp',
-      allowDecimal: f.allowDecimal !== false, placeholder: f.placeholder || f.label, required: f.required,
+      allowDecimal: f.allowDecimal !== false, decimalPlaces: getDecimalPlacesValue(f), placeholder: f.placeholder || f.label, required: f.required,
     }),
     generateTemplate: genFieldCurrency,
   },
@@ -1128,6 +1166,7 @@ export function createBlankField() {
     maxValue: '',
     pattern: '',
     patternMessage: '',
+    decimalPlaces: 2,
     requiredWhenField: '',
     requiredWhenValue: '',
     readonlyWhenField: '',
@@ -1168,6 +1207,39 @@ export const DETAIL_FIELD_TYPES = [
   { value: 'currency', label: 'FieldCurrency', component: 'FieldCurrency', defaultValue: 0 },
   { value: 'slider', label: 'FieldSlider', component: 'FieldSlider', defaultValue: 0 },
 ]
+
+const DETAIL_FIELD_DEFAULT_WIDTHS = {
+  checkbox: '110px',
+  status: '120px',
+  text: '180px',
+  number: '140px',
+  fieldnumber: '140px',
+  fieldnumber_decimal: '150px',
+  textarea: '240px',
+  select: '180px',
+  popup: '180px',
+  date: '170px',
+  datetime: '190px',
+  radio: '220px',
+  currency: '170px',
+  slider: '200px',
+}
+
+export function getDetailFieldDefaultWidth(type) {
+  return DETAIL_FIELD_DEFAULT_WIDTHS[type] || '160px'
+}
+
+export function isDetailNumericFieldType(type) {
+  return ['number', 'fieldnumber', 'fieldnumber_decimal', 'currency', 'slider'].includes(type)
+}
+
+export function getDetailFieldDecimalPlaces(field) {
+  if (!field) return 0
+  if (field.type === 'fieldnumber_decimal' || field.type === 'currency') {
+    return getDecimalPlacesValue(field)
+  }
+  return 0
+}
 
 // ── Detail Tab helpers ─────────────────────────────────────────────────────
 /** Create a blank detail tab config */
@@ -1212,7 +1284,7 @@ export function createBlankDisplayColumn() {
 export function createBlankDetailField() {
   return {
     key: '', label: '', type: 'checkbox', default: true,
-    labelTrue: 'Ya', labelFalse: 'Tidak', summaryType: '',
+    labelTrue: 'Ya', labelFalse: 'Tidak', summaryType: '', readonly: false, width: '', decimalPlaces: 2,
     // Select / PopUp / Radio fields
     sourceType: 'api', apiUrl: '', displayField: 'name', valueField: 'id',
     staticOptions: [], radioOptions: [],

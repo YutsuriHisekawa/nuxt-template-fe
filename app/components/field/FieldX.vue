@@ -46,6 +46,11 @@ const props = defineProps({
   class: String,
   /** Field ID */
   id: String,
+  /** Maximum decimal digits */
+  decimalPlaces: {
+    type: Number,
+    default: 2
+  },
   /** Textarea rows (only for textarea type) */
   rows: {
     type: Number,
@@ -57,6 +62,11 @@ const emit = defineEmits(['input', 'update:modelValue'])
 
 const hasError = computed(() => props.errorname === 'failed')
 const showPassword = ref(false)
+const normalizedDecimalPlaces = computed(() => {
+  const parsed = Number.parseInt(props.decimalPlaces, 10)
+  if (!Number.isFinite(parsed)) return 2
+  return Math.min(6, Math.max(0, parsed))
+})
 
 // Support both value prop and modelValue prop
 // Convert to string to preserve leading zeros for tel type
@@ -81,9 +91,16 @@ const handleInput = (event) => {
   const target = event.target
   let newValue = target.value
   
-  // For decimal type, only allow: digits, e, E, ., -, +, ,
+  // For decimal type, only allow business-style decimal input and clamp fractional digits.
   if (props.type === 'decimal') {
-    newValue = newValue.replace(/[^0-9eE.\-+,]/g, '')
+    const sanitized = newValue.replace(/,/g, '.').replace(/[^0-9.\-]/g, '')
+    const negative = sanitized.startsWith('-') ? '-' : ''
+    const unsigned = sanitized.replace(/-/g, '')
+    const [integerPart = '', ...decimalParts] = unsigned.split('.')
+    const decimalPart = decimalParts.join('').slice(0, normalizedDecimalPlaces.value)
+    newValue = decimalPart.length > 0
+      ? `${negative}${integerPart || '0'}.${decimalPart}`
+      : `${negative}${integerPart}`
     target.value = newValue
   }
   
@@ -125,9 +142,9 @@ const handleKeyDown = (event) => {
     return
   }
   
-  // For decimal type, allow: digits, e, E, ., -, +, ,
+  // For decimal type, allow: digits, dot/comma, minus.
   if (props.type === 'decimal') {
-    if ((key >= '0' && key <= '9') || ['e', 'E', '.', '-', '+', ','].includes(key)) {
+    if ((key >= '0' && key <= '9') || ['.', '-', ','].includes(key)) {
       return
     }
     event.preventDefault()
@@ -156,6 +173,24 @@ const handleKeyDown = (event) => {
 
 const togglePasswordVisibility = () => {
   showPassword.value = !showPassword.value
+}
+
+const handleBlur = (event) => {
+  if (props.type !== 'decimal') return
+  const target = event.target
+  const raw = String(target.value || '').replace(',', '.')
+  if (!raw || raw === '-') return
+
+  const num = Number.parseFloat(raw)
+  if (!Number.isFinite(num)) return
+
+  const rounded = normalizedDecimalPlaces.value <= 0
+    ? String(Math.round(num))
+    : String(Number(num.toFixed(normalizedDecimalPlaces.value)))
+
+  target.value = rounded
+  emit('input', rounded)
+  emit('update:modelValue', rounded)
 }
 
 // Check if textarea
@@ -194,7 +229,7 @@ const isTextarea = computed(() => props.type === 'textarea')
         v-else
         :id="id"
         :type="inputType"
-        :inputmode="type === 'tel' ? 'tel' : undefined"
+        :inputmode="type === 'tel' ? 'tel' : type === 'decimal' ? 'decimal' : type === 'number' ? 'numeric' : undefined"
         :model-value="currentValue"
         :placeholder="placeholder"
         :disabled="disabled && !readonly"
@@ -202,11 +237,13 @@ const isTextarea = computed(() => props.type === 'textarea')
         :class="[
           { 'border-destructive': hasError },
           type === 'password' && 'pr-10',
-          readonly && 'bg-muted/50 !text-foreground cursor-default font-medium !opacity-100'
+          (type === 'number' || type === 'decimal') && 'text-right tabular-nums',
+          readonly && 'bg-muted/50 text-foreground! cursor-default font-medium opacity-100!'
         ]"
         class="h-10"
         @input="handleInput"
         @keydown="handleKeyDown"
+        @blur="handleBlur"
         @update:model-value="(val) => {
           emit('input', String(val))
           emit('update:modelValue', String(val))

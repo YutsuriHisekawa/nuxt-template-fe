@@ -14,15 +14,18 @@ const route = useRoute();    // Untuk baca parameter URL (misalnya :id)
 // ============================================================================
 const loading = ref(false);  // Menampilkan spinner saat sedang request
 
-const recordId = computed(() => route.params.id);
+const recordId = computed(() => {
+  const id = route.params.id;
+  return Array.isArray(id) ? id[0] : id;
+});
 const action = computed(() => route.query.action);
 
-const isEditMode = computed(() => !!menuId.value && action.value === "Edit");
+const isEditMode = computed(() => !!recordId.value && action.value === "Edit");
 const isViewMode = computed(
-  () => !!menuId.value && (!action.value || action.value === "View"),
+  () => !!recordId.value && (!action.value || action.value === "View"),
 );
-const isCopyMode = computed(() => !!menuId.value && action.value === "Copy");
-const isCreateMode = computed(() => !menuId.value);
+const isCopyMode = computed(() => !!recordId.value && action.value === "Copy");
+const isCreateMode = computed(() => !recordId.value);
 const isReadOnly = computed(() => isViewMode.value);
 
 const pageTitle = computed(() => {
@@ -71,10 +74,8 @@ const API_SAVE = API_BASE;
 // ============================================================================
 // LOAD DATA — Dipanggil saat halaman pertama kali dibuka (onBeforeMount)
 // ============================================================================
-const isRead = !!recordId.value;
-
 onBeforeMount(async () => {
-  if (!isRead) return;
+  if (!recordId.value) return;
 
   const params = { join: true };
   const fixedParams = new URLSearchParams(params);
