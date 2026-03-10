@@ -94,6 +94,13 @@ const dateLabel = computed(() => {
   return `${day}, ${dd}/${mm}/${yyyy}`
 })
 
+const timeLabel = computed(() => {
+  const d = now.value
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mm = String(d.getMinutes()).padStart(2, '0')
+  return `${hh}:${mm}`
+})
+
 const greeting = computed(() => {
   const h = now.value.getHours()
   if (h < 11) return 'Selamat Pagi'
@@ -118,7 +125,7 @@ const userName = computed(() => {
           <SidebarTrigger class="-ml-1" />
           <Separator
             orientation="vertical"
-            class="mr-2 data-[orientation=vertical]:h-4"
+            class="mr-2 bg-primary/60 data-[orientation=vertical]:h-4 data-[orientation=vertical]:w-px"
           />
           <Breadcrumb>
             <BreadcrumbList>
@@ -138,9 +145,9 @@ const userName = computed(() => {
           <ThemeColorToggle />
           <ThemeToggle />
           <RespoSwitcher />
-          <Separator orientation="vertical" class="mx-1 data-[orientation=vertical]:h-8" />
+          <Separator orientation="vertical" class="mx-1 bg-primary/60 data-[orientation=vertical]:h-8 data-[orientation=vertical]:w-px" />
           <div class="hidden sm:flex flex-col items-end text-right leading-tight max-w-48 lg:max-w-64">
-            <span class="text-xs text-muted-foreground">{{ dateLabel }}</span>
+            <span class="text-xs text-muted-foreground">{{ dateLabel }} • {{ timeLabel }}</span>
             <span class="truncate w-full text-right text-sm font-medium">{{ greeting }}, {{ userName }}</span>
           </div>
         </div>

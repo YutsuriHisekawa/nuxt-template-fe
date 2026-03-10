@@ -1886,6 +1886,10 @@ node add_route.cjs setup/m_supplier</pre
                           (Array.isArray(fields[idx].computedFormula)
                             ? fields[idx].computedFormula.length
                             : fields[idx].computedFormula) ||
+                          fields[idx].apiUrl ||
+                          (Array.isArray(fields[idx].apiParams) && fields[idx].apiParams.some(p => p.key)) ||
+                          fields[idx].dependsOn ||
+                          fields[idx].defaultValueFrom?.field ||
                           (wizardSteps.length > 0 &&
                             !getRegistryEntry(fields[idx].type)?.isSpace &&
                             !getRegistryEntry(fields[idx].type)
@@ -1952,6 +1956,38 @@ node add_route.cjs setup/m_supplier</pre
                                   .join(" ")
                               : fields[idx].computedFormula
                           }}
+                        </span>
+                        <!-- API Endpoint badge -->
+                        <span
+                          v-if="fields[idx].apiUrl"
+                          class="text-[9px] font-medium px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 truncate max-w-[50%]"
+                          :title="`API: ${fields[idx].apiUrl}`"
+                        >
+                          🔗 {{ fields[idx].apiUrl }}
+                        </span>
+                        <!-- API Params badge -->
+                        <span
+                          v-if="Array.isArray(fields[idx].apiParams) && fields[idx].apiParams.some(p => p.key)"
+                          class="text-[9px] font-medium px-1.5 py-0.5 rounded bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400"
+                          :title="`Params: ${fields[idx].apiParams.filter(p => p.key).map(p => p.key + '=' + p.value).join(', ')}`"
+                        >
+                          ⚙ {{ fields[idx].apiParams.filter(p => p.key).map(p => p.key + '=' + p.value).join(', ') }}
+                        </span>
+                        <!-- DependsOn badge -->
+                        <span
+                          v-if="fields[idx].dependsOn"
+                          class="text-[9px] font-medium px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400"
+                          :title="`Tergantung: ${fields[idx].dependsOn}${fields[idx].dependsOnParam ? ' → param: ' + fields[idx].dependsOnParam : ''}`"
+                        >
+                          🔗 → {{ fields[idx].dependsOn }}
+                        </span>
+                        <!-- DefaultValueFrom badge -->
+                        <span
+                          v-if="fields[idx].defaultValueFrom?.field"
+                          class="text-[9px] font-medium px-1.5 py-0.5 rounded bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400"
+                          :title="`Auto-fill: ${fields[idx].defaultValueFrom.field} → ${fields[idx].defaultValueFrom.property}`"
+                        >
+                          ⚡ {{ fields[idx].defaultValueFrom.field }}.{{ fields[idx].defaultValueFrom.property }}
                         </span>
                         <div
                           class="ml-auto"

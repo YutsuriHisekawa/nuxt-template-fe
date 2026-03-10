@@ -51,9 +51,9 @@ const isParentOpen = (title: string) => {
         <!-- Menu item without sub-items -->
         <SidebarMenuItem v-if="!item.items || item.items.length === 0">
           <SidebarMenuButton :tooltip="item.title" :is-active="item.isActive" as-child>
-            <NuxtLink :to="item.url" class="flex items-center gap-2">
-              <component :is="item.icon" v-if="item.icon" class="h-4 w-4 shrink-0" />
-              <span>{{ item.title }}</span>
+            <NuxtLink :to="item.url" class="flex min-w-0 items-start gap-2">
+              <component :is="item.icon" v-if="item.icon" class="mt-0.5 h-4 w-4 shrink-0" />
+              <span class="min-w-0 flex-1 whitespace-normal wrap-break-word leading-tight">{{ item.title }}</span>
             </NuxtLink>
           </SidebarMenuButton>
         </SidebarMenuItem>
@@ -75,20 +75,22 @@ const isParentOpen = (title: string) => {
                   item.isActive && 'font-semibold'
                 ]"
               >
-                <component :is="item.icon" v-if="item.icon" class="shrink-0 h-4 w-4" />
-                <span>{{ item.title }}</span>
+                <component :is="item.icon" v-if="item.icon" class="mt-0.5 shrink-0 h-4 w-4" />
+                <span class="min-w-0 flex-1 whitespace-normal wrap-break-word leading-tight text-left">{{ item.title }}</span>
                 <ChevronRight class="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
               </SidebarMenuButton>
             </CollapsibleTrigger>
             <CollapsibleContent>
-              <SidebarMenuSub>
+              <SidebarMenuSub class="mx-1.5 px-1">
                 <template v-for="subItem in item.items" :key="subItem.title">
                   <!-- Sub-item without nested items -->
                   <SidebarMenuSubItem v-if="!subItem.items || subItem.items.length === 0">
-                    <SidebarMenuSubButton as-child :is-active="subItem.isActive">
-                      <NuxtLink :to="subItem.url" class="flex items-center gap-2">
-                        <component :is="subItem.icon" v-if="subItem.icon" class="h-4 w-4 shrink-0" />
-                        <span>{{ subItem.title }}</span>
+                    <SidebarMenuSubButton as-child :is-active="subItem.isActive" class="h-auto min-h-7 items-start py-1.5">
+                      <NuxtLink :to="subItem.url" class="flex min-w-0 items-start gap-2">
+                        <component :is="subItem.icon" v-if="subItem.icon" class="mt-0.5 h-4 w-4 shrink-0" />
+                        <div class="min-w-0 flex-1">
+                          <span class="block whitespace-normal wrap-break-word leading-tight">{{ subItem.title }}</span>
+                        </div>
                       </NuxtLink>
                     </SidebarMenuSubButton>
                   </SidebarMenuSubItem>
@@ -102,19 +104,23 @@ const isParentOpen = (title: string) => {
                   >
                     <SidebarMenuSubItem>
                       <CollapsibleTrigger as-child>
-                        <SidebarMenuSubButton class="flex items-center gap-2">
-                          <component :is="subItem.icon" v-if="subItem.icon" class="h-4 w-4 shrink-0" />
-                          <span>{{ subItem.title }}</span>
+                        <SidebarMenuSubButton class="flex h-auto min-h-7 items-start gap-2 py-1.5">
+                          <component :is="subItem.icon" v-if="subItem.icon" class="mt-0.5 h-4 w-4 shrink-0" />
+                          <div class="min-w-0 flex-1">
+                            <span class="block whitespace-normal wrap-break-word leading-tight">{{ subItem.title }}</span>
+                          </div>
                           <ChevronRight class="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible-sub:rotate-90" />
                         </SidebarMenuSubButton>
                       </CollapsibleTrigger>
                       <CollapsibleContent>
-                        <SidebarMenuSub>
+                        <SidebarMenuSub class="mx-1 px-0.5">
                           <SidebarMenuSubItem v-for="nestedItem in subItem.items" :key="nestedItem.title">
-                            <SidebarMenuSubButton as-child :is-active="nestedItem.isActive">
-                              <NuxtLink :to="nestedItem.url" class="flex items-center gap-2">
-                                <component :is="nestedItem.icon" v-if="nestedItem.icon" class="h-4 w-4 shrink-0" />
-                                <span>{{ nestedItem.title }}</span>
+                            <SidebarMenuSubButton as-child :is-active="nestedItem.isActive" class="h-auto min-h-7 items-start py-1.5">
+                              <NuxtLink :to="nestedItem.url" class="flex min-w-0 items-start gap-2">
+                                <component :is="nestedItem.icon" v-if="nestedItem.icon" class="mt-0.5 h-4 w-4 shrink-0" />
+                                <div class="min-w-0 flex-1">
+                                  <span class="block whitespace-normal wrap-break-word leading-tight">{{ nestedItem.title }}</span>
+                                </div>
                               </NuxtLink>
                             </SidebarMenuSubButton>
                           </SidebarMenuSubItem>

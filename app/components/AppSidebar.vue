@@ -63,9 +63,35 @@ const resetMenuCache = () => {
   menuCache.value.loading = false
 }
 
+const inferSubModulFromPath = (path: string) => {
+  const segments = String(path || '')
+    .split('/')
+    .map(segment => segment.trim())
+    .filter(Boolean)
+
+  if (segments.length < 3) return ''
+
+  const candidate = segments[1]
+  if (!candidate || candidate.startsWith('m_') || candidate.startsWith('t_')) {
+    return ''
+  }
+
+  return candidate.replace(/[-_]+/g, ' ').toUpperCase()
+}
+
+const normalizeMenuItem = (menu: any) => ({
+  ...menu,
+  sub_modul: menu?.sub_modul?.trim?.() || inferSubModulFromPath(menu?.path) || null,
+})
+
+const hasStaleSubModulCache = (menus: any[] = []) => {
+  return menus.some((menu: any) => !menu?.sub_modul && !!inferSubModulFromPath(menu?.path))
+}
+
 // Load menus from cache source (role-based or API)
 const loadMenus = async (force = false) => {
-  if (!force && (menuCache.value.loaded || menuCache.value.loading)) return
+  if (!force && menuCache.value.loading) return
+  if (!force && menuCache.value.loaded && !hasStaleSubModulCache(menuCache.value.items)) return
 
   // Non-super-admin menus come from selectRespo; if not ready yet, wait.
   if (!authStore.isSuperAdmin) {
@@ -77,7 +103,7 @@ const loadMenus = async (force = false) => {
       sr = authStore.getSelectRespo() as any
     }
 
-    menuCache.value.items = Array.isArray(sr.menus) ? sr.menus : []
+    menuCache.value.items = Array.isArray(sr.menus) ? sr.menus.map(normalizeMenuItem) : []
     menuCache.value.loaded = true
     menuCache.value.loading = false
     logSidebarMenus('selectRespo', menuCache.value.items)
@@ -89,7 +115,7 @@ const loadMenus = async (force = false) => {
     const api = useApi()
     const response = await api.get('/api/dynamic/m_menu?no_pagination=true')
     if (response.status === 'success' && Array.isArray(response.data)) {
-      menuCache.value.items = response.data
+      menuCache.value.items = response.data.map(normalizeMenuItem)
       menuCache.value.loaded = true
       logSidebarMenus('super-admin-api', menuCache.value.items)
     }
@@ -124,7 +150,7 @@ const normalizePath = (value: string) => {
   return withSlash.replace(/\/+$/, '')
 }
 
-const getRawSubModul = (menu: any) => menu?.sub_modul?.trim() || ''
+const getRawSubModul = (menu: any) => menu?.sub_modul?.trim?.() || inferSubModulFromPath(menu?.path)
 
 const logSidebarMenus = (source: string, menus: any[]) => {
   if (!import.meta.client) return

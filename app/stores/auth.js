@@ -29,6 +29,22 @@ function clearSessionStorage() {
   try { sessionStorage.removeItem(SESSION_KEY) } catch {}
 }
 
+function inferSubModulFromPath(path) {
+  const segments = String(path || '')
+    .split('/')
+    .map(segment => segment.trim())
+    .filter(Boolean)
+
+  if (segments.length < 3) return null
+
+  const candidate = segments[1]
+  if (!candidate || candidate.startsWith('m_') || candidate.startsWith('t_')) {
+    return null
+  }
+
+  return candidate.replace(/[-_]+/g, ' ').toUpperCase()
+}
+
 export const useAuthStore = defineStore('auth', () => {
   const config = useRuntimeConfig()
   const baseUrl = config.public.baseUrl
@@ -90,17 +106,41 @@ export const useAuthStore = defineStore('auth', () => {
     initializeSelectRespo()
   }
 
+  function hasMenuSubModulField(ud) {
+    let foundMenu = false
+
+    for (const detail of ud?.user_details || []) {
+      for (const respoDetail of detail?.m_respo?.m_respo_ds || []) {
+        for (const roleDetail of respoDetail?.m_role?.m_role_ds || []) {
+          const menu = roleDetail?.m_menu
+          if (!menu) continue
+
+          foundMenu = true
+          if (!Object.prototype.hasOwnProperty.call(menu, 'sub_modul')) {
+            return false
+          }
+        }
+      }
+    }
+
+    return foundMenu
+  }
+
   function hasExpandedRoleData(ud) {
     return !!ud?.user_details?.some(
       d => Array.isArray(d?.m_respo?.m_respo_ds) && d.m_respo.m_respo_ds.length > 0
     )
   }
 
+  function hasCompleteRoleMenuData(ud) {
+    return hasExpandedRoleData(ud) && hasMenuSubModulField(ud)
+  }
+
   async function refreshUserDefault(force = false) {
     const userId = user.value?.id
     if (!userId) return false
 
-    if (!force && hasExpandedRoleData(userDefault.value)) {
+    if (!force && hasCompleteRoleMenuData(userDefault.value)) {
       return true
     }
 
@@ -178,6 +218,7 @@ export const useAuthStore = defineStore('auth', () => {
         const menuId = rld.m_menu_id
         // Store menu data
         if (rld.m_menu && !menuMap.has(menuId)) {
+          const fallbackSubModul = inferSubModulFromPath(rld.m_menu.path)
           menuMap.set(menuId, {
             id: rld.m_menu.id,
             name: rld.m_menu.name,
@@ -185,7 +226,7 @@ export const useAuthStore = defineStore('auth', () => {
             icon: rld.m_menu.icon,
             seq: rld.m_menu.seq,
             modul: rld.m_menu.modul,
-            sub_modul: rld.m_menu.sub_modul,
+            sub_modul: rld.m_menu.sub_modul ?? fallbackSubModul,
             is_active: rld.m_menu.is_active !== false
           })
         }
@@ -295,12 +336,18 @@ export const useAuthStore = defineStore('auth', () => {
 
         // Jika userDefault dari session lama (join lama) belum bawa role detail,
         // re-fetch user_default expanded agar menu respo tidak kosong.
-        if (!isSuperAdmin.value && !hasExpandedRoleData(userDefault.value)) {
+        if (!isSuperAdmin.value && !hasCompleteRoleMenuData(userDefault.value)) {
           await refreshUserDefault(true)
         }
 
         // Pastikan selectRespo terbentuk dari data terbaru.
-        if (!isSuperAdmin.value && (!selectRespo.value || !Array.isArray(selectRespo.value.menus))) {
+        if (
+          !isSuperAdmin.value && (
+            !selectRespo.value ||
+            !Array.isArray(selectRespo.value.menus) ||
+            selectRespo.value.menus.some(menu => !Object.prototype.hasOwnProperty.call(menu || {}, 'sub_modul'))
+          )
+        ) {
           initializeSelectRespo()
         }
 

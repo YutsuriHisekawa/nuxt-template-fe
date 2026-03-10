@@ -31,17 +31,19 @@ const selectedTheme = computed({
 </script>
 
 <template>
-  <DropdownMenu>
-    <DropdownMenuTrigger as-child>
-      <button
-        type="button"
-        class="inline-flex h-10 w-10 items-center justify-center rounded-full border bg-background text-foreground shadow-xs transition hover:bg-accent"
-        aria-label="Pilih tema warna"
-        title="Tema Warna"
-      >
-        <Palette class="h-5 w-5" />
-      </button>
-    </DropdownMenuTrigger>
+  <Tooltip>
+    <DropdownMenu>
+      <TooltipTrigger as-child>
+        <DropdownMenuTrigger as-child>
+          <button
+            type="button"
+            class="inline-flex h-10 w-10 items-center justify-center rounded-full border bg-background text-foreground shadow-xs transition hover:bg-accent"
+            aria-label="Pilih tema warna"
+          >
+            <Palette class="h-5 w-5" />
+          </button>
+        </DropdownMenuTrigger>
+      </TooltipTrigger>
     <DropdownMenuContent align="end" class="w-44">
       <DropdownMenuLabel>Theme</DropdownMenuLabel>
       <DropdownMenuSeparator />
@@ -60,5 +62,7 @@ const selectedTheme = computed({
         </DropdownMenuRadioItem>
       </DropdownMenuRadioGroup>
     </DropdownMenuContent>
-  </DropdownMenu>
+    </DropdownMenu>
+    <TooltipContent>Tema Warna</TooltipContent>
+  </Tooltip>
 </template>
