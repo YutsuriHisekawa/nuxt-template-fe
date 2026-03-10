@@ -1,8 +1,22 @@
 // Composable untuk detail tab preview: data interaktif + AG Grid column defs
 import { toast } from 'vue-sonner'
+import { getDetailFieldDecimalPlaces, getDetailFieldDefaultWidth, isDetailNumericFieldType } from '~/utils/builder/fieldRegistry'
 
 export function useDetailPreview(details) {
   const detailPreviewData = reactive({})
+
+  function isReadonlyDetailField(df) {
+    return Boolean(df?.readonly) || (Array.isArray(df?.computedFormula) && df.computedFormula.length > 0)
+  }
+
+  function formatDetailNumber(value, df) {
+    const num = Number(value ?? 0)
+    if (!Number.isFinite(num)) return '0'
+    return num.toLocaleString('id-ID', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: getDetailFieldDecimalPlaces(df),
+    })
+  }
 
   function getPreviewArr(dIdx) {
     if (!detailPreviewData[dIdx]) detailPreviewData[dIdx] = []
@@ -137,26 +151,29 @@ export function useDetailPreview(details) {
           },
         })
       } else if (['fieldnumber', 'fieldnumber_decimal', 'number', 'currency', 'slider'].includes(df.type)) {
+        const width = parseInt(df.width, 10) || parseInt(getDetailFieldDefaultWidth(df.type), 10) || 140
         cols.push({
           headerName: df.label || df.key,
           field: df.key,
-          flex: 1, minWidth: 100,
-          editable: true,
+          width,
+          minWidth: width,
+          editable: !isReadonlyDetailField(df),
           cellEditor: 'agNumberCellEditor',
+          cellStyle: { textAlign: 'right' },
           valueSetter: (params) => { params.data[df.key] = Number(params.newValue) || 0; return true },
-          ...(df.type === 'currency' ? {
-            valueFormatter: (params) => params.value != null ? Number(params.value).toLocaleString('id-ID') : '0',
-          } : {}),
+          valueFormatter: (params) => formatDetailNumber(params.value, df),
         })
       } else if (df.type === 'select') {
+        const width = parseInt(df.width, 10) || parseInt(getDetailFieldDefaultWidth(df.type), 10) || 180
         const opts = df.sourceType === 'static'
           ? (df.staticOptions || []).map(o => ({ value: o.value, label: o.label || o.value }))
           : []
         cols.push({
           headerName: df.label || df.key,
           field: df.key,
-          flex: 1, minWidth: 120,
-          editable: true,
+          width,
+          minWidth: width,
+          editable: !isReadonlyDetailField(df),
           cellRenderer: (params) => {
             if (params.value == null || params.value === '') return '<span class="text-muted-foreground/50 italic">- Pilih -</span>'
             if (opts.length) {
@@ -173,11 +190,13 @@ export function useDetailPreview(details) {
           }),
         })
       } else if (df.type === 'popup') {
+        const width = parseInt(df.width, 10) || parseInt(getDetailFieldDefaultWidth(df.type), 10) || 180
         cols.push({
           headerName: df.label || df.key,
           field: df.key,
-          flex: 1, minWidth: 120,
-          editable: true,
+          width,
+          minWidth: width,
+          editable: !isReadonlyDetailField(df),
           cellRenderer: (params) => {
             if (params.value == null || params.value === '') return '<span class="text-muted-foreground/50 italic">- Pilih -</span>'
             return params.value || '-'
@@ -185,11 +204,13 @@ export function useDetailPreview(details) {
           valueSetter: (params) => { params.data[df.key] = params.newValue; return true },
         })
       } else if (df.type === 'date' || df.type === 'datetime') {
+        const width = parseInt(df.width, 10) || parseInt(getDetailFieldDefaultWidth(df.type), 10) || 180
         cols.push({
           headerName: df.label || df.key,
           field: df.key,
-          flex: 1, minWidth: 120,
-          editable: true,
+          width,
+          minWidth: width,
+          editable: !isReadonlyDetailField(df),
           cellRenderer: (params) => {
             if (params.value == null || params.value === '') return '<span class="text-muted-foreground/50 italic">- Pilih tanggal -</span>'
             return params.value
@@ -197,12 +218,14 @@ export function useDetailPreview(details) {
           valueSetter: (params) => { params.data[df.key] = params.newValue; return true },
         })
       } else if (df.type === 'radio') {
+        const width = parseInt(df.width, 10) || parseInt(getDetailFieldDefaultWidth(df.type), 10) || 220
         const opts = (df.radioOptions || []).map(o => ({ value: o.value, label: o.label || o.value }))
         cols.push({
           headerName: df.label || df.key,
           field: df.key,
-          flex: 1, minWidth: 120,
-          editable: true,
+          width,
+          minWidth: width,
+          editable: !isReadonlyDetailField(df),
           cellRenderer: (params) => {
             if (params.value == null || params.value === '') return '<span class="text-muted-foreground/50 italic">- Pilih -</span>'
             if (opts.length) {
@@ -219,11 +242,14 @@ export function useDetailPreview(details) {
           }),
         })
       } else {
+        const width = parseInt(df.width, 10) || parseInt(getDetailFieldDefaultWidth(df.type), 10) || 160
         cols.push({
           headerName: df.label || df.key,
           field: df.key,
-          flex: 1, minWidth: 120,
-          editable: true,
+          width,
+          minWidth: width,
+          editable: !isReadonlyDetailField(df),
+          cellStyle: isDetailNumericFieldType(df.type) ? { textAlign: 'right' } : undefined,
           valueSetter: (params) => { params.data[df.key] = params.newValue; return true },
         })
       }
@@ -246,7 +272,7 @@ export function useDetailPreview(details) {
   function detailFieldsKey(dIdx) {
     const detail = details.value[dIdx]
     if (!detail) return `d-${dIdx}`
-    return `d-${dIdx}-` + (detail.detailFields || []).map(f => f.key + ':' + f.type + ':' + (f.sourceType || '') + ':' + (f.staticOptions?.length || 0) + ':' + (f.radioOptions?.length || 0)).join(',')
+    return `d-${dIdx}-` + (detail.detailFields || []).map(f => f.key + ':' + f.type + ':' + (f.sourceType || '') + ':' + (f.staticOptions?.length || 0) + ':' + (f.radioOptions?.length || 0) + ':' + (f.readonly ? 'ro' : 'rw') + ':' + (f.width || '') + ':' + (f.decimalPlaces ?? '')).join(',')
   }
 
   // Clear preview data for a specific detail tab
