@@ -400,7 +400,21 @@ onUnmounted(() => {
 <template>
   <Sidebar v-bind="props">
     <SidebarHeader>
-      <TeamSwitcher />
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton size="lg" as-child>
+            <NuxtLink to="/" class="flex items-center gap-2">
+              <div class="flex items-center justify-center rounded-lg bg-sidebar-primary dark:bg-sidebar-primary/20 aspect-square size-8">
+                <img src="/logo.webp" alt="MVG" class="h-5 w-5" />
+              </div>
+              <div class="grid flex-1 text-left text-sm leading-tight">
+                <span class="truncate font-semibold">Endfield</span>
+                <span class="truncate text-xs text-muted-foreground">ERP System</span>
+              </div>
+            </NuxtLink>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
       <div class="px-2 pt-2">
         <SidebarInput v-model="searchQuery" placeholder="Search menu..." />
       </div>

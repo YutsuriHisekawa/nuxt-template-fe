@@ -37,6 +37,7 @@ const selectedTheme = computed({
         type="button"
         class="inline-flex h-10 w-10 items-center justify-center rounded-full border bg-background text-foreground shadow-xs transition hover:bg-accent"
         aria-label="Pilih tema warna"
+        title="Tema Warna"
       >
         <Palette class="h-5 w-5" />
       </button>

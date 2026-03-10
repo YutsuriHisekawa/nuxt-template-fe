@@ -21,6 +21,7 @@ function toggleTheme() {
     type="button"
     class="inline-flex h-10 w-10 items-center justify-center rounded-full border bg-background text-foreground shadow-xs transition hover:bg-accent"
     :aria-label="isDark ? 'Ganti ke mode terang' : 'Ganti ke mode gelap'"
+    :title="isDark ? 'Mode Terang' : 'Mode Gelap'"
     @click="toggleTheme"
   >
     <svg
