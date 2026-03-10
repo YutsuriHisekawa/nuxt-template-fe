@@ -86,19 +86,20 @@ onMounted(async () => {
 </script>
 
 <template>
-  <Tooltip>
-    <Dialog v-model:open="open">
-      <TooltipTrigger as-child>
-        <DialogTrigger as-child>
-          <button
-            type="button"
-            class="inline-flex h-10 w-10 items-center justify-center rounded-full border bg-background text-foreground shadow-xs transition hover:bg-accent"
-            aria-label="Change Respo Access"
-          >
-            <Building2 class="h-5 w-5" />
-          </button>
-        </DialogTrigger>
-      </TooltipTrigger>
+  <TooltipProvider>
+    <Tooltip>
+      <Dialog v-model:open="open">
+        <TooltipTrigger as-child>
+          <DialogTrigger as-child>
+            <button
+              type="button"
+              class="inline-flex h-10 w-10 items-center justify-center rounded-full border bg-background text-foreground shadow-xs transition hover:bg-accent"
+              aria-label="Change Respo Access"
+            >
+              <Building2 class="h-5 w-5" />
+            </button>
+          </DialogTrigger>
+        </TooltipTrigger>
 
       <DialogContent class="sm:max-w-md">
         <DialogHeader>
@@ -129,8 +130,9 @@ onMounted(async () => {
             <Check v-if="activeRespo?.id === respo.id" class="h-5 w-5 shrink-0 text-primary" />
           </button>
         </div>
-      </DialogContent>
-    </Dialog>
-    <TooltipContent>Change Respo Access</TooltipContent>
-  </Tooltip>
+        </DialogContent>
+      </Dialog>
+      <TooltipContent>Change Respo Access</TooltipContent>
+    </Tooltip>
+  </TooltipProvider>
 </template>
