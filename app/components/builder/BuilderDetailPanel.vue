@@ -525,6 +525,62 @@ function applyDetailTemplate(fieldIndex) {
       <p class="text-xs text-muted-foreground/70 mt-0.5">Key yang dikirim dalam payload POST/PUT</p>
     </div>
 
+    <!-- ════════════════════════════════════════════════════════════════ -->
+    <!-- DETAIL OPTIONS (shared between both modes) -->
+    <!-- ════════════════════════════════════════════════════════════════ -->
+    <div class="space-y-3 border border-border rounded-lg p-3 bg-muted/20">
+      <p class="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Opsi Detail</p>
+
+      <!-- Min / Max Rows -->
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label class="block mb-0.5 text-xs text-muted-foreground">Min Baris</label>
+          <input type="number" min="0" :value="detail.minRows || 0" placeholder="0 = tidak ada" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1.5 text-sm focus:border-primary focus:ring-1 focus:ring-primary" @input="update('minRows', Number($event.target.value) || 0)" />
+          <p class="text-[9px] text-muted-foreground/50 mt-0.5">0 = tidak wajib isi</p>
+        </div>
+        <div>
+          <label class="block mb-0.5 text-xs text-muted-foreground">Max Baris</label>
+          <input type="number" min="0" :value="detail.maxRows || 0" placeholder="0 = unlimited" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1.5 text-sm focus:border-primary focus:ring-1 focus:ring-primary" @input="update('maxRows', Number($event.target.value) || 0)" />
+          <p class="text-[9px] text-muted-foreground/50 mt-0.5">0 = tak terbatas</p>
+        </div>
+      </div>
+
+      <!-- Toggle: Duplicate Row -->
+      <div class="flex items-center justify-between gap-2">
+        <div>
+          <p class="text-xs font-medium text-foreground">Duplikat Baris</p>
+          <p class="text-[9px] text-muted-foreground/50">Tombol salin baris di tabel detail</p>
+        </div>
+        <button type="button" class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors" :class="detail.enableDuplicate ? 'bg-primary' : 'bg-muted-foreground/30'" @click="update('enableDuplicate', !detail.enableDuplicate)">
+          <span class="inline-block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform" :class="detail.enableDuplicate ? 'translate-x-[18px]' : 'translate-x-0.5'" />
+        </button>
+      </div>
+
+      <!-- Toggle: Reorder Row -->
+      <div class="flex items-center justify-between gap-2">
+        <div>
+          <p class="text-xs font-medium text-foreground">Urut Baris (↑↓)</p>
+          <p class="text-[9px] text-muted-foreground/50">Tombol naik/turun untuk urut baris</p>
+        </div>
+        <button type="button" class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors" :class="detail.enableReorder ? 'bg-primary' : 'bg-muted-foreground/30'" @click="update('enableReorder', !detail.enableReorder)">
+          <span class="inline-block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform" :class="detail.enableReorder ? 'translate-x-[18px]' : 'translate-x-0.5'" />
+        </button>
+      </div>
+
+      <!-- Toggle: Import from Clipboard -->
+      <div class="flex items-center justify-between gap-2">
+        <div>
+          <p class="text-xs font-medium text-foreground">Import Clipboard</p>
+          <p class="text-[9px] text-muted-foreground/50">Paste dari Excel/spreadsheet (tab-separated)</p>
+        </div>
+        <button type="button" class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors" :class="detail.enableImport ? 'bg-primary' : 'bg-muted-foreground/30'" @click="update('enableImport', !detail.enableImport)">
+          <span class="inline-block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform" :class="detail.enableImport ? 'translate-x-[18px]' : 'translate-x-0.5'" />
+        </button>
+      </div>
+    </div>
+
+    <hr class="border-border" />
+
     <!-- ================================================================ -->
     <!-- BUTTON MULTI SELECT MODE FIELDS -->
     <!-- ================================================================ -->
@@ -1006,7 +1062,22 @@ function applyDetailTemplate(fieldIndex) {
             </div>
           </div>
 
-          <div class="grid grid-cols-2 gap-2 border-t border-border/50 pt-2">
+          <div class="grid grid-cols-3 gap-2 border-t border-border/50 pt-2">
+            <div>
+              <label class="block mb-0.5 text-xs text-muted-foreground">Required</label>
+              <div class="flex rounded border border-border overflow-hidden h-[26px]">
+                <button
+                  class="flex-1 text-xs transition-colors"
+                  :class="df.required ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'"
+                  @click="updateDetailField(i, 'required', true)"
+                >Ya</button>
+                <button
+                  class="flex-1 text-xs transition-colors border-l border-border"
+                  :class="!df.required ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'"
+                  @click="updateDetailField(i, 'required', false)"
+                >Tidak</button>
+              </div>
+            </div>
             <div>
               <label class="block mb-0.5 text-xs text-muted-foreground">Readonly</label>
               <div class="flex rounded border border-border overflow-hidden h-[26px]">
@@ -1034,6 +1105,100 @@ function applyDetailTemplate(fieldIndex) {
               />
               <p class="text-[9px] text-muted-foreground/50 mt-0.5">Kosong = default {{ getDetailFieldDefaultWidth(df.type) }}</p>
             </div>
+          </div>
+
+          <!-- ═══ Upload/Multi-Upload config ═══ -->
+          <div v-if="df.type === 'upload' || df.type === 'multi_upload'" class="border-t border-border/50 pt-2 space-y-2">
+            <p class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Pengaturan Upload</p>
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block mb-0.5 text-xs text-muted-foreground">Accept (MIME)</label>
+                <input type="text" :value="df.uploadAccept || 'image/*'" placeholder="image/*" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'uploadAccept', $event.target.value)" />
+              </div>
+              <div>
+                <label class="block mb-0.5 text-xs text-muted-foreground">Max Size (MB)</label>
+                <input type="number" min="1" :value="df.maxSizeMB || 5" placeholder="5" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'maxSizeMB', Number($event.target.value) || 5)" />
+              </div>
+            </div>
+            <div v-if="df.type === 'multi_upload'">
+              <label class="block mb-0.5 text-xs text-muted-foreground">Max Gambar</label>
+              <input type="number" min="1" :value="df.maxImages || 10" placeholder="10" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'maxImages', Number($event.target.value) || 10)" />
+            </div>
+          </div>
+
+          <!-- ═══ DependsOn (cascading) ═══ -->
+          <div v-if="['select', 'popup'].includes(df.type) && (df.sourceType || 'api') === 'api'" class="border-t border-border/50 pt-2 space-y-1.5">
+            <p class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Cascading (DependsOn)</p>
+            <div>
+              <label class="block mb-0.5 text-[10px] text-muted-foreground">Field Sumber (baris sama)</label>
+              <select
+                :value="df.dependsOn || ''"
+                class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-[10px]"
+                @change="updateDetailField(i, 'dependsOn', $event.target.value)"
+              >
+                <option value="">-- Tidak ada --</option>
+                <option
+                  v-for="odf in (detail.detailFields || []).filter(f => f.key && f.key !== df.key && ['select', 'popup', 'text', 'number', 'fieldnumber', 'fieldnumber_decimal'].includes(f.type))"
+                  :key="odf.key"
+                  :value="odf.key"
+                >{{ odf.label || odf.key }}</option>
+              </select>
+            </div>
+            <div v-if="df.dependsOn">
+              <label class="block mb-0.5 text-[10px] text-muted-foreground">Nama Param API</label>
+              <input type="text" :value="df.dependsOnParam || ''" :placeholder="df.dependsOn + '_id'" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-[10px]" @input="updateDetailField(i, 'dependsOnParam', $event.target.value)" />
+              <p class="text-[8px] text-muted-foreground/50 mt-0.5">Param query yang dikirim ke API (misal: m_kategori_id)</p>
+            </div>
+          </div>
+
+          <!-- ═══ VisibleWhen / ReadonlyWhen (conditional) ═══ -->
+          <div class="border-t border-border/50 pt-2 space-y-2">
+            <details class="group">
+              <summary class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide cursor-pointer select-none">
+                <span>Visible / Readonly Kondisional</span>
+                <span v-if="df.visibleWhen?.field || df.readonlyWhen?.field" class="text-[9px] px-1 py-0.5 bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300 rounded ml-1">Aktif</span>
+              </summary>
+              <div class="mt-1.5 space-y-2">
+                <!-- visibleWhen -->
+                <div class="bg-muted/30 rounded p-2 space-y-1">
+                  <p class="text-[9px] text-muted-foreground/60 font-semibold">Tampilkan hanya jika:</p>
+                  <div class="grid grid-cols-2 gap-1.5">
+                    <select
+                      :value="df.visibleWhen?.field || ''"
+                      class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-[10px]"
+                      @change="updateDetailField(i, 'visibleWhen', { field: $event.target.value, value: df.visibleWhen?.value || '' })"
+                    >
+                      <option value="">-- Selalu tampil --</option>
+                      <option
+                        v-for="odf in (detail.detailFields || []).filter(f => f.key && f.key !== df.key)"
+                        :key="odf.key"
+                        :value="odf.key"
+                      >{{ odf.label || odf.key }}</option>
+                    </select>
+                    <input v-if="df.visibleWhen?.field" type="text" :value="df.visibleWhen?.value || ''" placeholder="= nilai" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-[10px]" @input="updateDetailField(i, 'visibleWhen', { ...df.visibleWhen, value: $event.target.value })" />
+                  </div>
+                </div>
+                <!-- readonlyWhen -->
+                <div class="bg-muted/30 rounded p-2 space-y-1">
+                  <p class="text-[9px] text-muted-foreground/60 font-semibold">Readonly jika:</p>
+                  <div class="grid grid-cols-2 gap-1.5">
+                    <select
+                      :value="df.readonlyWhen?.field || ''"
+                      class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-[10px]"
+                      @change="updateDetailField(i, 'readonlyWhen', { field: $event.target.value, value: df.readonlyWhen?.value || '' })"
+                    >
+                      <option value="">-- Tidak ada --</option>
+                      <option
+                        v-for="odf in (detail.detailFields || []).filter(f => f.key && f.key !== df.key)"
+                        :key="odf.key"
+                        :value="odf.key"
+                      >{{ odf.label || odf.key }}</option>
+                    </select>
+                    <input v-if="df.readonlyWhen?.field" type="text" :value="df.readonlyWhen?.value || ''" placeholder="= nilai" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-[10px]" @input="updateDetailField(i, 'readonlyWhen', { ...df.readonlyWhen, value: $event.target.value })" />
+                  </div>
+                </div>
+              </div>
+            </details>
           </div>
 
           <!-- Type badge + Summary selector -->

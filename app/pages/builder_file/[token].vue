@@ -2916,6 +2916,7 @@ node add_route.cjs setup/m_supplier</pre
               <BuilderFieldPanel
                 :field="fields[panelIndex]"
                 :allFields="fields"
+                :allDetails="details"
                 :fieldIndex="panelIndex"
                 @update:field="updateFieldAtIndex"
                 @remove="removeField"

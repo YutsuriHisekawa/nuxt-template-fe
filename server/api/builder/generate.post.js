@@ -109,13 +109,17 @@ function buildResetValues(fields) {
   }).join('\n')
 }
 
-function buildComputedWatchers(fields) {
+function buildComputedWatchers(fields, details) {
   // Support both new array format and legacy string format
   const computedFields = fields.filter(f => {
     if (Array.isArray(f.computedFormula)) return f.computedFormula.length > 0
     return typeof f.computedFormula === 'string' && f.computedFormula.trim()
   })
-  if (!computedFields.length) return ''
+
+  // Detect detailAggregate fields (SUM/AVG/COUNT from detail → header)
+  const aggregateFields = fields.filter(f => f.detailAggregate?.type && f.detailAggregate?.detailField)
+
+  if (!computedFields.length && !aggregateFields.length) return ''
 
   const watchers = computedFields.map(f => {
     let refs = []
@@ -169,7 +173,39 @@ ${watchSources}
 );`
   })
 
-  return '\n// ── Computed / Auto-Fill Fields ──\n' + watchers.join('\n\n')
+  // Build aggregate watchers (detail → header)
+  const aggWatchers = aggregateFields.map(f => {
+    const agg = f.detailAggregate
+    const di = Number(agg.detailIndex) || 0
+    const varName = di === 0 ? 'detailArr' : `detailArr${di + 1}`
+    const field = agg.detailField
+    const op = agg.type // SUM, AVG, COUNT
+
+    let expr = ''
+    if (op === 'SUM') {
+      expr = `${varName}.value.reduce((s, d) => s + (Number(d.${field}) || 0), 0)`
+    } else if (op === 'AVG') {
+      expr = `${varName}.value.length ? (${varName}.value.reduce((s, d) => s + (Number(d.${field}) || 0), 0) / ${varName}.value.length) : 0`
+    } else if (op === 'COUNT') {
+      expr = `${varName}.value.length`
+    }
+    if (!expr) return ''
+
+    return `// Aggregate: ${f.field} = ${op}(${varName}.${field})
+watch(
+  ${varName},
+  () => {
+    if (isReadOnly.value) return;
+    values.${f.field} = ${expr};
+  },
+  { deep: true, immediate: true }
+);`
+  }).filter(Boolean)
+
+  const all = [...watchers, ...aggWatchers]
+  if (!all.length) return ''
+
+  return '\n// ── Computed / Auto-Fill Fields ──\n' + all.join('\n\n')
 }
 
 function buildFieldTemplate(f, fields, fullClass, details) {
@@ -401,8 +437,14 @@ function buildDetailImports(details) {
   // Plus is needed for Add To List mode
   const hasAddToList = details.some(d => d.mode === 'add_to_list')
   const hasMultiSelect = details.some(d => d.mode !== 'add_to_list')
+  const hasDuplicate = details.some(d => d.enableDuplicate)
+  const hasReorder = details.some(d => d.enableReorder)
+  const hasImport = details.some(d => d.enableImport)
   const icons = ['Trash2']
   if (hasAddToList) icons.push('Plus')
+  if (hasDuplicate) icons.push('Copy')
+  if (hasReorder) icons.push('ArrowUp', 'ArrowDown')
+  if (hasImport) icons.push('ClipboardPaste')
   let code = `import { ${icons.join(', ')} } from "lucide-vue-next";`
   // Add resolvePath helper for dot-path uniqueKey resolution in ButtonMultiSelect mode
   if (hasMultiSelect) {
@@ -566,6 +608,55 @@ const ${removeName} = (index) => {
   toast.info("Item dihapus dari daftar");
 };`)
     }
+
+    // ── Optional: Duplicate row ──
+    if (d.enableDuplicate) {
+      const dupName = i === 0 ? 'duplicateDetail' : `duplicateDetail${i + 1}`
+      blocks.push(`
+const ${dupName} = (index) => {
+  const row = ${varName}.value[index];
+  if (!row) return;
+  ${varName}.value.splice(index + 1, 0, { ...JSON.parse(JSON.stringify(row)) });
+  toast.info("Baris diduplikat");
+};`)
+    }
+
+    // ── Optional: Reorder row ──
+    if (d.enableReorder) {
+      const moveName = i === 0 ? 'moveDetail' : `moveDetail${i + 1}`
+      blocks.push(`
+const ${moveName} = (index, direction) => {
+  const target = index + direction;
+  if (target < 0 || target >= ${varName}.value.length) return;
+  const arr = ${varName}.value;
+  [arr[index], arr[target]] = [arr[target], arr[index]];
+};`)
+    }
+
+    // ── Optional: Import from clipboard ──
+    if (d.enableImport) {
+      const importName = i === 0 ? 'importDetailClipboard' : `importDetailClipboard${i + 1}`
+      const fieldKeys = detailFields.map(df => df.key)
+      blocks.push(`
+const ${importName} = async () => {
+  try {
+    const text = await navigator.clipboard.readText();
+    if (!text?.trim()) { toast.warning("Clipboard kosong"); return; }
+    const rows = text.trim().split("\\n").map(line => line.split("\\t"));
+    const keys = ${JSON.stringify(fieldKeys)};
+    let added = 0;
+    rows.forEach(cols => {
+      const row = {};
+      keys.forEach((k, ki) => { row[k] = cols[ki]?.trim() || ""; });
+      ${varName}.value.push(row);
+      added++;
+    });
+    if (added > 0) toast.success(\`\${added} baris diimport dari clipboard\`);
+  } catch (e) {
+    toast.error("Gagal baca clipboard", { description: e?.message });
+  }
+};`)
+    }
   })
   return blocks.join('\n')
 }
@@ -664,6 +755,16 @@ ${fieldMappings}
   return '\n' + lines.join('\n')
 }
 
+// Helper: wrap <td> with v-if for visibleWhen on detail fields
+function wrapDetailTdVisibility(td, df, hasVisibleWhen, cellStyleAttr) {
+  if (!hasVisibleWhen) return td
+  const cond = `detail.${df.visibleWhen.field}?.toString() === '${df.visibleWhen.value}'`
+  // Replace the <td with <td v-if, and add an empty fallback td
+  td = td.replace(/^(\s*<td )/, `$1v-if="${cond}" `)
+  td += `\n                      <td v-else${cellStyleAttr}></td>`
+  return td
+}
+
 function buildDetailFieldTd(df, allDetailFields) {
   const detailWidth = df.width || ({
     checkbox: '110px',
@@ -680,12 +781,23 @@ function buildDetailFieldTd(df, allDetailFields) {
     radio: '220px',
     currency: '170px',
     slider: '200px',
+    upload: '200px',
+    multi_upload: '260px',
   }[df.type] || '160px')
   const cellStyleAttr = ` style="width: ${detailWidth}; min-width: ${detailWidth};"`
   const numericTypes = ['number', 'fieldnumber', 'fieldnumber_decimal', 'currency', 'slider']
   const isNumeric = numericTypes.includes(df.type)
   const tdClass = isNumeric ? 'px-2 py-2 text-right' : 'px-2 py-2'
   const isReadonlyField = Boolean(df.readonly)
+  // Dynamic readonlyWhen: override readonly based on another detail field's value
+  const hasReadonlyWhen = df.readonlyWhen?.field && df.readonlyWhen?.value !== undefined && df.readonlyWhen?.value !== ''
+  const readonlyExpr = hasReadonlyWhen
+    ? `detail.${df.readonlyWhen.field}?.toString() === '${df.readonlyWhen.value}'`
+    : (isReadonlyField ? 'true' : 'false')
+  // visibleWhen: conditionally show field
+  const hasVisibleWhen = df.visibleWhen?.field && df.visibleWhen?.value !== undefined && df.visibleWhen?.value !== ''
+  // dependsOn: cascade API params from same-row field
+  const hasDependsOn = df.dependsOn && ['select', 'popup'].includes(df.type)
   const decimalPlaces = (() => {
     const parsed = Number.parseInt(df.decimalPlaces, 10)
     if (!Number.isFinite(parsed)) return 2
@@ -706,57 +818,61 @@ function buildDetailFieldTd(df, allDetailFields) {
   }
 
   if (df.type === 'checkbox') {
-    return `                      <td class="px-2 py-2 text-center"${cellStyleAttr}>
+    let td = `                      <td class="px-2 py-2 text-center"${cellStyleAttr}>
                         <FieldBox
                           v-if="!isReadOnly"
                           :value="detail.${df.key}"
                           @input="(v) => (detail.${df.key} = v)"
-                          :readonly="${isReadonlyField ? 'true' : 'false'}"
+                          :readonly="${readonlyExpr}"
                           labelTrue="${df.labelTrue || 'Ya'}"
                           labelFalse="${df.labelFalse || 'Tidak'}"
                         />
                         <span v-else>{{ detail.${df.key} ? '${df.labelTrue || 'Ya'}' : '${df.labelFalse || 'Tidak'}' }}</span>
                       </td>`
+    return wrapDetailTdVisibility(td, df, hasVisibleWhen, cellStyleAttr)
   }
   if (df.type === 'fieldnumber' || df.type === 'fieldnumber_decimal') {
     const fnType = df.type === 'fieldnumber_decimal' ? 'decimal' : 'integer'
     const decimalPlacesAttr = df.type === 'fieldnumber_decimal' ? `\n                          :decimalPlaces="${decimalPlaces}"` : ''
-    return `                      <td class="${tdClass}"${cellStyleAttr}>
+    let td = `                      <td class="${tdClass}"${cellStyleAttr}>
                         <FieldNumber
                           v-if="!isReadOnly"
                           :value="detail.${df.key}"
                           @input="(v) => (detail.${df.key} = v)"
                           type="${fnType}"
-                          :readonly="${isReadonlyField ? 'true' : 'false'}"${decimalPlacesAttr}
+                          :readonly="${readonlyExpr}"${decimalPlacesAttr}
                           class="w-full"
                         />
                         <span v-else>{{ ${formatValueExpr(`detail.${df.key}`)} }}</span>
                       </td>`
+    return wrapDetailTdVisibility(td, df, hasVisibleWhen, cellStyleAttr)
   }
   if (df.type === 'number') {
-    return `                      <td class="${tdClass}"${cellStyleAttr}>
+    let td = `                      <td class="${tdClass}"${cellStyleAttr}>
                         <FieldX
                           v-if="!isReadOnly"
                           :value="detail.${df.key}"
                           @input="(v) => (detail.${df.key} = v)"
                           type="number"
-                          :readonly="${isReadonlyField ? 'true' : 'false'}"
+                          :readonly="${readonlyExpr}"
                           class="w-full"
                         />
                         <span v-else>{{ ${formatValueExpr(`detail.${df.key}`)} }}</span>
                       </td>`
+    return wrapDetailTdVisibility(td, df, hasVisibleWhen, cellStyleAttr)
   }
   if (df.type === 'textarea') {
-    return `                      <td class="${tdClass}"${cellStyleAttr}>
+    let td = `                      <td class="${tdClass}"${cellStyleAttr}>
                         <FieldTextarea
                           v-if="!isReadOnly"
                           :value="detail.${df.key}"
                           @input="(v) => (detail.${df.key} = v)"
-                          :readonly="${isReadonlyField ? 'true' : 'false'}"
+                          :readonly="${readonlyExpr}"
                           class="w-full"
                         />
                         <span v-else>{{ detail.${df.key} || '-' }}</span>
                       </td>`
+    return wrapDetailTdVisibility(td, df, hasVisibleWhen, cellStyleAttr)
   }
   if (df.type === 'select') {
     const src = df.sourceType || 'api'
@@ -765,36 +881,46 @@ function buildDetailFieldTd(df, allDetailFields) {
     const valueFullAttr = detailAutoFills.length > 0
       ? `\n                          @update:valueFull="(obj) => { ${detailAutoFills.map(af => `detail.${af.key} = obj?.${af.defaultValueFrom.property} || ''`).join('; ')} }"`
       : ''
+    // dependsOn: disable until parent field is filled, bind parent value as API param
+    const dependsOnDisabled = hasDependsOn ? `\n                          :disabled="!detail.${df.dependsOn}"` : ''
+    const dependsOnParam = hasDependsOn ? (df.dependsOnParam || df.dependsOn) : ''
     if (src === 'api') {
       const paramsArr = Array.isArray(df.apiParams) ? df.apiParams.filter(p => p.key) : []
-      const qs = paramsArr.map(p => `${p.key}=${p.value || ''}`).join('&')
-      const apiUrlWithParams = (df.apiUrl || '') + (qs ? `?${qs}` : '')
-      return `                      <td class="${tdClass}"${cellStyleAttr}>
+      if (hasDependsOn) paramsArr.push({ key: dependsOnParam, value: `__DYNAMIC__detail.${df.dependsOn}` })
+      const staticQs = paramsArr.filter(p => !p.value?.startsWith('__DYNAMIC__')).map(p => `${p.key}=${p.value || ''}`).join('&')
+      const dynamicParams = paramsArr.filter(p => p.value?.startsWith('__DYNAMIC__'))
+      const apiUrlWithParams = (df.apiUrl || '') + (staticQs ? `?${staticQs}` : '')
+      const dynamicApiParamsAttr = dynamicParams.length
+        ? `\n                          :apiParams="{ ${dynamicParams.map(p => `'${p.key}': detail.${p.value.replace('__DYNAMIC__', '')}`).join(', ')} }"`
+        : ''
+      let td = `                      <td class="${tdClass}"${cellStyleAttr}>
                         <FieldSelect
                           v-if="!isReadOnly"
                           :value="detail.${df.key}"
                           @input="(v) => (detail.${df.key} = v)"${valueFullAttr}
-                          apiUrl="${apiUrlWithParams}"
+                          apiUrl="${apiUrlWithParams}"${dynamicApiParamsAttr}
                           displayField="${df.displayField || 'name'}"
                           valueField="${df.valueField || 'id'}"
-                          :readonly="${isReadonlyField ? 'true' : 'false'}"
+                          :readonly="${readonlyExpr}"${dependsOnDisabled}
                           class="w-full"
                         />
                         <span v-else>{{ detail.${df.key} || '-' }}</span>
                       </td>`
+      return wrapDetailTdVisibility(td, df, hasVisibleWhen, cellStyleAttr)
     }
     const opts = (df.staticOptions || []).map(o => `{ value: '${o.value}', label: '${o.label}' }`).join(', ')
-    return `                      <td class="${tdClass}"${cellStyleAttr}>
+    let td = `                      <td class="${tdClass}"${cellStyleAttr}>
                         <FieldSelect
                           v-if="!isReadOnly"
                           :value="detail.${df.key}"
                           @input="(v) => (detail.${df.key} = v)"${valueFullAttr}
                           :options="[${opts}]"
-                          :readonly="${isReadonlyField ? 'true' : 'false'}"
+                          :readonly="${readonlyExpr}"
                           class="w-full"
                         />
                         <span v-else>{{ detail.${df.key} || '-' }}</span>
                       </td>`
+    return wrapDetailTdVisibility(td, df, hasVisibleWhen, cellStyleAttr)
   }
   if (df.type === 'popup') {
     // Check if any other detail field auto-fills from this field
@@ -802,10 +928,19 @@ function buildDetailFieldTd(df, allDetailFields) {
     const valueFullAttr = detailAutoFills.length > 0
       ? `\n                          @update:valueFull="(obj) => { ${detailAutoFills.map(af => `detail.${af.key} = obj?.${af.defaultValueFrom.property} || ''`).join('; ')} }"`
       : ''
+    // dependsOn: disable until parent field is filled, bind parent value as API param
+    const dependsOnDisabled = hasDependsOn ? `\n                          :disabled="!detail.${df.dependsOn}"` : ''
+    const dependsOnParam = hasDependsOn ? (df.dependsOnParam || df.dependsOn) : ''
     // API params → inline in URL
     const paramsArr = Array.isArray(df.apiParams) ? df.apiParams.filter(p => p.key) : []
-    const qs = paramsArr.map(p => `${p.key}=${p.value || ''}`).join('&')
+    if (hasDependsOn) paramsArr.push({ key: dependsOnParam, value: `__DYNAMIC__detail.${df.dependsOn}` })
+    const staticParams = paramsArr.filter(p => !p.value?.startsWith('__DYNAMIC__'))
+    const dynamicParams = paramsArr.filter(p => p.value?.startsWith('__DYNAMIC__'))
+    const qs = staticParams.map(p => `${p.key}=${p.value || ''}`).join('&')
     const apiUrlWithParams = (df.apiUrl || '') + (qs ? `?${qs}` : '')
+    const dynamicApiParamsAttr = dynamicParams.length
+      ? `\n                          :apiParams="{ ${dynamicParams.map(p => `'${p.key}': detail.${p.value.replace('__DYNAMIC__', '')}`).join(', ')} }"`
+      : ''
     // Popup columns
     const cols = Array.isArray(df.popupColumns) ? df.popupColumns.filter(c => c.field) : []
     const colsLiteral = cols.length
@@ -818,89 +953,95 @@ function buildDetailFieldTd(df, allDetailFields) {
       : '[]'
     const searchFieldsAttr = df.searchFields ? `\n                          searchFields="${df.searchFields}"` : ''
     const dialogTitleAttr = df.dialogTitle ? `\n                          dialogTitle="${df.dialogTitle}"` : ''
-    return `                      <td class="${tdClass}"${cellStyleAttr}>
+    let td = `                      <td class="${tdClass}"${cellStyleAttr}>
                         <FieldPopUp
                           v-if="!isReadOnly"
                           :value="detail.${df.key}"
                           @input="(v) => (detail.${df.key} = v)"${valueFullAttr}
-                          apiUrl="${apiUrlWithParams}"
+                          apiUrl="${apiUrlWithParams}"${dynamicApiParamsAttr}
                           displayField="${df.displayField || 'name'}"
                           valueField="${df.valueField || 'id'}"
                           :columns="${colsLiteral}"${searchFieldsAttr}${dialogTitleAttr}
-                          :readonly="${isReadonlyField ? 'true' : 'false'}"
+                          :readonly="${readonlyExpr}"${dependsOnDisabled}
                           class="w-full"
                         />
                         <span v-else>{{ detail.${df.key} || '-' }}</span>
                       </td>`
+    return wrapDetailTdVisibility(td, df, hasVisibleWhen, cellStyleAttr)
   }
   if (df.type === 'status') {
-    return `                      <td class="px-2 py-2 text-center"${cellStyleAttr}>
+    let td = `                      <td class="px-2 py-2 text-center"${cellStyleAttr}>
                         <FieldStatus
                           v-if="!isReadOnly"
                           v-model="detail.${df.key}"
                           active-text="${df.labelTrue || 'Aktif'}"
                           inactive-text="${df.labelFalse || 'Tidak Aktif'}"
-                          :readonly="${isReadonlyField ? 'true' : 'false'}"
+                          :readonly="${readonlyExpr}"
                         />
                         <span v-else :class="detail.${df.key} ? 'text-green-600 font-semibold' : 'text-red-500'">{{ detail.${df.key} ? '${df.labelTrue || 'Aktif'}' : '${df.labelFalse || 'Tidak Aktif'}' }}</span>
                       </td>`
+    return wrapDetailTdVisibility(td, df, hasVisibleWhen, cellStyleAttr)
   }
   if (df.type === 'date') {
-    return `                      <td class="${tdClass}"${cellStyleAttr}>
+    let td = `                      <td class="${tdClass}"${cellStyleAttr}>
                         <FieldDate
                           v-if="!isReadOnly"
                           :value="detail.${df.key}"
                           @input="(v) => (detail.${df.key} = v)"
-                          :readonly="${isReadonlyField ? 'true' : 'false'}"
+                          :readonly="${readonlyExpr}"
                           :clearable="true"
                           class="w-full"
                         />
                         <span v-else>{{ detail.${df.key} || '-' }}</span>
                       </td>`
+    return wrapDetailTdVisibility(td, df, hasVisibleWhen, cellStyleAttr)
   }
   if (df.type === 'datetime') {
-    return `                      <td class="${tdClass}"${cellStyleAttr}>
+    let td = `                      <td class="${tdClass}"${cellStyleAttr}>
                         <FieldDateTime
                           v-if="!isReadOnly"
                           :value="detail.${df.key}"
                           @input="(v) => (detail.${df.key} = v)"
-                          :readonly="${isReadonlyField ? 'true' : 'false'}"
+                          :readonly="${readonlyExpr}"
                           :clearable="true"
                           class="w-full"
                         />
                         <span v-else>{{ detail.${df.key} || '-' }}</span>
                       </td>`
+    return wrapDetailTdVisibility(td, df, hasVisibleWhen, cellStyleAttr)
   }
   if (df.type === 'radio') {
     const opts = (df.radioOptions || []).map(o => `{ value: '${o.value}', label: '${o.label}' }`).join(', ')
-    return `                      <td class="${tdClass}"${cellStyleAttr}>
+    let td = `                      <td class="${tdClass}"${cellStyleAttr}>
                         <FieldRadio
                           v-if="!isReadOnly"
                           :value="detail.${df.key}"
                           @input="(v) => (detail.${df.key} = v)"
                           :options="[${opts}]"
-                          :readonly="${isReadonlyField ? 'true' : 'false'}"
+                          :readonly="${readonlyExpr}"
                           class="w-full"
                         />
                         <span v-else>{{ detail.${df.key} || '-' }}</span>
                       </td>`
+    return wrapDetailTdVisibility(td, df, hasVisibleWhen, cellStyleAttr)
   }
   if (df.type === 'currency') {
     const currPrefix = df.currencyPrefix || 'Rp'
     const currAllowDecimal = df.allowDecimal !== false
     const currDecimalAttr = currAllowDecimal ? `\n                          :decimalPlaces="${decimalPlaces}"` : ''
-    return `                      <td class="${tdClass}"${cellStyleAttr}>
+    let td = `                      <td class="${tdClass}"${cellStyleAttr}>
                         <FieldCurrency
                           v-if="!isReadOnly"
                           :value="detail.${df.key}"
                           @input="(v) => (detail.${df.key} = v)"
-                          :readonly="${isReadonlyField ? 'true' : 'false'}"
+                          :readonly="${readonlyExpr}"
                           prefix="${currPrefix}"
                           :allowDecimal="${currAllowDecimal}"${currDecimalAttr}
                           class="w-full"
                         />
                         <span v-else>{{ ${formatValueExpr(`detail.${df.key}`)} }}</span>
                       </td>`
+    return wrapDetailTdVisibility(td, df, hasVisibleWhen, cellStyleAttr)
   }
   if (df.type === 'slider') {
     const slMin = df.sliderMin || 0
@@ -908,12 +1049,12 @@ function buildDetailFieldTd(df, allDetailFields) {
     const slStep = df.sliderStep || 1
     const slUnit = df.sliderUnit || ''
     const unitAttr = slUnit ? `\n                          unit="${slUnit}"` : ''
-    return `                      <td class="${tdClass}"${cellStyleAttr}>
+    let td = `                      <td class="${tdClass}"${cellStyleAttr}>
                         <FieldSlider
                           v-if="!isReadOnly"
                           :value="detail.${df.key}"
                           @input="(v) => (detail.${df.key} = v)"
-                          :readonly="${isReadonlyField ? 'true' : 'false'}"
+                          :readonly="${readonlyExpr}"
                           :min="${slMin}"
                           :max="${slMax}"
                           :step="${slStep}"${unitAttr}
@@ -921,19 +1062,107 @@ function buildDetailFieldTd(df, allDetailFields) {
                         />
                         <span v-else>{{ ${formatValueExpr(`detail.${df.key}`)} }}</span>
                       </td>`
+    return wrapDetailTdVisibility(td, df, hasVisibleWhen, cellStyleAttr)
   }
+  // Upload single file
+  if (df.type === 'upload') {
+    const accept = df.uploadAccept || 'image/*'
+    const maxSize = df.maxSizeMB || 5
+    let td = `                      <td class="px-2 py-2 text-center"${cellStyleAttr}>
+                        <FieldUpload
+                          v-if="!isReadOnly"
+                          v-model="detail.${df.key}"
+                          accept="${accept}"
+                          :maxSizeMB="${maxSize}"
+                          :readonly="${readonlyExpr}"
+                          class="w-full"
+                        />
+                        <a v-else-if="detail.${df.key}" :href="detail.${df.key}" target="_blank" class="text-primary underline text-xs">Lihat File</a>
+                        <span v-else class="text-muted-foreground text-xs">-</span>
+                      </td>`
+    return wrapDetailTdVisibility(td, df, hasVisibleWhen, cellStyleAttr)
+  }
+
+  // Multi upload files
+  if (df.type === 'multi_upload') {
+    const accept = df.uploadAccept || 'image/*'
+    const maxSize = df.maxSizeMB || 5
+    const maxImages = df.maxImages || 10
+    let td = `                      <td class="px-2 py-2 text-center"${cellStyleAttr}>
+                        <FieldMultiUpload
+                          v-if="!isReadOnly"
+                          v-model="detail.${df.key}"
+                          accept="${accept}"
+                          :maxSizeMB="${maxSize}"
+                          :maxImages="${maxImages}"
+                          :readonly="${readonlyExpr}"
+                          class="w-full"
+                        />
+                        <span v-else class="text-xs">{{ Array.isArray(detail.${df.key}) ? detail.${df.key}.length + ' file(s)' : '-' }}</span>
+                      </td>`
+    return wrapDetailTdVisibility(td, df, hasVisibleWhen, cellStyleAttr)
+  }
+
   // Default: FieldX text
-  return `                      <td class="${tdClass}"${cellStyleAttr}>
+  let td = `                      <td class="${tdClass}"${cellStyleAttr}>
                         <FieldX
                           v-if="!isReadOnly"
                           :value="detail.${df.key}"
                           @input="(v) => (detail.${df.key} = v)"
                           placeholder="${df.label || df.key}"
-                          :readonly="${isReadonlyField ? 'true' : 'false'}"
+                          :readonly="${readonlyExpr}"
                           class="w-full"
                         />
                         <span v-else>{{ detail.${df.key} || '-' }}</span>
                       </td>`
+  return wrapDetailTdVisibility(td, df, hasVisibleWhen, cellStyleAttr)
+}
+
+function buildDetailValidation(details) {
+  if (!hasDetails(details)) return ''
+
+  const lines = []
+  details.forEach((d, i) => {
+    const varName = i === 0 ? 'detailArr' : `detailArr${i + 1}`
+    const label = d.tabLabel || `Detail ${i + 1}`
+    const minRows = Number(d.minRows) || 0
+    const maxRows = Number(d.maxRows) || 0
+    const detailFields = d.detailFields || []
+
+    // Min row check
+    if (minRows > 0) {
+      lines.push(`  if (${varName}.value.length < ${minRows}) {
+    toast.error("${label}: minimal ${minRows} baris");
+    invalid = true;
+  }`)
+    }
+
+    // Max row check
+    if (maxRows > 0) {
+      lines.push(`  if (${varName}.value.length > ${maxRows}) {
+    toast.error("${label}: maksimal ${maxRows} baris");
+    invalid = true;
+  }`)
+    }
+
+    // Required field check per row
+    const requiredFields = detailFields.filter(df => df.required)
+    if (requiredFields.length) {
+      const checks = requiredFields.map(df => {
+        const val = `row.${df.key}`
+        return `        if (!${val} && ${val} !== 0 && ${val} !== false) {
+          toast.error("${label} baris " + (idx + 1) + ": ${df.label || df.key} wajib diisi");
+          invalid = true;
+        }`
+      }).join('\n')
+      lines.push(`  ${varName}.value.forEach((row, idx) => {
+${checks}
+  });`)
+    }
+  })
+
+  if (!lines.length) return ''
+  return '\n  // ── Detail Validation ──\n' + lines.join('\n')
 }
 
 function buildDetailFooter(detailFields, varName, prefixCols, suffixCols) {
@@ -1032,8 +1261,43 @@ function buildDetailTemplate(details) {
     if (d.mode === 'add_to_list') {
       // ── ADD TO LIST MODE ──
       const addName = i === 0 ? 'addDetailRow' : `addDetailRow${i + 1}`
+      const dupName = i === 0 ? 'duplicateDetail' : `duplicateDetail${i + 1}`
+      const moveName = i === 0 ? 'moveDetail' : `moveDetail${i + 1}`
+      const importName = i === 0 ? 'importDetailClipboard' : `importDetailClipboard${i + 1}`
       const totalCols = 1 + detailFields.length + 1
       const footer = buildDetailFooter(detailFields, varName, 1, 1)
+
+      // Max row guard on add button
+      const maxRows = Number(d.maxRows) || 0
+      const addBtnVif = maxRows > 0
+        ? `v-if="!isReadOnly && ${varName}.length < ${maxRows}"`
+        : `v-if="!isReadOnly"`
+
+      // Import clipboard button
+      const importBtn = d.enableImport ? `
+                <Button
+                  ${addBtnVif}
+                  variant="outline"
+                  size="sm"
+                  class="gap-1.5"
+                  @click="${importName}"
+                >
+                  <ClipboardPaste class="h-4 w-4" />
+                  Import
+                </Button>` : ''
+
+      // Per-row action buttons
+      const dupBtn = d.enableDuplicate ? `
+                        <Button variant="ghost" size="icon" class="h-7 w-7 sm:h-8 sm:w-8" @click="${dupName}(index)">
+                          <Copy class="h-3 w-3 sm:h-4 sm:w-4" />
+                        </Button>` : ''
+      const reorderBtns = d.enableReorder ? `
+                        <Button variant="ghost" size="icon" class="h-7 w-7 sm:h-8 sm:w-8" :disabled="index === 0" @click="${moveName}(index, -1)">
+                          <ArrowUp class="h-3 w-3 sm:h-4 sm:w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" class="h-7 w-7 sm:h-8 sm:w-8" :disabled="index === ${varName}.length - 1" @click="${moveName}(index, 1)">
+                          <ArrowDown class="h-3 w-3 sm:h-4 sm:w-4" />
+                        </Button>` : ''
 
       return `        <TabsContent value="${val}" class="space-y-4 mt-4">
           <Card>
@@ -1043,8 +1307,9 @@ function buildDetailTemplate(details) {
                   <CardTitle>${d.tabLabel || 'Detail'}</CardTitle>
                   <CardDescription>Kelola data detail</CardDescription>
                 </div>
+                <div class="flex items-center gap-2">${importBtn}
                 <Button
-                  v-if="!isReadOnly"
+                  ${addBtnVif}
                   variant="outline"
                   size="sm"
                   class="gap-1.5"
@@ -1053,6 +1318,7 @@ function buildDetailTemplate(details) {
                   <Plus class="h-4 w-4" />
                   ${d.buttonLabel || 'Tambah'}
                 </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -1074,7 +1340,7 @@ ${fieldThs}
                     <tr v-for="(detail, index) in ${varName}" :key="index" class="border-t hover:bg-muted/50">
                       <td class="px-3 py-2 text-xs sm:text-sm whitespace-nowrap">{{ index + 1 }}</td>
 ${fieldTds}
-                      <td v-if="!isReadOnly" class="px-2 py-2 text-center">
+                      <td v-if="!isReadOnly" class="px-2 py-2 text-center whitespace-nowrap">${dupBtn}${reorderBtns}
                         <Button variant="ghost" size="icon" class="h-7 w-7 sm:h-8 sm:w-8" @click="${removeName}(index)">
                           <Trash2 class="h-3 w-3 sm:h-4 sm:w-4 text-destructive" />
                         </Button>
@@ -1090,6 +1356,8 @@ ${fieldTds}
       // ── BUTTON MULTI SELECT MODE ──
       const handlerName = i === 0 ? 'handleDetailAdd' : `handleDetailAdd${i + 1}`
       const compName = i === 0 ? 'excludeDetailKeys' : `excludeDetailKeys${i + 1}`
+      const dupName = i === 0 ? 'duplicateDetail' : `duplicateDetail${i + 1}`
+      const moveName = i === 0 ? 'moveDetail' : `moveDetail${i + 1}`
       const fkDisplay = d.foreignDisplay || ''
       const antiDuplicate = !!d.antiDuplicate
       const displayCols = d.displayColumns || []
@@ -1127,6 +1395,19 @@ ${fieldTds}
       }).join('\n')
 
       const totalCols = 1 + displayCols.length + detailFields.length + 1
+
+      // Per-row action buttons
+      const dupBtn = d.enableDuplicate ? `
+                        <Button variant="ghost" size="icon" class="h-7 w-7 sm:h-8 sm:w-8" @click="${dupName}(index)">
+                          <Copy class="h-3 w-3 sm:h-4 sm:w-4" />
+                        </Button>` : ''
+      const reorderBtns = d.enableReorder ? `
+                        <Button variant="ghost" size="icon" class="h-7 w-7 sm:h-8 sm:w-8" :disabled="index === 0" @click="${moveName}(index, -1)">
+                          <ArrowUp class="h-3 w-3 sm:h-4 sm:w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" class="h-7 w-7 sm:h-8 sm:w-8" :disabled="index === ${varName}.length - 1" @click="${moveName}(index, 1)">
+                          <ArrowDown class="h-3 w-3 sm:h-4 sm:w-4" />
+                        </Button>` : ''
 
       return `        <TabsContent value="${val}" class="space-y-4 mt-4">
           <Card>
@@ -1168,7 +1449,7 @@ ${fieldThs}
                       <td class="px-3 py-2 text-xs sm:text-sm whitespace-nowrap">{{ index + 1 }}</td>
 ${displayTds}
 ${fieldTds}
-                      <td v-if="!isReadOnly" class="px-2 py-2 text-center">
+                      <td v-if="!isReadOnly" class="px-2 py-2 text-center whitespace-nowrap">${dupBtn}${reorderBtns}
                         <Button variant="ghost" size="icon" class="h-7 w-7 sm:h-8 sm:w-8" @click="${removeName}(index)">
                           <Trash2 class="h-3 w-3 sm:h-4 sm:w-4 text-destructive" />
                         </Button>
@@ -1646,12 +1927,13 @@ export default defineEventHandler(async (event) => {
     __DETAIL_STATE__: buildDetailState(details),
     __DETAIL_SELECTED_IDS__: buildDetailSelectedIds(details),
     __DETAIL_METHODS__: buildDetailMethods(details),
-    __COMPUTED_WATCHERS__: buildComputedWatchers(fields),
+    __COMPUTED_WATCHERS__: buildComputedWatchers(fields, details),
     __DETAIL_COMPUTED_WATCHERS__: buildDetailComputedWatchers(details),
     __DETAIL_RESET__: buildDetailReset(details),
     __DETAIL_LOAD_DATA__: buildDetailLoadData(details),
     __DETAIL_PAYLOAD__: buildDetailPayload(details),
     __DETAIL_TEMPLATE__: buildDetailTemplate(details),
+    __DETAIL_VALIDATION__: buildDetailValidation(details),
     __PRINT_BUTTON__: printTpl && printEnabled
       ? `        <Button
           v-if="isViewMode && perms.is_print !== false"

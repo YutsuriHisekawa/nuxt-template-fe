@@ -1176,6 +1176,8 @@ export function createBlankField() {
     readonlyWhenValue: '',
     computedFormula: [],
     defaultValueFrom: { field: '', property: '' },
+    // Header ← Detail aggregate formula (e.g. grand_total = SUM of detail subtotal)
+    detailAggregate: { type: '', detailIndex: 0, detailField: '' },
     step: 0,
     ...allMetaKeys,
     defaultValue: '', // always blank for new fields; boolean fields get their default when type is selected
@@ -1209,6 +1211,8 @@ export const DETAIL_FIELD_TYPES = [
   { value: 'radio', label: 'FieldRadio', component: 'FieldRadio', defaultValue: '' },
   { value: 'currency', label: 'FieldCurrency', component: 'FieldCurrency', defaultValue: 0 },
   { value: 'slider', label: 'FieldSlider', component: 'FieldSlider', defaultValue: 0 },
+  { value: 'upload', label: 'FieldUpload (File)', component: 'FieldUpload', defaultValue: '' },
+  { value: 'multi_upload', label: 'FieldMultiUpload', component: 'FieldMultiUpload', defaultValue: [] },
 ]
 
 const DETAIL_FIELD_DEFAULT_WIDTHS = {
@@ -1226,6 +1230,8 @@ const DETAIL_FIELD_DEFAULT_WIDTHS = {
   radio: '220px',
   currency: '170px',
   slider: '200px',
+  upload: '200px',
+  multi_upload: '260px',
 }
 
 export function getDetailFieldDefaultWidth(type) {
@@ -1267,6 +1273,13 @@ export function createBlankDetail() {
     displayColumns: [      // which fields to show in the detail table from the master record
       { key: 'name', label: 'Nama' },
     ],
+    // ── Row constraints ──
+    minRows: 0,            // minimum rows required (0 = no minimum)
+    maxRows: 0,            // maximum rows allowed (0 = unlimited)
+    // ── Row features ──
+    enableDuplicate: false, // show duplicate/copy row button
+    enableReorder: false,   // show drag-to-reorder handle
+    enableImport: false,    // show paste-from-Excel import button
     // ── Shared: detail fields per row ──
     detailFields: [        // editable fields per detail row
       { key: 'is_read', label: 'Read', type: 'checkbox', default: true, labelTrue: 'Ya', labelFalse: 'Tidak' },
@@ -1289,6 +1302,14 @@ export function createBlankDetailField() {
   return {
     key: '', label: '', type: 'checkbox', default: true,
     labelTrue: 'Ya', labelFalse: 'Tidak', summaryType: '', readonly: false, width: '', decimalPlaces: 2,
+    // Validation
+    required: false,
+    // Conditional logic
+    visibleWhen: { field: '', value: '' },    // show this column only when another detail field has this value
+    readonlyWhen: { field: '', value: '' },   // make readonly when condition met
+    // Cascading (dependsOn another detail field in same row)
+    dependsOn: '',          // key of the parent detail field (same row)
+    dependsOnParam: '',     // API param name for cascading filter
     // Select / PopUp / Radio fields
     sourceType: 'api', apiUrl: '', displayField: 'name', valueField: 'id',
     apiParams: [],
@@ -1300,6 +1321,8 @@ export function createBlankDetailField() {
     currencyPrefix: 'Rp', allowDecimal: true,
     // Slider specific
     sliderMin: 0, sliderMax: 100, sliderStep: 1, sliderUnit: '',
+    // Upload specific
+    uploadAccept: 'image/*', maxSizeMB: 5, maxImages: 10,
     // Formula per-row (same token format as header: [{type:'field',value:'qty'},{type:'op',value:'*'},{type:'field',value:'price'}])
     computedFormula: [],
     // Default value from header field (auto-fill)
