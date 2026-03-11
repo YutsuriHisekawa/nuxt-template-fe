@@ -1254,9 +1254,10 @@ export function createBlankDetail() {
     foreignKey: '',        // e.g. m_menu_id
     foreignDisplay: '',    // e.g. m_menu    (nested object key with display info)
     apiUrl: '',            // e.g. /api/dynamic/m_menu
-    searchKey: 'name',
+    searchKey: ['name'],
     displayKey: 'name',
     uniqueKey: 'id',
+    apiParams: [],         // e.g. [{ key: 'join', value: 'true' }]
     columns: [             // columns for ButtonMultiSelect popup table
       { key: '', label: '', width: '' },
     ],
@@ -1287,9 +1288,11 @@ export function createBlankDetailField() {
     labelTrue: 'Ya', labelFalse: 'Tidak', summaryType: '', readonly: false, width: '', decimalPlaces: 2,
     // Select / PopUp / Radio fields
     sourceType: 'api', apiUrl: '', displayField: 'name', valueField: 'id',
+    apiParams: [],
     staticOptions: [], radioOptions: [],
     // PopUp specific
     popupColumns: [], popupSearchKey: 'name', popupDisplayKey: 'name',
+    searchFields: '', dialogTitle: '',
     // Formula per-row (same token format as header: [{type:'field',value:'qty'},{type:'op',value:'*'},{type:'field',value:'price'}])
     computedFormula: [],
     // Default value from header field (auto-fill)

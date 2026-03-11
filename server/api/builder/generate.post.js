@@ -400,9 +400,15 @@ function buildDetailImports(details) {
   // Trash2 is always needed for remove button
   // Plus is needed for Add To List mode
   const hasAddToList = details.some(d => d.mode === 'add_to_list')
+  const hasMultiSelect = details.some(d => d.mode !== 'add_to_list')
   const icons = ['Trash2']
   if (hasAddToList) icons.push('Plus')
-  return `import { ${icons.join(', ')} } from "lucide-vue-next";`
+  let code = `import { ${icons.join(', ')} } from "lucide-vue-next";`
+  // Add resolvePath helper for dot-path uniqueKey resolution in ButtonMultiSelect mode
+  if (hasMultiSelect) {
+    code += `\n\n// Resolve dot-path keys like 'm_item.kode_item' → obj.m_item.kode_item\nfunction $resolvePath(obj, path) {\n  if (!obj || !path) return undefined;\n  if (obj[path] !== undefined) return obj[path];\n  return path.split('.').reduce((o, k) => o?.[k], obj);\n}`
+  }
+  return code
 }
 
 function buildDetailComputedWatchers(details) {
@@ -460,12 +466,19 @@ function buildDetailSelectedIds(details) {
   if (!hasDetails(details)) return ''
   const lines = []
   details.forEach((d, i) => {
-    // Only ButtonMultiSelect mode needs excludeIds computed
+    // Only ButtonMultiSelect mode with antiDuplicate needs excludeKeys computed
     if (d.mode === 'add_to_list') return
+    if (!d.antiDuplicate) return
     const varName = i === 0 ? 'detailArr' : `detailArr${i + 1}`
-    const compName = i === 0 ? 'selectedDetailIds' : `selectedDetailIds${i + 1}`
-    const fk = d.foreignKey || 'id'
-    lines.push(`const ${compName} = computed(() => ${varName}.value.map(d => d.${fk}));`)
+    const compName = i === 0 ? 'excludeDetailKeys' : `excludeDetailKeys${i + 1}`
+    const fkDisplay = d.foreignDisplay || ''
+    const columns = d.columns || []
+    const colsJson = JSON.stringify(columns.map(c => ({ key: c.key })))
+    if (fkDisplay) {
+      lines.push(`const ${compName} = computed(() => ${varName}.value.map(d => d.${fkDisplay} ? $buildItemKey(d.${fkDisplay}, ${colsJson}) : null).filter(v => v != null));`)
+    } else {
+      lines.push(`const ${compName} = computed(() => ${varName}.value.map(d => $buildItemKey(d, ${colsJson})).filter(v => v != null));`)
+    }
   })
   if (!lines.length) return ''
   return '\n' + lines.join('\n')
@@ -504,7 +517,8 @@ const ${removeName} = (index) => {
       const handlerName = i === 0 ? 'handleDetailAdd' : `handleDetailAdd${i + 1}`
       const fk = d.foreignKey || 'id'
       const fkDisplay = d.foreignDisplay || ''
-      const uk = d.uniqueKey || 'id'
+      const antiDuplicate = !!d.antiDuplicate
+      const columns = d.columns || []
       const displayCols = d.displayColumns || []
       const displayColKeys = new Set(displayCols.map(dc => dc.key))
 
@@ -518,16 +532,27 @@ const ${removeName} = (index) => {
         return `      ${df.key}: "${df.default || ''}",`
       }).join('\n')
 
+      // Build dedup logic
+      let dedupCheck = ''
+      if (antiDuplicate) {
+        const colsJson = JSON.stringify(columns.map(c => ({ key: c.key })))
+        dedupCheck = `
+    const itemKey = $buildItemKey(item, ${colsJson});
+    const exists = ${varName}.value.some((d) => {
+      const raw = ${fkDisplay ? `d.${fkDisplay}` : 'd'};
+      return raw ? $buildItemKey(raw, ${colsJson}) === itemKey : false;
+    });
+    if (exists) { skippedCount++; return; }`
+      }
+
       blocks.push(`
 const ${handlerName} = (selectedItems) => {
   if (!selectedItems || selectedItems.length === 0) return;
   let addedCount = 0;
   let skippedCount = 0;
-  selectedItems.forEach((item) => {
-    const exists = ${varName}.value.some((d) => d.${fk} === item.${uk});
-    if (exists) { skippedCount++; return; }
+  selectedItems.forEach((item) => {${dedupCheck}
     ${varName}.value.push({
-      ${fk}: item.${uk},${fkDisplay ? `\n      ${fkDisplay}: item,` : ''}
+      ${fk}: $resolvePath(item, "${fk}") ?? item.id ?? null,${fkDisplay ? `\n      ${fkDisplay}: item,` : ''}
 ${fieldDefaults}
     });
     addedCount++;
@@ -741,12 +766,15 @@ function buildDetailFieldTd(df, allDetailFields) {
       ? `\n                          @update:valueFull="(obj) => { ${detailAutoFills.map(af => `detail.${af.key} = obj?.${af.defaultValueFrom.property} || ''`).join('; ')} }"`
       : ''
     if (src === 'api') {
+      const paramsArr = Array.isArray(df.apiParams) ? df.apiParams.filter(p => p.key) : []
+      const qs = paramsArr.map(p => `${p.key}=${p.value || ''}`).join('&')
+      const apiUrlWithParams = (df.apiUrl || '') + (qs ? `?${qs}` : '')
       return `                      <td class="${tdClass}"${cellStyleAttr}>
                         <FieldSelect
                           v-if="!isReadOnly"
                           :value="detail.${df.key}"
                           @input="(v) => (detail.${df.key} = v)"${valueFullAttr}
-                          apiUrl="${df.apiUrl || ''}"
+                          apiUrl="${apiUrlWithParams}"
                           displayField="${df.displayField || 'name'}"
                           valueField="${df.valueField || 'id'}"
                           :readonly="${isReadonlyField ? 'true' : 'false'}"
@@ -775,14 +803,31 @@ function buildDetailFieldTd(df, allDetailFields) {
     const valueFullAttr = detailAutoFills.length > 0
       ? `\n                          @update:valueFull="(obj) => { ${detailAutoFills.map(af => `detail.${af.key} = obj?.${af.defaultValueFrom.property} || ''`).join('; ')} }"`
       : ''
+    // API params → inline in URL
+    const paramsArr = Array.isArray(df.apiParams) ? df.apiParams.filter(p => p.key) : []
+    const qs = paramsArr.map(p => `${p.key}=${p.value || ''}`).join('&')
+    const apiUrlWithParams = (df.apiUrl || '') + (qs ? `?${qs}` : '')
+    // Popup columns
+    const cols = Array.isArray(df.popupColumns) ? df.popupColumns.filter(c => c.field) : []
+    const colsLiteral = cols.length
+      ? '[' + cols.map(c => {
+          const parts = [`field: '${c.field}'`]
+          if (c.headerName) parts.push(`headerName: '${c.headerName}'`)
+          if (c.width) parts.push(`width: '${c.width}'`)
+          return `{ ${parts.join(', ')} }`
+        }).join(', ') + ']'
+      : '[]'
+    const searchFieldsAttr = df.searchFields ? `\n                          searchFields="${df.searchFields}"` : ''
+    const dialogTitleAttr = df.dialogTitle ? `\n                          dialogTitle="${df.dialogTitle}"` : ''
     return `                      <td class="${tdClass}"${cellStyleAttr}>
                         <FieldPopUp
                           v-if="!isReadOnly"
                           :value="detail.${df.key}"
                           @input="(v) => (detail.${df.key} = v)"${valueFullAttr}
-                          apiUrl="${df.apiUrl || ''}"
+                          apiUrl="${apiUrlWithParams}"
                           displayField="${df.displayField || 'name'}"
                           valueField="${df.valueField || 'id'}"
+                          :columns="${colsLiteral}"${searchFieldsAttr}${dialogTitleAttr}
                           :readonly="${isReadonlyField ? 'true' : 'false'}"
                           class="w-full"
                         />
@@ -1031,11 +1076,14 @@ ${fieldTds}
     } else {
       // ── BUTTON MULTI SELECT MODE ──
       const handlerName = i === 0 ? 'handleDetailAdd' : `handleDetailAdd${i + 1}`
-      const compName = i === 0 ? 'selectedDetailIds' : `selectedDetailIds${i + 1}`
+      const compName = i === 0 ? 'excludeDetailKeys' : `excludeDetailKeys${i + 1}`
       const fkDisplay = d.foreignDisplay || ''
-      const uk = d.uniqueKey || 'id'
+      const antiDuplicate = !!d.antiDuplicate
       const displayCols = d.displayColumns || []
       const columns = d.columns || []
+      const searchKeyLiteral = Array.isArray(d.searchKey)
+        ? d.searchKey.map(key => String(key || '').trim()).filter(Boolean).join(',')
+        : String(d.searchKey || '').trim() || 'name'
       const footer2 = buildDetailFooter(detailFields, varName, 1 + displayCols.length, 1)
 
       // Build columns literal
@@ -1043,14 +1091,25 @@ ${fieldTds}
         `\n                    { key: '${c.key}', label: '${c.label}', sortable: true, width: '${c.width || '200px'}' }`
       ).join(',')
 
+      // Build apiParams object literal — extract base URL (without query string)
+      const rawApiUrl = d.apiUrl || ''
+      const baseApiUrl = rawApiUrl.split('?')[0]
+      const apiParamsArr = Array.isArray(d.apiParams) ? d.apiParams.filter(p => p.key) : []
+      const apiParamsLiteral = apiParamsArr.length
+        ? `, params: { ${apiParamsArr.map(p => `'${p.key}': '${p.value || ''}'`).join(', ')} } `
+        : ''
+
       // Display column <th>
       const displayThs = displayCols.map(dc =>
         `                      <th class="px-3 py-2 text-left font-medium text-xs sm:text-sm">${dc.label || dc.key}</th>`
       ).join('\n')
 
-      // Display column <td> — read from nested object
+      // Display column <td> — read from nested object (support dot-path keys like 'm_item.kode_item')
       const displayTds = displayCols.map(dc => {
-        const accessor = fkDisplay ? `detail.${fkDisplay}?.${dc.key}` : `detail.${dc.key}`
+        const keyParts = dc.key.split('.')
+        const accessor = fkDisplay
+          ? `detail.${fkDisplay}?.${keyParts.join('?.')}`
+          : `detail.${keyParts.join('?.')}`
         return `                      <td class="px-3 py-2 text-xs sm:text-sm">{{ ${accessor} || '-' }}</td>`
       }).join('\n')
 
@@ -1067,13 +1126,10 @@ ${fieldTds}
                 <ButtonMultiSelect
                   v-if="!isReadOnly"
                   title="${d.buttonLabel || 'Pilih Item'}"
-                  :api="{ url: '${d.apiUrl || ''}' }"
+                  :api="{ url: '${baseApiUrl}'${apiParamsLiteral} }"
                   :columns="[${colsLiteral}
                   ]"
-                  searchKey="${d.searchKey || 'name'}"
-                  displayKey="${d.displayKey || 'name'}"
-                  uniqueKey="${uk}"
-                  :excludeIds="${compName}"
+                  searchKey="${searchKeyLiteral}"${antiDuplicate ? `\n                  :antiDuplicate="true"\n                  :excludeKeys="${compName}"` : ''}
                   @add="${handlerName}"
                 />
               </div>

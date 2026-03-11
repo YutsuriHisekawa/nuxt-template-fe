@@ -7,15 +7,22 @@ const props = defineProps({
   api: { type: Object, default: null },
   columns: { type: Array, default: () => [] },
   disabled: { type: Boolean, default: false },
-  excludeIds: { type: Array, default: () => [] },
-  searchKey: { type: String, default: 'name' },
+  antiDuplicate: { type: Boolean, default: false },
+  excludeKeys: { type: Array, default: () => [] },
+  searchKey: { type: [String, Array], default: 'name' },
   displayKey: { type: String, default: 'name' },
-  uniqueKey: { type: String, default: 'id' },
 })
 
 const emit = defineEmits(['add', 'cellClick'])
 
 const apiClient = useApi()
+
+// Resolve dot-path keys like 'm_item.kode_item' → obj.m_item.kode_item
+function resolveDotPath(obj, path) {
+  if (!obj || !path) return undefined
+  if (obj[path] !== undefined) return obj[path] // flat key first
+  return path.split('.').reduce((o, k) => o?.[k], obj)
+}
 
 const loading = ref(false)
 const loadingMore = ref(false)
@@ -31,10 +38,32 @@ const gridApi = ref(null)
 const themeCookie = useCookie('theme')
 const isDark = computed(() => themeCookie.value === 'dark')
 
-// Filter out already-added items
+const normalizedSearchKey = computed(() => {
+  const raw = props.searchKey
+  if (Array.isArray(raw)) {
+    return raw.map(key => String(key || '').trim()).filter(Boolean).join(',')
+  }
+  return String(raw || '')
+    .split(',')
+    .map(key => key.trim())
+    .filter(Boolean)
+    .join(',')
+})
+
+// Build composite key from all column values for duplicate detection
+function buildItemKey(item) {
+  if (!props.columns?.length) return JSON.stringify(item)
+  return props.columns.map(c => {
+    const val = resolveDotPath(item, c.field || c.key || '')
+    return val ?? ''
+  }).join('|')
+}
+
+// Filter out already-added items when antiDuplicate is enabled
 const filteredTableData = computed(() => {
-  if (!props.excludeIds?.length) return tableData.value
-  return tableData.value.filter((item) => !props.excludeIds.includes(item[props.uniqueKey]))
+  if (!props.antiDuplicate || !props.excludeKeys?.length) return tableData.value
+  const excludeSet = new Set(props.excludeKeys)
+  return tableData.value.filter((item) => !excludeSet.has(buildItemKey(item)))
 })
 
 // Auto-load more if too few visible items
@@ -194,7 +223,7 @@ const fetchData = async (reset = false) => {
     params.append('page', String(currentPage.value))
     params.append('paginate', '20')
 
-    const searchField = props.api.params?.searchfield || props.searchKey
+    const searchField = props.api.params?.searchfield || normalizedSearchKey.value
     if (searchField) {
       params.delete('searchfield')
       params.append('searchfield', searchField)
@@ -204,7 +233,8 @@ const fetchData = async (reset = false) => {
     // Ensure endpoint starts with /api
     let apiUrl = props.api.url || ''
     const endpoint = apiUrl.startsWith('/api') ? apiUrl : `/api${apiUrl}`
-    const fullEndpoint = `${endpoint}?${params.toString()}`
+    const separator = endpoint.includes('?') ? '&' : '?'
+    const fullEndpoint = `${endpoint}${separator}${params.toString()}`
 
     // Use useApi composable — automatically prepends baseUrl and adds auth token
     let result = await apiClient.get(fullEndpoint)

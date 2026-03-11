@@ -74,7 +74,6 @@ export function useLanding(landingConfig, config) {
     realApiLoading.value = true
     try {
       const qp = new URLSearchParams()
-      qp.set('join', 'true')
       apiParams.value.forEach(p => {
         if (p.key?.trim() && p.value?.trim()) qp.set(p.key.trim(), p.value.trim())
       })
