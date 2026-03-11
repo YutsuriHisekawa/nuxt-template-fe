@@ -396,6 +396,22 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  function clearMenuCaches() {
+    const sidebarMenuCache = useState('menu-cache', () => ({ items: [], loaded: false, loading: false }))
+    sidebarMenuCache.value = {
+      items: [],
+      loaded: false,
+      loading: false,
+    }
+
+    const menuLabelCache = useState('menu-label-cache', () => ({ items: [], loaded: false, loading: false }))
+    menuLabelCache.value = {
+      items: [],
+      loaded: false,
+      loading: false,
+    }
+  }
+
   /**
    * Clear semua session data di memory
    */
@@ -407,6 +423,7 @@ export const useAuthStore = defineStore('auth', () => {
     selectRespo.value = null
     sessionVerified.value = false
     loggedOut.value = true
+    clearMenuCaches()
     clearSessionStorage()
   }
 

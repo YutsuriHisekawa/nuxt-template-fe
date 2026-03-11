@@ -24,6 +24,17 @@ type MenuCache = { items: any[]; loaded: boolean; loading: boolean }
 const menuCache = useState<MenuCache>("menu-cache", () => ({ items: [], loaded: false, loading: false }))
 const loading = computed(() => !menuCache.value.loaded)
 
+const activeCompanyName = computed(() => {
+  const selectRespo = authStore.selectRespo as Record<string, any> | null
+  const companyName = selectRespo?.companyName || selectRespo?.respoName
+  return companyName?.trim?.() || 'Endfield'
+})
+
+const activeRespoName = computed(() => {
+  const selectRespo = authStore.selectRespo as Record<string, any> | null
+  return selectRespo?.respoName?.trim?.() || 'ERP System'
+})
+
 type NavItem = {
   title: string
   url: string
@@ -409,16 +420,25 @@ const handleRespoChanged = () => {
   loadMenus(true)
 }
 
+const handleMenuUpdated = () => {
+  if (!authStore.isSuperAdmin) return
+
+  resetMenuCache()
+  loadMenus(true)
+}
+
 onMounted(() => {
   loadMenus()
   if (import.meta.client) {
     window.addEventListener('respoChanged', handleRespoChanged)
+    window.addEventListener('menuUpdated', handleMenuUpdated)
   }
 })
 
 onUnmounted(() => {
   if (import.meta.client) {
     window.removeEventListener('respoChanged', handleRespoChanged)
+    window.removeEventListener('menuUpdated', handleMenuUpdated)
   }
 })
 </script>
@@ -434,8 +454,8 @@ onUnmounted(() => {
                 <img src="/logo.webp" alt="MVG" class="h-5 w-5" />
               </div>
               <div class="grid flex-1 text-left text-sm leading-tight">
-                <span class="truncate font-semibold">Endfield</span>
-                <span class="truncate text-xs text-muted-foreground">ERP System</span>
+                <span class="truncate font-semibold">{{ activeCompanyName }}</span>
+                <span class="truncate text-xs text-muted-foreground">{{ activeRespoName }}</span>
               </div>
             </NuxtLink>
           </SidebarMenuButton>
