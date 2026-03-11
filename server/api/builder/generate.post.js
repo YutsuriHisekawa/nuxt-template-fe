@@ -406,7 +406,7 @@ function buildDetailImports(details) {
   let code = `import { ${icons.join(', ')} } from "lucide-vue-next";`
   // Add resolvePath helper for dot-path uniqueKey resolution in ButtonMultiSelect mode
   if (hasMultiSelect) {
-    code += `\n\n// Resolve dot-path keys like 'm_item.kode_item' → obj.m_item.kode_item\nfunction $resolvePath(obj, path) {\n  if (!obj || !path) return undefined;\n  if (obj[path] !== undefined) return obj[path];\n  return path.split('.').reduce((o, k) => o?.[k], obj);\n}`
+    code += `\n\n// Resolve dot-path keys like 'm_item.kode_item' → obj.m_item.kode_item\nfunction $resolvePath(obj, path) {\n  if (!obj || !path) return undefined;\n  if (obj[path] !== undefined) return obj[path];\n  return path.split('.').reduce((o, k) => o?.[k], obj);\n}\n\n// Build composite key from object columns for anti-duplicate check\nfunction $buildItemKey(obj, columns) {\n  if (!obj || !columns?.length) return JSON.stringify(obj);\n  return columns.map(c => $resolvePath(obj, c.key) ?? '').join('|');\n}`
   }
   return code
 }
@@ -789,8 +789,7 @@ function buildDetailFieldTd(df, allDetailFields) {
                           v-if="!isReadOnly"
                           :value="detail.${df.key}"
                           @input="(v) => (detail.${df.key} = v)"${valueFullAttr}
-                          sourceType="static"
-                          :staticOptions="[${opts}]"
+                          :options="[${opts}]"
                           :readonly="${isReadonlyField ? 'true' : 'false'}"
                           class="w-full"
                         />
@@ -853,6 +852,7 @@ function buildDetailFieldTd(df, allDetailFields) {
                           :value="detail.${df.key}"
                           @input="(v) => (detail.${df.key} = v)"
                           :readonly="${isReadonlyField ? 'true' : 'false'}"
+                          :clearable="true"
                           class="w-full"
                         />
                         <span v-else>{{ detail.${df.key} || '-' }}</span>
@@ -865,6 +865,7 @@ function buildDetailFieldTd(df, allDetailFields) {
                           :value="detail.${df.key}"
                           @input="(v) => (detail.${df.key} = v)"
                           :readonly="${isReadonlyField ? 'true' : 'false'}"
+                          :clearable="true"
                           class="w-full"
                         />
                         <span v-else>{{ detail.${df.key} || '-' }}</span>
@@ -885,25 +886,37 @@ function buildDetailFieldTd(df, allDetailFields) {
                       </td>`
   }
   if (df.type === 'currency') {
+    const currPrefix = df.currencyPrefix || 'Rp'
+    const currAllowDecimal = df.allowDecimal !== false
+    const currDecimalAttr = currAllowDecimal ? `\n                          :decimalPlaces="${decimalPlaces}"` : ''
     return `                      <td class="${tdClass}"${cellStyleAttr}>
                         <FieldCurrency
                           v-if="!isReadOnly"
                           :value="detail.${df.key}"
                           @input="(v) => (detail.${df.key} = v)"
                           :readonly="${isReadonlyField ? 'true' : 'false'}"
-                          :decimalPlaces="${decimalPlaces}"
+                          prefix="${currPrefix}"
+                          :allowDecimal="${currAllowDecimal}"${currDecimalAttr}
                           class="w-full"
                         />
                         <span v-else>{{ ${formatValueExpr(`detail.${df.key}`)} }}</span>
                       </td>`
   }
   if (df.type === 'slider') {
+    const slMin = df.sliderMin || 0
+    const slMax = df.sliderMax || 100
+    const slStep = df.sliderStep || 1
+    const slUnit = df.sliderUnit || ''
+    const unitAttr = slUnit ? `\n                          unit="${slUnit}"` : ''
     return `                      <td class="${tdClass}"${cellStyleAttr}>
                         <FieldSlider
                           v-if="!isReadOnly"
                           :value="detail.${df.key}"
                           @input="(v) => (detail.${df.key} = v)"
                           :readonly="${isReadonlyField ? 'true' : 'false'}"
+                          :min="${slMin}"
+                          :max="${slMax}"
+                          :step="${slStep}"${unitAttr}
                           class="w-full"
                         />
                         <span v-else>{{ ${formatValueExpr(`detail.${df.key}`)} }}</span>

@@ -364,7 +364,10 @@ function genFieldNumber(f) {
               label="${f.label}"
               type="${fnType}"
               :value="values.${f.field}"
+              :errorname="errors.${f.field} ? 'failed' : ''"
               @input="(v) => (values.${f.field} = v)"
+              :hints="errors.${f.field}"
+              :required="${f.required ? '!isReadOnly' : 'false'}"
               ${getDisabledAttr(f)}
               ${readonlyAttr}
               ${decimalPlacesAttr}
@@ -809,7 +812,7 @@ export const FIELD_REGISTRY = [
   // ── FieldNumber ────────────────────────────────────────────
   {
     value: 'fieldnumber', label: 'FieldNumber (Integer)', component: 'FieldNumber', category: 'number',
-    searchable: false, showInMobile: false, hasError: false,
+    searchable: false, showInMobile: false, hasError: true,
     defaultMeta: {},
     panelFields: COMMON_PANELS,
     previewProps: (f) => ({ label: f.label || 'Label', value: '', type: 'integer' }),
@@ -817,7 +820,7 @@ export const FIELD_REGISTRY = [
   },
   {
     value: 'fieldnumber_decimal', label: 'FieldNumber (Decimal)', component: 'FieldNumber', category: 'number',
-    searchable: false, showInMobile: false, hasError: false,
+    searchable: false, showInMobile: false, hasError: true,
     defaultMeta: { decimalPlaces: 2 },
     panelFields: COMMON_PANELS,
     previewProps: (f) => ({ label: f.label || 'Label', value: '', type: 'decimal', decimalPlaces: getDecimalPlacesValue(f) }),
@@ -1256,7 +1259,7 @@ export function createBlankDetail() {
     apiUrl: '',            // e.g. /api/dynamic/m_menu
     searchKey: ['name'],
     displayKey: 'name',
-    uniqueKey: 'id',
+    antiDuplicate: false,
     apiParams: [],         // e.g. [{ key: 'join', value: 'true' }]
     columns: [             // columns for ButtonMultiSelect popup table
       { key: '', label: '', width: '' },
@@ -1291,8 +1294,12 @@ export function createBlankDetailField() {
     apiParams: [],
     staticOptions: [], radioOptions: [],
     // PopUp specific
-    popupColumns: [], popupSearchKey: 'name', popupDisplayKey: 'name',
+    popupColumns: [],
     searchFields: '', dialogTitle: '',
+    // Currency specific
+    currencyPrefix: 'Rp', allowDecimal: true,
+    // Slider specific
+    sliderMin: 0, sliderMax: 100, sliderStep: 1, sliderUnit: '',
     // Formula per-row (same token format as header: [{type:'field',value:'qty'},{type:'op',value:'*'},{type:'field',value:'price'}])
     computedFormula: [],
     // Default value from header field (auto-fill)

@@ -939,15 +939,30 @@ function applyDetailTemplate(fieldIndex) {
             </div>
           </div>
 
-          <!-- Currency: default value -->
-          <div v-else-if="df.type === 'currency'" class="flex gap-2">
-            <div class="flex-1">
-              <label class="block mb-0.5 text-xs text-muted-foreground">Default Value</label>
-              <input type="number" :value="df.default || 0" placeholder="0" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'default', Number($event.target.value))" />
+          <!-- Currency: default value, prefix, allowDecimal, decimalPlaces -->
+          <div v-else-if="df.type === 'currency'" class="space-y-2">
+            <div class="flex gap-2">
+              <div class="flex-1">
+                <label class="block mb-0.5 text-xs text-muted-foreground">Default Value</label>
+                <input type="number" :value="df.default || 0" placeholder="0" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'default', Number($event.target.value))" />
+              </div>
+              <div class="flex-1">
+                <label class="block mb-0.5 text-xs text-muted-foreground">Prefix</label>
+                <input type="text" :value="df.currencyPrefix || 'Rp'" placeholder="Rp" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'currencyPrefix', $event.target.value)" />
+              </div>
             </div>
-            <div class="flex-1">
-              <label class="block mb-0.5 text-xs text-muted-foreground">Digit Desimal</label>
-              <input type="number" min="0" max="6" :value="df.decimalPlaces ?? 2" placeholder="2" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'decimalPlaces', Math.min(6, Math.max(0, Number($event.target.value || 0))))" />
+            <div class="flex gap-2">
+              <div class="flex-1">
+                <label class="block mb-0.5 text-xs text-muted-foreground">Allow Decimal</label>
+                <div class="flex rounded border border-border overflow-hidden h-[26px]">
+                  <button :class="['flex-1 text-[11px] transition-colors', df.allowDecimal !== false ? 'bg-primary text-primary-foreground font-medium' : 'bg-muted text-muted-foreground hover:text-foreground']" @click="updateDetailField(i, 'allowDecimal', true)">Ya</button>
+                  <button :class="['flex-1 text-[11px] transition-colors', df.allowDecimal === false ? 'bg-primary text-primary-foreground font-medium' : 'bg-muted text-muted-foreground hover:text-foreground']" @click="updateDetailField(i, 'allowDecimal', false)">Tidak</button>
+                </div>
+              </div>
+              <div v-if="df.allowDecimal !== false" class="flex-1">
+                <label class="block mb-0.5 text-xs text-muted-foreground">Digit Desimal</label>
+                <input type="number" min="0" max="6" :value="df.decimalPlaces ?? 2" placeholder="2" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'decimalPlaces', Math.min(6, Math.max(0, Number($event.target.value || 0))))" />
+              </div>
             </div>
           </div>
 
@@ -960,6 +975,34 @@ function applyDetailTemplate(fieldIndex) {
             <div v-if="df.type === 'fieldnumber_decimal'" class="flex-1">
               <label class="block mb-0.5 text-xs text-muted-foreground">Digit Desimal</label>
               <input type="number" min="0" max="6" :value="df.decimalPlaces ?? 2" placeholder="2" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'decimalPlaces', Math.min(6, Math.max(0, Number($event.target.value || 0))))" />
+            </div>
+          </div>
+
+          <!-- Slider: default, min, max, step, unit -->
+          <div v-else-if="df.type === 'slider'" class="space-y-2">
+            <div class="flex gap-2">
+              <div class="flex-1">
+                <label class="block mb-0.5 text-xs text-muted-foreground">Default</label>
+                <input type="number" :value="df.default || 0" placeholder="0" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'default', Number($event.target.value))" />
+              </div>
+              <div class="flex-1">
+                <label class="block mb-0.5 text-xs text-muted-foreground">Unit</label>
+                <input type="text" :value="df.sliderUnit || ''" placeholder="%, kg, dll" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'sliderUnit', $event.target.value)" />
+              </div>
+            </div>
+            <div class="flex gap-2">
+              <div class="flex-1">
+                <label class="block mb-0.5 text-xs text-muted-foreground">Min</label>
+                <input type="number" :value="df.sliderMin || 0" placeholder="0" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'sliderMin', Number($event.target.value))" />
+              </div>
+              <div class="flex-1">
+                <label class="block mb-0.5 text-xs text-muted-foreground">Max</label>
+                <input type="number" :value="df.sliderMax || 100" placeholder="100" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'sliderMax', Number($event.target.value))" />
+              </div>
+              <div class="flex-1">
+                <label class="block mb-0.5 text-xs text-muted-foreground">Step</label>
+                <input type="number" :value="df.sliderStep || 1" placeholder="1" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'sliderStep', Number($event.target.value))" />
+              </div>
             </div>
           </div>
 
