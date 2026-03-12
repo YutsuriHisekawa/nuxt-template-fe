@@ -52,6 +52,12 @@ import {
 } from "./builder/_usePrint";
 import PrintConfigTab from "./builder/PrintConfigTab.vue";
 
+// Resolve dot-path keys like 'm_item.kode_item' → obj.m_item.kode_item
+function $resolveDotPath(obj, path) {
+  if (!obj || !path) return undefined;
+  return path.split(".").reduce((o, k) => o?.[k], obj);
+}
+
 // Theme for AG Grid
 const themeCookie = useCookie("theme");
 const isDark = computed(() => themeCookie.value === "dark");
@@ -1141,7 +1147,7 @@ function updateFieldAtIndex(updated) {
 const {
   detailPreviewData,
   getPreviewArr,
-  getPreviewExcludeIds,
+  getPreviewExcludeKeys,
   handlePreviewMultiSelectAdd,
   handlePreviewAddRow,
   removePreviewRow,
@@ -2115,7 +2121,7 @@ node add_route.cjs setup/m_supplier</pre
                       <ButtonMultiSelect
                         v-if="detail.mode !== 'add_to_list' && detail.apiUrl"
                         :title="detail.buttonLabel || 'Pilih Item'"
-                        :api="{ url: detail.apiUrl }"
+                        :api="{ url: (detail.apiUrl || '').split('?')[0], params: (detail.apiParams || []).filter(p => p.key).reduce((o, p) => { o[p.key] = p.value || ''; return o }, {}) }"
                         :columns="
                           (detail.columns || [])
                             .filter((c) => c.key)
@@ -2127,9 +2133,8 @@ node add_route.cjs setup/m_supplier</pre
                             }))
                         "
                         :searchKey="detail.searchKey || 'name'"
-                        :displayKey="detail.displayKey || 'name'"
-                        :uniqueKey="detail.uniqueKey || 'id'"
-                        :excludeIds="getPreviewExcludeIds(dIdx)"
+                        :antiDuplicate="!!detail.antiDuplicate"
+                        :excludeKeys="getPreviewExcludeKeys(dIdx)"
                         @add="
                           (items) => { handlePreviewMultiSelectAdd(dIdx, items); nextTick(() => getPreviewArr(dIdx).forEach((_, rIdx) => computeDetailRowFormulas(dIdx, rIdx))) }
                         "
@@ -2219,8 +2224,8 @@ node add_route.cjs setup/m_supplier</pre
                             >
                               {{
                                 detail.foreignDisplay
-                                  ? row[detail.foreignDisplay]?.[dc.key] || "-"
-                                  : row[dc.key] || "-"
+                                  ? $resolveDotPath(row[detail.foreignDisplay], dc.key) || "-"
+                                  : $resolveDotPath(row, dc.key) || "-"
                               }}
                             </td>
                             <td
@@ -2911,6 +2916,7 @@ node add_route.cjs setup/m_supplier</pre
               <BuilderFieldPanel
                 :field="fields[panelIndex]"
                 :allFields="fields"
+                :allDetails="details"
                 :fieldIndex="panelIndex"
                 @update:field="updateFieldAtIndex"
                 @remove="removeField"
