@@ -1252,8 +1252,21 @@ export function getDetailFieldDecimalPlaces(field) {
 
 // ── Detail Tab helpers ─────────────────────────────────────────────────────
 /** Create a blank detail tab config */
+function createBuilderId(prefix) {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+export function createBlankDetailTab(index = 1) {
+  return {
+    id: createBuilderId('detail-tab'),
+    label: `Tab ${index}`,
+    layout: 'vertical', // 'vertical' | 'horizontal'
+  }
+}
+
 export function createBlankDetail() {
   return {
+    tabId: '',
     tabLabel: 'Detail',
     buttonLabel: 'Pilih Item',    // label for the ButtonMultiSelect / Tambah button
     mode: 'button_multi_select',  // 'button_multi_select' | 'add_to_list'

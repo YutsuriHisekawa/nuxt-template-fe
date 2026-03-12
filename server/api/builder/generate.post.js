@@ -431,6 +431,83 @@ function hasDetails(details) {
   return Array.isArray(details) && details.length > 0
 }
 
+function orderDetailsByTabs(details, detailTabs) {
+  const tabs = Array.isArray(detailTabs) ? detailTabs : []
+  const sourceDetails = Array.isArray(details) ? details : []
+  const ordered = []
+  tabs.forEach((tab) => {
+    sourceDetails.forEach((detail) => {
+      if (detail?.tabId === tab.id) ordered.push(detail)
+    })
+  })
+  sourceDetails.forEach((detail) => {
+    if (!ordered.includes(detail)) ordered.push(detail)
+  })
+  return ordered
+}
+
+function normalizeDetailTabs(detailTabs, details) {
+  const sourceTabs = Array.isArray(detailTabs) ? JSON.parse(JSON.stringify(detailTabs)) : []
+  const sourceDetails = Array.isArray(details) ? JSON.parse(JSON.stringify(details)) : []
+
+  if (sourceTabs.length > 0) {
+    const tabs = sourceTabs.map((tab, index) => ({
+      id: tab?.id || `detail-tab-${index + 1}`,
+      label: tab?.label || `Tab ${index + 1}`,
+      layout: tab?.layout === 'horizontal' ? 'horizontal' : 'vertical',
+    }))
+    const validIds = new Set(tabs.map((tab) => tab.id))
+    const fallbackTabId = tabs[0]?.id || ''
+    const normalizedDetails = sourceDetails.map((detail) => ({
+      ...detail,
+      tabId: validIds.has(detail?.tabId) ? detail.tabId : fallbackTabId,
+    }))
+    return {
+      detailTabs: tabs,
+      details: orderDetailsByTabs(normalizedDetails, tabs),
+    }
+  }
+
+  if (!sourceDetails.length) {
+    return { detailTabs: [], details: [] }
+  }
+
+  const tabs = []
+  const normalizedDetails = []
+  const stackedDetails = []
+
+  sourceDetails.forEach((detail) => {
+    if (detail?.displayMode === 'stacked') {
+      stackedDetails.push(detail)
+      return
+    }
+    const tab = {
+      id: `detail-tab-${tabs.length + 1}`,
+      label: detail?.tabLabel || `Tab ${tabs.length + 1}`,
+      layout: 'vertical',
+    }
+    tabs.push(tab)
+    normalizedDetails.push({ ...detail, tabId: tab.id })
+  })
+
+  if (stackedDetails.length > 0) {
+    const stackedTab = {
+      id: `detail-tab-${tabs.length + 1}`,
+      label: `Tab ${tabs.length + 1}`,
+      layout: 'vertical',
+    }
+    tabs.push(stackedTab)
+    stackedDetails.forEach((detail) => {
+      normalizedDetails.push({ ...detail, tabId: stackedTab.id })
+    })
+  }
+
+  return {
+    detailTabs: tabs,
+    details: orderDetailsByTabs(normalizedDetails, tabs),
+  }
+}
+
 function buildDetailImports(details) {
   if (!hasDetails(details)) return ''
   // Trash2 is always needed for remove button
@@ -1218,15 +1295,11 @@ ${suffixEmpty}
                   </tfoot>`
 }
 
-function buildDetailTemplate(details) {
-  if (!hasDetails(details)) return ''
-  const tabTriggers = details.map((d, i) => {
-    const val = `detail-${i}`
-    return `          <TabsTrigger value="${val}">${d.tabLabel || 'Detail'}</TabsTrigger>`
-  }).join('\n')
+function buildDetailTemplate(detailTabs, details) {
+  if ((!Array.isArray(detailTabs) || detailTabs.length === 0) && !hasDetails(details)) return ''
 
-  const tabContents = details.map((d, i) => {
-    const val = `detail-${i}`
+  // Build card content for a single detail (used by both tabbed and stacked)
+  function buildDetailCardContent(d, i) {
     const varName = i === 0 ? 'detailArr' : `detailArr${i + 1}`
     const removeName = i === 0 ? 'removeDetail' : `removeDetail${i + 1}`
     const detailFields = d.detailFields || []
@@ -1299,8 +1372,7 @@ function buildDetailTemplate(details) {
                           <ArrowDown class="h-3 w-3 sm:h-4 sm:w-4" />
                         </Button>` : ''
 
-      return `        <TabsContent value="${val}" class="space-y-4 mt-4">
-          <Card>
+      return `          <Card>
             <CardHeader>
               <div class="flex items-center justify-between">
                 <div>
@@ -1350,8 +1422,7 @@ ${fieldTds}
                 </table>
               </div>
             </CardContent>
-          </Card>
-        </TabsContent>`
+          </Card>`
     } else {
       // ── BUTTON MULTI SELECT MODE ──
       const handlerName = i === 0 ? 'handleDetailAdd' : `handleDetailAdd${i + 1}`
@@ -1409,8 +1480,7 @@ ${fieldTds}
                           <ArrowDown class="h-3 w-3 sm:h-4 sm:w-4" />
                         </Button>` : ''
 
-      return `        <TabsContent value="${val}" class="space-y-4 mt-4">
-          <Card>
+      return `          <Card>
             <CardHeader>
               <div class="flex items-center justify-between">
                 <div>
@@ -1459,14 +1529,37 @@ ${fieldTds}
                 </table>
               </div>
             </CardContent>
-          </Card>
-        </TabsContent>`
+          </Card>`
     }
+  }
+
+  const indexedDetails = details.map((detail, index) => ({ ...detail, _origIdx: index }))
+  const tabTriggers = detailTabs.map((tab, index) => {
+    const val = `detail-tab-${index}`
+    return `          <TabsTrigger value="${val}">${tab.label || `Tab ${index + 1}`}</TabsTrigger>`
+  }).join('\n')
+
+  const tabContents = detailTabs.map((tab, index) => {
+    const val = `detail-tab-${index}`
+    const tabDetails = indexedDetails.filter((detail) => detail.tabId === tab.id)
+    const content = tabDetails.length > 0
+      ? tabDetails.map((detail) => buildDetailCardContent(detail, detail._origIdx)).join('\n\n')
+      : `          <div class="border-2 border-dashed border-border rounded-lg p-6 text-center text-muted-foreground text-sm">
+            Tab ini belum punya detail.
+          </div>`
+    const layoutClass = tab.layout === 'horizontal'
+      ? 'grid grid-cols-1 xl:grid-cols-2 gap-4'
+      : 'space-y-4'
+    return `        <TabsContent value="${val}" class="mt-4">
+          <div class="${layoutClass}">
+${content}
+          </div>
+        </TabsContent>`
   }).join('\n\n')
 
   return `
       <!-- DETAIL TABS -->
-      <Tabs default-value="detail-0" class="w-full">
+      <Tabs default-value="detail-tab-0" class="w-full">
         <TabsList class="w-full overflow-x-auto flex justify-start">
 ${tabTriggers}
         </TabsList>
@@ -1868,7 +1961,8 @@ function buildPrintDetailMeta(details) {
 // ── Handler ────────────────────────────────────────────────────────────────
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
-  const { modulePath, moduleName, apiEndpoint, routePath, pageTitle, fields, details, landingConfig, printConfig, columnLayout, wizardSteps } = body
+  const { modulePath, moduleName, apiEndpoint, routePath, pageTitle, fields, details: rawDetails, detailTabs: rawDetailTabs, landingConfig, printConfig, columnLayout, wizardSteps } = body
+  const { details, detailTabs } = normalizeDetailTabs(rawDetailTabs, rawDetails)
 
   if (!modulePath || !fields?.length) {
     throw createError({ statusCode: 400, statusMessage: 'modulePath and fields are required' })
@@ -1932,7 +2026,7 @@ export default defineEventHandler(async (event) => {
     __DETAIL_RESET__: buildDetailReset(details),
     __DETAIL_LOAD_DATA__: buildDetailLoadData(details),
     __DETAIL_PAYLOAD__: buildDetailPayload(details),
-    __DETAIL_TEMPLATE__: buildDetailTemplate(details),
+    __DETAIL_TEMPLATE__: buildDetailTemplate(detailTabs, details),
     __DETAIL_VALIDATION__: buildDetailValidation(details),
     __PRINT_BUTTON__: printTpl && printEnabled
       ? `        <Button
