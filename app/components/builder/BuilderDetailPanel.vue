@@ -470,7 +470,7 @@ function applyDetailTemplate(fieldIndex) {
   <div class="flex flex-col gap-5 text-sm">
     <!-- Header -->
     <div class="flex items-center justify-between mb-1">
-      <h3 class="text-base font-semibold">Detail Tab #{{ detailIndex + 1 }}</h3>
+      <h3 class="text-base font-semibold">Detail #{{ detailIndex + 1 }}</h3>
       <button class="text-muted-foreground hover:text-foreground text-lg" @click="emit('close')">✕</button>
     </div>
 
@@ -498,10 +498,11 @@ function applyDetailTemplate(fieldIndex) {
       </p>
     </div>
 
-    <!-- Tab Label -->
+    <!-- Detail Label -->
     <div>
-      <label class="block mb-1 font-medium text-muted-foreground">Tab Label</label>
+      <label class="block mb-1 font-medium text-muted-foreground">Detail Label</label>
       <input type="text" :value="detail.tabLabel" placeholder="Menu & Permissions" class="w-full rounded bg-muted border border-border text-foreground px-3 py-1.5 focus:border-primary focus:ring-1 focus:ring-primary text-sm" @input="update('tabLabel', $event.target.value)" />
+      <p class="text-xs text-muted-foreground/70 mt-0.5">Nama card detail yang tampil di dalam tab aktif</p>
     </div>
 
     <!-- Button Label -->
