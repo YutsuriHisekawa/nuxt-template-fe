@@ -2600,6 +2600,10 @@ node add_route.cjs setup/m_supplier</pre
                                 :apiUrl="df.apiUrl || ''"
                                 :displayField="df.displayField || 'name'"
                                 :valueField="df.valueField || 'id'"
+                                :columns="df.popupColumns || []"
+                                :searchFields="df.searchFields || ''"
+                                :dialogTitle="df.dialogTitle || ''"
+                                :apiParams="(df.apiParams || []).filter(p => p.key).reduce((o, p) => { o[p.key] = p.value || ''; return o }, {})"
                                 :readonly="isDetailFieldReadonly(df)"
                                 class="w-full"
                               />
