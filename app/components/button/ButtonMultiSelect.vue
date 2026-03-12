@@ -243,8 +243,13 @@ const fetchData = async (reset = false) => {
       result = props.api.onsuccess(result)
     }
 
-    if (result.status === 'success' && result.data) {
-      const newData = Array.isArray(result.data) ? result.data : []
+    // Support both { status: 'success', data } and { success: true, data } response formats
+    const isSuccess = result.status === 'success' || result.success === true
+    // Also support raw array response (no wrapper)
+    const rawData = isSuccess ? result.data : (Array.isArray(result) ? result : null)
+
+    if (rawData !== null && rawData !== undefined) {
+      const newData = Array.isArray(rawData) ? rawData : []
       if (reset) tableData.value = newData
       else tableData.value = [...tableData.value, ...newData]
 
