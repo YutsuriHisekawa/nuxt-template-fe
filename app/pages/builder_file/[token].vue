@@ -2583,6 +2583,7 @@ node add_route.cjs setup/m_supplier</pre
                                 :displayField="df.displayField || 'name'"
                                 :valueField="df.valueField || 'id'"
                                 :staticOptions="df.staticOptions || []"
+                                :apiParams="(df.apiParams || []).filter(p => p.key).reduce((o, p) => { o[p.key] = p.value || ''; return o }, {})"
                                 :readonly="isDetailFieldReadonly(df)"
                                 class="w-full"
                               />

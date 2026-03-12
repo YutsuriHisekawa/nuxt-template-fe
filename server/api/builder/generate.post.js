@@ -889,9 +889,10 @@ function buildDetailFieldTd(df, allDetailFields) {
   const hasFormula = Array.isArray(df.computedFormula) && df.computedFormula.length > 0
   if (hasFormula) {
     const fmt = formatValueExpr(`detail.${df.key}`)
-    return `                      <td class="${tdClass}"${cellStyleAttr}>
+    let td = `                      <td class="${tdClass}"${cellStyleAttr}>
                         <span class="text-xs sm:text-sm font-medium text-foreground/80">{{ ${fmt} }}</span>
                       </td>`
+    return wrapDetailTdVisibility(td, df, hasVisibleWhen, cellStyleAttr)
   }
 
   if (df.type === 'checkbox') {
@@ -961,6 +962,18 @@ function buildDetailFieldTd(df, allDetailFields) {
     // dependsOn: disable until parent field is filled, bind parent value as API param
     const dependsOnDisabled = hasDependsOn ? `\n                          :disabled="!detail.${df.dependsOn}"` : ''
     const dependsOnParam = hasDependsOn ? (df.dependsOnParam || df.dependsOn) : ''
+    // Cascade clear: find all descendant detail fields that depend on this field
+    const descendantKeys = []
+    function findDescendants(parentKey) {
+      (allDetailFields || []).filter(af => af.dependsOn === parentKey && af.key).forEach(af => {
+        descendantKeys.push(af.key)
+        findDescendants(af.key)
+      })
+    }
+    findDescendants(df.key)
+    const inputHandler = descendantKeys.length > 0
+      ? `@input="(v) => { detail.${df.key} = v; ${descendantKeys.map(k => `detail.${k} = ''`).join('; ')} }"`
+      : `@input="(v) => (detail.${df.key} = v)"`
     if (src === 'api') {
       const paramsArr = Array.isArray(df.apiParams) ? df.apiParams.filter(p => p.key) : []
       if (hasDependsOn) paramsArr.push({ key: dependsOnParam, value: `__DYNAMIC__detail.${df.dependsOn}` })
@@ -974,7 +987,7 @@ function buildDetailFieldTd(df, allDetailFields) {
                         <FieldSelect
                           v-if="!isReadOnly"
                           :value="detail.${df.key}"
-                          @input="(v) => (detail.${df.key} = v)"${valueFullAttr}
+                          ${inputHandler}${valueFullAttr}
                           apiUrl="${apiUrlWithParams}"${dynamicApiParamsAttr}
                           displayField="${df.displayField || 'name'}"
                           valueField="${df.valueField || 'id'}"
@@ -990,7 +1003,7 @@ function buildDetailFieldTd(df, allDetailFields) {
                         <FieldSelect
                           v-if="!isReadOnly"
                           :value="detail.${df.key}"
-                          @input="(v) => (detail.${df.key} = v)"${valueFullAttr}
+                          ${inputHandler}${valueFullAttr}
                           :options="[${opts}]"
                           :readonly="${readonlyExpr}"
                           class="w-full"
@@ -1008,6 +1021,18 @@ function buildDetailFieldTd(df, allDetailFields) {
     // dependsOn: disable until parent field is filled, bind parent value as API param
     const dependsOnDisabled = hasDependsOn ? `\n                          :disabled="!detail.${df.dependsOn}"` : ''
     const dependsOnParam = hasDependsOn ? (df.dependsOnParam || df.dependsOn) : ''
+    // Cascade clear: find all descendant detail fields that depend on this field
+    const descendantKeys = []
+    function findPopupDescendants(parentKey) {
+      (allDetailFields || []).filter(af => af.dependsOn === parentKey && af.key).forEach(af => {
+        descendantKeys.push(af.key)
+        findPopupDescendants(af.key)
+      })
+    }
+    findPopupDescendants(df.key)
+    const inputHandler = descendantKeys.length > 0
+      ? `@input="(v) => { detail.${df.key} = v; ${descendantKeys.map(k => `detail.${k} = ''`).join('; ')} }"`
+      : `@input="(v) => (detail.${df.key} = v)"`
     // API params → inline in URL
     const paramsArr = Array.isArray(df.apiParams) ? df.apiParams.filter(p => p.key) : []
     if (hasDependsOn) paramsArr.push({ key: dependsOnParam, value: `__DYNAMIC__detail.${df.dependsOn}` })
@@ -1025,6 +1050,7 @@ function buildDetailFieldTd(df, allDetailFields) {
           const parts = [`field: '${c.field}'`]
           if (c.headerName) parts.push(`headerName: '${c.headerName}'`)
           if (c.width) parts.push(`width: '${c.width}'`)
+          if (c.flex) parts.push(`flex: ${c.flex}`)
           return `{ ${parts.join(', ')} }`
         }).join(', ') + ']'
       : '[]'
@@ -1034,7 +1060,7 @@ function buildDetailFieldTd(df, allDetailFields) {
                         <FieldPopUp
                           v-if="!isReadOnly"
                           :value="detail.${df.key}"
-                          @input="(v) => (detail.${df.key} = v)"${valueFullAttr}
+                          ${inputHandler}${valueFullAttr}
                           apiUrl="${apiUrlWithParams}"${dynamicApiParamsAttr}
                           displayField="${df.displayField || 'name'}"
                           valueField="${df.valueField || 'id'}"
