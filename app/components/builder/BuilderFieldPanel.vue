@@ -5,6 +5,7 @@ import { getRegistryEntry, FIELD_REGISTRY } from '~/utils/builder/fieldRegistry'
 const props = defineProps({
   field: { type: Object, required: true },
   allFields: { type: Array, default: () => [] },
+  allDetails: { type: Array, default: () => [] },
   fieldIndex: { type: Number, default: -1 },
 })
 
@@ -1242,6 +1243,63 @@ function addColumnItem(key) {
           </div>
         </div>
         <p v-if="pf.hint" class="text-xs text-muted-foreground/70 mt-1">{{ pf.hint }}</p>
+      </div>
+
+      <!-- Detail Aggregate — Header field = SUM/AVG/COUNT of detail column -->
+      <div v-if="pf.type === 'computedFormula' && ['number', 'fieldnumber', 'fieldnumber_decimal', 'currency'].includes(field.type) && allDetails.length" class="mt-3 border-t border-border/50 pt-3 space-y-2">
+        <div class="flex items-center gap-1.5">
+          <span class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Aggregate Detail → Header</span>
+          <span v-if="field.detailAggregate?.type" class="text-[9px] px-1.5 py-0.5 bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300 rounded font-mono">
+            {{ field.detailAggregate.type }}(detail[{{ field.detailAggregate.detailIndex }}].{{ field.detailAggregate.detailField }})
+          </span>
+        </div>
+        <p class="text-[9px] text-muted-foreground/50">Hitung otomatis dari kolom detail (misal: grand_total = SUM subtotal)</p>
+        <div class="grid grid-cols-3 gap-1.5">
+          <div>
+            <label class="block mb-0.5 text-[10px] text-muted-foreground">Operasi</label>
+            <select
+              :value="field.detailAggregate?.type || ''"
+              class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-[10px]"
+              @change="updateField('detailAggregate', { ...field.detailAggregate, type: $event.target.value })"
+            >
+              <option value="">-- Tidak aktif --</option>
+              <option value="SUM">SUM</option>
+              <option value="AVG">AVG</option>
+              <option value="COUNT">COUNT</option>
+            </select>
+          </div>
+          <div>
+            <label class="block mb-0.5 text-[10px] text-muted-foreground">Detail Tab</label>
+            <select
+              :value="field.detailAggregate?.detailIndex ?? 0"
+              class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-[10px]"
+              @change="updateField('detailAggregate', { ...field.detailAggregate, detailIndex: Number($event.target.value), detailField: '' })"
+            >
+              <option v-for="(d, di) in allDetails" :key="di" :value="di">{{ d.tabLabel || `Detail ${di + 1}` }}</option>
+            </select>
+          </div>
+          <div>
+            <label class="block mb-0.5 text-[10px] text-muted-foreground">Kolom Detail</label>
+            <select
+              :value="field.detailAggregate?.detailField || ''"
+              class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-[10px]"
+              @change="updateField('detailAggregate', { ...field.detailAggregate, detailField: $event.target.value })"
+            >
+              <option value="">-- Pilih --</option>
+              <option
+                v-for="df in (allDetails[field.detailAggregate?.detailIndex ?? 0]?.detailFields || []).filter(f => f.key && ['number', 'fieldnumber', 'fieldnumber_decimal', 'currency'].includes(f.type))"
+                :key="df.key"
+                :value="df.key"
+              >{{ df.label || df.key }}</option>
+            </select>
+          </div>
+        </div>
+        <button
+          v-if="field.detailAggregate?.type"
+          type="button"
+          class="text-[9px] text-red-500 hover:text-red-400 underline"
+          @click="updateField('detailAggregate', { type: '', detailIndex: 0, detailField: '' })"
+        >Hapus Aggregate</button>
       </div>
 
       <!-- Auto-Fill Default Value from Another Field -->

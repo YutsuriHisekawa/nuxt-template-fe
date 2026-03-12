@@ -162,6 +162,7 @@ const onSave = async () => {
   // 2. Validasi: cek field yang wajib diisi
   let invalid = false;
 __VALIDATION__
+__DETAIL_VALIDATION__
 
   if (invalid) {
     toast.error("Validasi gagal", {

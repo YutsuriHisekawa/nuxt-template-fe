@@ -5,6 +5,12 @@ import { getDetailFieldDecimalPlaces, getDetailFieldDefaultWidth, isDetailNumeri
 export function useDetailPreview(details) {
   const detailPreviewData = reactive({})
 
+  // Resolve dot-path keys like 'm_item.kode_item' → obj.m_item.kode_item
+  function resolvePath(obj, path) {
+    if (!obj || !path) return undefined
+    return path.split('.').reduce((o, k) => o?.[k], obj)
+  }
+
   function isReadonlyDetailField(df) {
     return Boolean(df?.readonly) || (Array.isArray(df?.computedFormula) && df.computedFormula.length > 0)
   }
@@ -23,22 +29,44 @@ export function useDetailPreview(details) {
     return detailPreviewData[dIdx]
   }
 
-  function getPreviewExcludeIds(dIdx) {
+  // Build composite key from all column values (for anti-duplicate)
+  function buildItemKey(item, detail) {
+    const columns = detail?.columns || []
+    if (!columns.length) return JSON.stringify(item)
+    return columns.map(c => {
+      const val = resolvePath(item, c.key || '')
+      return val ?? ''
+    }).join('|')
+  }
+
+  function getPreviewExcludeKeys(dIdx) {
     const detail = details.value[dIdx]
-    const fk = detail?.foreignKey || 'id'
-    return getPreviewArr(dIdx).map(d => d[fk])
+    if (!detail?.antiDuplicate) return []
+    const arr = getPreviewArr(dIdx)
+    // Each row stores the raw item in foreignDisplay — rebuild key from it
+    const fkDisplay = detail?.foreignDisplay || ''
+    return arr.map(d => {
+      const rawItem = fkDisplay ? d[fkDisplay] : d
+      return rawItem ? buildItemKey(rawItem, detail) : null
+    }).filter(v => v != null)
   }
 
   function handlePreviewMultiSelectAdd(dIdx, selectedItems) {
     const detail = details.value[dIdx]
     const fk = detail?.foreignKey || 'id'
     const fkDisplay = detail?.foreignDisplay || ''
-    const uk = detail?.uniqueKey || 'id'
     const arr = getPreviewArr(dIdx)
     let added = 0
+    // Build existing keys set for anti-duplicate check
+    const existingKeys = detail?.antiDuplicate ? new Set(getPreviewExcludeKeys(dIdx)) : null
     selectedItems.forEach(item => {
-      if (arr.some(d => d[fk] === item[uk])) return
-      const row = { [fk]: item[uk] }
+      // Anti-duplicate: skip if composite key already exists
+      if (existingKeys) {
+        const key = buildItemKey(item, detail)
+        if (existingKeys.has(key)) return
+        existingKeys.add(key) // prevent dupes within the same batch
+      }
+      const row = { [fk]: resolvePath(item, fk) ?? item.id ?? null }
       if (fkDisplay) row[fkDisplay] = item
       ;(detail.detailFields || []).forEach(df => {
         if (df.type === 'checkbox' || df.type === 'status') row[df.key] = df.default !== false
@@ -48,7 +76,7 @@ export function useDetailPreview(details) {
         if (df.defaultValueFrom?.field && df.defaultValueFrom?.property) {
           const sourceIsDisplayCol = (detail.displayColumns || []).some(dc => dc.key === df.defaultValueFrom.field)
           if (sourceIsDisplayCol) {
-            const val = item[df.defaultValueFrom.property]
+            const val = resolvePath(item, df.defaultValueFrom.property)
             if (val !== undefined && val !== null) row[df.key] = val
           }
         }
@@ -109,8 +137,8 @@ export function useDetailPreview(details) {
           field: dc.key,
           flex: 1, minWidth: 100,
           valueGetter: (params) => {
-            if (detail.foreignDisplay) return params.data?.[detail.foreignDisplay]?.[dc.key] || '-'
-            return params.data?.[dc.key] || '-'
+            if (detail.foreignDisplay) return resolvePath(params.data?.[detail.foreignDisplay], dc.key) || '-'
+            return resolvePath(params.data, dc.key) || '-'
           },
         })
       })
@@ -282,7 +310,7 @@ export function useDetailPreview(details) {
 
   return {
     detailPreviewData,
-    getPreviewArr, getPreviewExcludeIds,
+    getPreviewArr, getPreviewExcludeKeys,
     handlePreviewMultiSelectAdd, handlePreviewAddRow, removePreviewRow,
     updatePreviewCell, clearPreviewData,
   }

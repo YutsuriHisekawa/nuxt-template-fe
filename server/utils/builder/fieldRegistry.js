@@ -97,7 +97,10 @@ function genFieldNumber(f) {
               label="${f.label}"
               type="${fnType}"
               :value="values.${f.field}"
+              :errorname="errors.${f.field} ? 'failed' : ''"
               @input="(v) => (values.${f.field} = v)"
+              :hints="errors.${f.field}"
+              :required="${f.required ? '!isReadOnly' : 'false'}"
               ${getDisabledAttr(f)}
               ${readonlyAttr}
               ${decimalPlacesAttr}
@@ -466,8 +469,8 @@ export const FIELD_REGISTRY = [
   { value: 'tel',                searchable: true,  showInMobile: true,  hasError: true,  isSwitch: false, generateTemplate: genFieldX },
   { value: 'password',           searchable: false, showInMobile: false, hasError: true,  isSwitch: false, generateTemplate: genFieldX },
   { value: 'textarea',           searchable: true,  showInMobile: true,  hasError: true,  isSwitch: false, generateTemplate: genTextarea },
-  { value: 'fieldnumber',        searchable: false, showInMobile: false, hasError: false, isSwitch: false, generateTemplate: genFieldNumber },
-  { value: 'fieldnumber_decimal',searchable: false, showInMobile: false, hasError: false, isSwitch: false, generateTemplate: genFieldNumber },
+  { value: 'fieldnumber',        searchable: false, showInMobile: false, hasError: true, isSwitch: false, generateTemplate: genFieldNumber },
+  { value: 'fieldnumber_decimal',searchable: false, showInMobile: false, hasError: true, isSwitch: false, generateTemplate: genFieldNumber },
   {
     value: 'switch', searchable: false, showInMobile: false, hasError: false, isSwitch: true,
     generateTemplate: genSwitch,

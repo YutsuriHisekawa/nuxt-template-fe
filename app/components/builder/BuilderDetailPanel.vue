@@ -53,20 +53,117 @@ const DETAIL_HELP = {
 
 const isMultiSelect = computed(() => props.detail.mode !== 'add_to_list')
 
+// ── URL ↔ Params sync helpers (like Postman) ────────────────────────
+function parseUrlParams(url) {
+  const idx = url.indexOf('?')
+  if (idx === -1) return []
+  const qs = url.slice(idx + 1)
+  if (!qs) return []
+  return qs.split('&').filter(Boolean).map(pair => {
+    const eqIdx = pair.indexOf('=')
+    if (eqIdx === -1) return { key: pair, value: '' }
+    return { key: pair.slice(0, eqIdx), value: decodeURIComponent(pair.slice(eqIdx + 1)) }
+  })
+}
+
+function getBaseUrl(url) {
+  const idx = url.indexOf('?')
+  return idx === -1 ? url : url.slice(0, idx)
+}
+
+function buildFullUrl(base, params) {
+  const valid = (params || []).filter(p => p.key)
+  if (!valid.length) return base
+  const qs = valid.map(p => `${p.key}=${encodeURIComponent(p.value || '')}`).join('&')
+  return `${base}?${qs}`
+}
+
+// Prevent infinite sync loop
+let _syncing = false
+
 function update(key, value) {
   const updated = { ...props.detail, [key]: value }
 
   // Auto-derive foreignKey & foreignDisplay from apiUrl when user types apiUrl
   if (key === 'apiUrl' && value) {
-    const match = value.match(/\/([^/?]+)(?:\?|$)/)
+    const base = getBaseUrl(value)
+    const match = base.match(/\/([^/?]+)$/)
     if (match) {
       const tableName = match[1] // e.g. "m_role"
       if (!props.detail.foreignKey) updated.foreignKey = tableName + '_id'
       if (!props.detail.foreignDisplay) updated.foreignDisplay = tableName
     }
+
+    // URL → Params sync: extract query params from URL
+    if (!_syncing) {
+      _syncing = true
+      const extracted = parseUrlParams(value)
+      updated.apiParams = extracted.length ? extracted : (props.detail.apiParams || [])
+      updated.apiUrl = value // keep full URL as-is while user types
+      _syncing = false
+    }
+  }
+
+  // Params → URL sync: rebuild URL query string when params change
+  if (key === 'apiParams' && !_syncing) {
+    _syncing = true
+    const base = getBaseUrl(props.detail.apiUrl || '')
+    updated.apiUrl = buildFullUrl(base, value)
+    _syncing = false
   }
 
   emit('update:detail', updated)
+}
+
+// ── Computed: display base URL (without query params) for the URL input ──
+const displayApiUrl = computed(() => props.detail.apiUrl || '')
+const detailSearchKeys = computed(() => {
+  const raw = props.detail.searchKey
+  if (Array.isArray(raw)) return raw.length ? raw : ['']
+  if (typeof raw === 'string' && raw.trim()) {
+    const parts = raw.split(',').map(key => key.trim()).filter(Boolean)
+    return parts.length ? parts : ['']
+  }
+  return ['']
+})
+
+// ── API Params helpers ────────────────────────────────────────────────
+function updateApiParam(index, prop, val) {
+  const arr = [...(props.detail.apiParams || [])]
+  arr[index] = { ...arr[index], [prop]: val }
+  update('apiParams', arr)
+}
+function removeApiParam(index) {
+  const arr = [...(props.detail.apiParams || [])]
+  arr.splice(index, 1)
+  update('apiParams', arr)
+}
+function addApiParam() {
+  update('apiParams', [...(props.detail.apiParams || []), { key: '', value: '' }])
+}
+
+function updateSearchKey(index, value) {
+  const arr = [...detailSearchKeys.value]
+  arr[index] = value
+  update('searchKey', arr)
+}
+
+function removeSearchKey(index) {
+  const arr = [...detailSearchKeys.value]
+  arr.splice(index, 1)
+  update('searchKey', arr.length ? arr : [''])
+}
+
+function addSearchKey() {
+  update('searchKey', [...detailSearchKeys.value, ''])
+}
+
+function reloadApiParams() {
+  const url = props.detail.apiUrl || ''
+  const extracted = parseUrlParams(url)
+  _syncing = true
+  emit('update:detail', { ...props.detail, apiParams: extracted.length ? extracted : [] })
+  _syncing = false
 }
 
 // ── Column helpers ──────────────────────────────────────────────────
@@ -188,6 +285,60 @@ function updateDetailOptionItem(fieldIndex, key, optIndex, prop, val) {
   const opts = [...(field[key] || [])]
   opts[optIndex] = { ...opts[optIndex], [prop]: val }
   field[key] = opts
+  arr[fieldIndex] = field
+  update('detailFields', arr)
+}
+
+// ── Detail field API params helpers (for select/popup) ──────────────
+function addDetailApiParam(fieldIndex) {
+  const arr = [...(props.detail.detailFields || [])]
+  const field = { ...arr[fieldIndex] }
+  field.apiParams = [...(field.apiParams || []), { key: '', value: '' }]
+  arr[fieldIndex] = field
+  update('detailFields', arr)
+}
+function removeDetailApiParam(fieldIndex, paramIndex) {
+  const arr = [...(props.detail.detailFields || [])]
+  const field = { ...arr[fieldIndex] }
+  const params = [...(field.apiParams || [])]
+  params.splice(paramIndex, 1)
+  field.apiParams = params
+  arr[fieldIndex] = field
+  update('detailFields', arr)
+}
+function updateDetailApiParam(fieldIndex, paramIndex, prop, val) {
+  const arr = [...(props.detail.detailFields || [])]
+  const field = { ...arr[fieldIndex] }
+  const params = [...(field.apiParams || [])]
+  params[paramIndex] = { ...params[paramIndex], [prop]: val }
+  field.apiParams = params
+  arr[fieldIndex] = field
+  update('detailFields', arr)
+}
+
+// ── Detail field popup columns helpers ──────────────────────────────
+function addDetailPopupColumn(fieldIndex) {
+  const arr = [...(props.detail.detailFields || [])]
+  const field = { ...arr[fieldIndex] }
+  field.popupColumns = [...(field.popupColumns || []), { field: '', headerName: '', width: '' }]
+  arr[fieldIndex] = field
+  update('detailFields', arr)
+}
+function removeDetailPopupColumn(fieldIndex, colIndex) {
+  const arr = [...(props.detail.detailFields || [])]
+  const field = { ...arr[fieldIndex] }
+  const cols = [...(field.popupColumns || [])]
+  cols.splice(colIndex, 1)
+  field.popupColumns = cols
+  arr[fieldIndex] = field
+  update('detailFields', arr)
+}
+function updateDetailPopupColumn(fieldIndex, colIndex, prop, val) {
+  const arr = [...(props.detail.detailFields || [])]
+  const field = { ...arr[fieldIndex] }
+  const cols = [...(field.popupColumns || [])]
+  cols[colIndex] = { ...cols[colIndex], [prop]: val }
+  field.popupColumns = cols
   arr[fieldIndex] = field
   update('detailFields', arr)
 }
@@ -374,6 +525,62 @@ function applyDetailTemplate(fieldIndex) {
       <p class="text-xs text-muted-foreground/70 mt-0.5">Key yang dikirim dalam payload POST/PUT</p>
     </div>
 
+    <!-- ════════════════════════════════════════════════════════════════ -->
+    <!-- DETAIL OPTIONS (shared between both modes) -->
+    <!-- ════════════════════════════════════════════════════════════════ -->
+    <div class="space-y-3 border border-border rounded-lg p-3 bg-muted/20">
+      <p class="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Opsi Detail</p>
+
+      <!-- Min / Max Rows -->
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label class="block mb-0.5 text-xs text-muted-foreground">Min Baris</label>
+          <input type="number" min="0" :value="detail.minRows || 0" placeholder="0 = tidak ada" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1.5 text-sm focus:border-primary focus:ring-1 focus:ring-primary" @input="update('minRows', Number($event.target.value) || 0)" />
+          <p class="text-[9px] text-muted-foreground/50 mt-0.5">0 = tidak wajib isi</p>
+        </div>
+        <div>
+          <label class="block mb-0.5 text-xs text-muted-foreground">Max Baris</label>
+          <input type="number" min="0" :value="detail.maxRows || 0" placeholder="0 = unlimited" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1.5 text-sm focus:border-primary focus:ring-1 focus:ring-primary" @input="update('maxRows', Number($event.target.value) || 0)" />
+          <p class="text-[9px] text-muted-foreground/50 mt-0.5">0 = tak terbatas</p>
+        </div>
+      </div>
+
+      <!-- Toggle: Duplicate Row -->
+      <div class="flex items-center justify-between gap-2">
+        <div>
+          <p class="text-xs font-medium text-foreground">Duplikat Baris</p>
+          <p class="text-[9px] text-muted-foreground/50">Tombol salin baris di tabel detail</p>
+        </div>
+        <button type="button" class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors" :class="detail.enableDuplicate ? 'bg-primary' : 'bg-muted-foreground/30'" @click="update('enableDuplicate', !detail.enableDuplicate)">
+          <span class="inline-block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform" :class="detail.enableDuplicate ? 'translate-x-[18px]' : 'translate-x-0.5'" />
+        </button>
+      </div>
+
+      <!-- Toggle: Reorder Row -->
+      <div class="flex items-center justify-between gap-2">
+        <div>
+          <p class="text-xs font-medium text-foreground">Urut Baris (↑↓)</p>
+          <p class="text-[9px] text-muted-foreground/50">Tombol naik/turun untuk urut baris</p>
+        </div>
+        <button type="button" class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors" :class="detail.enableReorder ? 'bg-primary' : 'bg-muted-foreground/30'" @click="update('enableReorder', !detail.enableReorder)">
+          <span class="inline-block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform" :class="detail.enableReorder ? 'translate-x-[18px]' : 'translate-x-0.5'" />
+        </button>
+      </div>
+
+      <!-- Toggle: Import from Clipboard -->
+      <div class="flex items-center justify-between gap-2">
+        <div>
+          <p class="text-xs font-medium text-foreground">Import Clipboard</p>
+          <p class="text-[9px] text-muted-foreground/50">Paste dari Excel/spreadsheet (tab-separated)</p>
+        </div>
+        <button type="button" class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors" :class="detail.enableImport ? 'bg-primary' : 'bg-muted-foreground/30'" @click="update('enableImport', !detail.enableImport)">
+          <span class="inline-block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform" :class="detail.enableImport ? 'translate-x-[18px]' : 'translate-x-0.5'" />
+        </button>
+      </div>
+    </div>
+
+    <hr class="border-border" />
+
     <!-- ================================================================ -->
     <!-- BUTTON MULTI SELECT MODE FIELDS -->
     <!-- ================================================================ -->
@@ -396,23 +603,62 @@ function applyDetailTemplate(fieldIndex) {
 
       <!-- API URL -->
       <div>
-        <label class="block mb-1 font-medium text-muted-foreground">API Endpoint (Multi-Select)</label>
-        <input type="text" :value="detail.apiUrl" placeholder="/api/dynamic/m_menu" class="w-full rounded bg-muted border border-border text-foreground px-3 py-1.5 focus:border-primary focus:ring-1 focus:ring-primary text-sm" @input="update('apiUrl', $event.target.value)" />
+        <div class="flex items-center gap-2 mb-1">
+          <label class="font-medium text-muted-foreground">API Endpoint (Multi-Select)</label>
+          <button type="button" title="Reload API Params dari URL" class="inline-flex items-center gap-1 text-[11px] text-primary hover:text-primary/80 transition-colors px-1.5 py-0.5 rounded border border-primary/30 hover:border-primary/60 bg-primary/5 hover:bg-primary/10" @click="reloadApiParams">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            Reload Params
+          </button>
+        </div>
+        <input type="text" :value="displayApiUrl" placeholder="/api/dynamic/m_menu?join=true&include=m_item" class="w-full rounded bg-muted border border-border text-foreground px-3 py-1.5 focus:border-primary focus:ring-1 focus:ring-primary text-sm" @input="update('apiUrl', $event.target.value)" />
+        <p class="text-xs text-muted-foreground/70 mt-0.5">URL dan Params otomatis sinkron (seperti Postman)</p>
+      </div>
+
+      <!-- API Params -->
+      <div>
+        <label class="block mb-1 font-medium text-muted-foreground">API Params</label>
+        <p class="text-xs text-muted-foreground/70 mb-2">Edit param di sini atau langsung di URL — otomatis sinkron</p>
+        <div class="flex flex-col gap-2">
+          <div v-for="(p, i) in (detail.apiParams || [])" :key="i" class="flex gap-2 items-center">
+            <input type="text" :value="p.key" placeholder="Key (e.g. join)" class="flex-1 rounded bg-muted border border-border text-foreground px-2 py-1.5 text-sm focus:border-primary focus:ring-1 focus:ring-primary" @input="updateApiParam(i, 'key', $event.target.value)" />
+            <input type="text" :value="p.value" placeholder="Value (e.g. true)" class="flex-1 rounded bg-muted border border-border text-foreground px-2 py-1.5 text-sm focus:border-primary focus:ring-1 focus:ring-primary" @input="updateApiParam(i, 'value', $event.target.value)" />
+            <button class="text-muted-foreground hover:text-destructive transition-colors p-1" @click="removeApiParam(i)">
+              <Trash2 class="w-4 h-4" />
+            </button>
+          </div>
+          <button class="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 transition-colors py-1" @click="addApiParam">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Tambah Param
+          </button>
+        </div>
       </div>
 
       <!-- Search Key, Display Key, Unique Key -->
-      <div class="grid grid-cols-3 gap-2">
+      <div class="grid grid-cols-2 gap-2 items-start">
         <div>
           <label class="block mb-1 font-medium text-muted-foreground text-xs">Search Key</label>
-          <input type="text" :value="detail.searchKey" placeholder="name" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1.5 text-sm focus:border-primary focus:ring-1 focus:ring-primary" @input="update('searchKey', $event.target.value)" />
+          <div class="flex flex-col gap-2">
+            <div v-for="(searchKey, i) in detailSearchKeys" :key="`search-key-${i}`" class="flex gap-2 items-center">
+              <input type="text" :value="searchKey" placeholder="m_item.nama_item" class="flex-1 rounded bg-muted border border-border text-foreground px-2 py-1.5 text-sm focus:border-primary focus:ring-1 focus:ring-primary" @input="updateSearchKey(i, $event.target.value)" />
+              <button type="button" class="text-muted-foreground hover:text-destructive transition-colors p-1" :disabled="detailSearchKeys.length === 1" @click="removeSearchKey(i)">
+                <Trash2 class="w-4 h-4" />
+              </button>
+            </div>
+            <button type="button" class="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 transition-colors py-1" @click="addSearchKey">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Tambah Search Key
+            </button>
+          </div>
         </div>
         <div>
-          <label class="block mb-1 font-medium text-muted-foreground text-xs">Display Key</label>
-          <input type="text" :value="detail.displayKey" placeholder="name" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1.5 text-sm focus:border-primary focus:ring-1 focus:ring-primary" @input="update('displayKey', $event.target.value)" />
-        </div>
-        <div>
-          <label class="block mb-1 font-medium text-muted-foreground text-xs">Unique Key</label>
-          <input type="text" :value="detail.uniqueKey" placeholder="id" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1.5 text-sm focus:border-primary focus:ring-1 focus:ring-primary" @input="update('uniqueKey', $event.target.value)" />
+          <label class="block mb-1 font-medium text-muted-foreground text-xs">Anti Duplikat</label>
+          <div class="flex items-center gap-2 mt-1">
+            <button type="button" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors" :class="detail.antiDuplicate ? 'bg-primary' : 'bg-muted-foreground/30'" @click="update('antiDuplicate', !detail.antiDuplicate)">
+              <span class="inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform" :class="detail.antiDuplicate ? 'translate-x-6' : 'translate-x-1'" />
+            </button>
+            <span class="text-sm" :class="detail.antiDuplicate ? 'text-primary font-medium' : 'text-muted-foreground'">{{ detail.antiDuplicate ? 'Aktif' : 'Tidak Aktif' }}</span>
+          </div>
+          <p class="text-xs text-muted-foreground/70 mt-1">Jika aktif, item yang sudah dipilih tidak bisa dipilih lagi (mencegah item terpilih dobel).</p>
         </div>
       </div>
 
@@ -584,6 +830,24 @@ function applyDetailTemplate(fieldIndex) {
                 <label class="block mb-0.5 text-xs text-muted-foreground">API URL</label>
                 <input type="text" :value="df.apiUrl || ''" placeholder="/api/dynamic/m_xxx" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'apiUrl', $event.target.value)" />
               </div>
+              <!-- API Params -->
+              <div>
+                <label class="block mb-0.5 text-xs text-muted-foreground">API Params</label>
+                <div class="flex flex-col gap-1.5">
+                  <div v-for="(param, pi) in (Array.isArray(df.apiParams) ? df.apiParams : [])" :key="pi" class="flex gap-1.5 items-center">
+                    <input type="text" :value="param.key" placeholder="Param" class="flex-1 min-w-0 rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailApiParam(i, pi, 'key', $event.target.value)" />
+                    <span class="text-muted-foreground text-[10px]">=</span>
+                    <input type="text" :value="param.value" placeholder="Value" class="flex-1 min-w-0 rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailApiParam(i, pi, 'value', $event.target.value)" />
+                    <button class="text-muted-foreground hover:text-destructive transition-colors p-0.5 shrink-0" @click="removeDetailApiParam(i, pi)">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                  </div>
+                  <button class="flex items-center gap-1 text-[11px] text-primary hover:text-primary/80 transition-colors py-0.5" @click="addDetailApiParam(i)">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    Tambah Param
+                  </button>
+                </div>
+              </div>
               <div class="grid grid-cols-2 gap-2">
                 <div>
                   <label class="block mb-0.5 text-xs text-muted-foreground">Display Field</label>
@@ -629,11 +893,29 @@ function applyDetailTemplate(fieldIndex) {
             </template>
           </div>
 
-          <!-- PopUp: apiUrl, columns, searchKey, displayKey -->
+          <!-- PopUp: apiUrl, apiParams, columns, searchFields, dialogTitle, displayField, valueField -->
           <div v-else-if="df.type === 'popup'" class="space-y-2">
             <div>
               <label class="block mb-0.5 text-xs text-muted-foreground">API URL</label>
               <input type="text" :value="df.apiUrl || ''" placeholder="/api/dynamic/m_xxx" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'apiUrl', $event.target.value)" />
+            </div>
+            <!-- API Params -->
+            <div>
+              <label class="block mb-0.5 text-xs text-muted-foreground">API Params</label>
+              <div class="flex flex-col gap-1.5">
+                <div v-for="(param, pi) in (Array.isArray(df.apiParams) ? df.apiParams : [])" :key="pi" class="flex gap-1.5 items-center">
+                  <input type="text" :value="param.key" placeholder="Param" class="flex-1 min-w-0 rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailApiParam(i, pi, 'key', $event.target.value)" />
+                  <span class="text-muted-foreground text-[10px]">=</span>
+                  <input type="text" :value="param.value" placeholder="Value" class="flex-1 min-w-0 rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailApiParam(i, pi, 'value', $event.target.value)" />
+                  <button class="text-muted-foreground hover:text-destructive transition-colors p-0.5 shrink-0" @click="removeDetailApiParam(i, pi)">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  </button>
+                </div>
+                <button class="flex items-center gap-1 text-[11px] text-primary hover:text-primary/80 transition-colors py-0.5" @click="addDetailApiParam(i)">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  Tambah Param
+                </button>
+              </div>
             </div>
             <div class="grid grid-cols-2 gap-2">
               <div>
@@ -644,6 +926,38 @@ function applyDetailTemplate(fieldIndex) {
                 <label class="block mb-0.5 text-xs text-muted-foreground">Value Field</label>
                 <input type="text" :value="df.valueField || 'id'" placeholder="id" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'valueField', $event.target.value)" />
               </div>
+            </div>
+            <!-- Popup Columns -->
+            <div>
+              <label class="block mb-0.5 text-xs text-muted-foreground">Popup Columns</label>
+              <p class="text-[10px] text-muted-foreground/60 mb-1">Kolom yang ditampilkan di popup dialog</p>
+              <div class="flex flex-col gap-1.5">
+                <div v-for="(col, ci) in (Array.isArray(df.popupColumns) ? df.popupColumns : [])" :key="ci" class="flex gap-1.5 items-center">
+                  <input type="text" :value="col.field" placeholder="Key" class="flex-1 min-w-0 rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailPopupColumn(i, ci, 'field', $event.target.value)" />
+                  <input type="text" :value="col.headerName" placeholder="Label" class="flex-1 min-w-0 rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailPopupColumn(i, ci, 'headerName', $event.target.value)" />
+                  <div class="relative w-14 shrink-0">
+                    <input type="number" min="1" max="100" :value="col.width ? parseInt(col.width) : null" placeholder="%" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 pr-4 text-xs focus:border-primary focus:ring-1 focus:ring-primary [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" @input="updateDetailPopupColumn(i, ci, 'width', $event.target.value ? $event.target.value + '%' : '')" />
+                    <span class="absolute right-1 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">%</span>
+                  </div>
+                  <button class="text-muted-foreground hover:text-destructive transition-colors p-0.5 shrink-0" @click="removeDetailPopupColumn(i, ci)">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  </button>
+                </div>
+                <button class="flex items-center gap-1 text-[11px] text-primary hover:text-primary/80 transition-colors py-0.5" @click="addDetailPopupColumn(i)">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  Tambah Kolom
+                </button>
+              </div>
+            </div>
+            <!-- Search Fields -->
+            <div>
+              <label class="block mb-0.5 text-xs text-muted-foreground">Search Fields</label>
+              <input type="text" :value="df.searchFields || ''" placeholder="name,kode (comma-separated)" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'searchFields', $event.target.value)" />
+            </div>
+            <!-- Dialog Title -->
+            <div>
+              <label class="block mb-0.5 text-xs text-muted-foreground">Dialog Title</label>
+              <input type="text" :value="df.dialogTitle || ''" placeholder="Pilih Item" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'dialogTitle', $event.target.value)" />
             </div>
           </div>
 
@@ -681,15 +995,30 @@ function applyDetailTemplate(fieldIndex) {
             </div>
           </div>
 
-          <!-- Currency: default value -->
-          <div v-else-if="df.type === 'currency'" class="flex gap-2">
-            <div class="flex-1">
-              <label class="block mb-0.5 text-xs text-muted-foreground">Default Value</label>
-              <input type="number" :value="df.default || 0" placeholder="0" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'default', Number($event.target.value))" />
+          <!-- Currency: default value, prefix, allowDecimal, decimalPlaces -->
+          <div v-else-if="df.type === 'currency'" class="space-y-2">
+            <div class="flex gap-2">
+              <div class="flex-1">
+                <label class="block mb-0.5 text-xs text-muted-foreground">Default Value</label>
+                <input type="number" :value="df.default || 0" placeholder="0" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'default', Number($event.target.value))" />
+              </div>
+              <div class="flex-1">
+                <label class="block mb-0.5 text-xs text-muted-foreground">Prefix</label>
+                <input type="text" :value="df.currencyPrefix || 'Rp'" placeholder="Rp" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'currencyPrefix', $event.target.value)" />
+              </div>
             </div>
-            <div class="flex-1">
-              <label class="block mb-0.5 text-xs text-muted-foreground">Digit Desimal</label>
-              <input type="number" min="0" max="6" :value="df.decimalPlaces ?? 2" placeholder="2" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'decimalPlaces', Math.min(6, Math.max(0, Number($event.target.value || 0))))" />
+            <div class="flex gap-2">
+              <div class="flex-1">
+                <label class="block mb-0.5 text-xs text-muted-foreground">Allow Decimal</label>
+                <div class="flex rounded border border-border overflow-hidden h-[26px]">
+                  <button :class="['flex-1 text-[11px] transition-colors', df.allowDecimal !== false ? 'bg-primary text-primary-foreground font-medium' : 'bg-muted text-muted-foreground hover:text-foreground']" @click="updateDetailField(i, 'allowDecimal', true)">Ya</button>
+                  <button :class="['flex-1 text-[11px] transition-colors', df.allowDecimal === false ? 'bg-primary text-primary-foreground font-medium' : 'bg-muted text-muted-foreground hover:text-foreground']" @click="updateDetailField(i, 'allowDecimal', false)">Tidak</button>
+                </div>
+              </div>
+              <div v-if="df.allowDecimal !== false" class="flex-1">
+                <label class="block mb-0.5 text-xs text-muted-foreground">Digit Desimal</label>
+                <input type="number" min="0" max="6" :value="df.decimalPlaces ?? 2" placeholder="2" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'decimalPlaces', Math.min(6, Math.max(0, Number($event.target.value || 0))))" />
+              </div>
             </div>
           </div>
 
@@ -705,7 +1034,50 @@ function applyDetailTemplate(fieldIndex) {
             </div>
           </div>
 
-          <div class="grid grid-cols-2 gap-2 border-t border-border/50 pt-2">
+          <!-- Slider: default, min, max, step, unit -->
+          <div v-else-if="df.type === 'slider'" class="space-y-2">
+            <div class="flex gap-2">
+              <div class="flex-1">
+                <label class="block mb-0.5 text-xs text-muted-foreground">Default</label>
+                <input type="number" :value="df.default || 0" placeholder="0" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'default', Number($event.target.value))" />
+              </div>
+              <div class="flex-1">
+                <label class="block mb-0.5 text-xs text-muted-foreground">Unit</label>
+                <input type="text" :value="df.sliderUnit || ''" placeholder="%, kg, dll" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'sliderUnit', $event.target.value)" />
+              </div>
+            </div>
+            <div class="flex gap-2">
+              <div class="flex-1">
+                <label class="block mb-0.5 text-xs text-muted-foreground">Min</label>
+                <input type="number" :value="df.sliderMin || 0" placeholder="0" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'sliderMin', Number($event.target.value))" />
+              </div>
+              <div class="flex-1">
+                <label class="block mb-0.5 text-xs text-muted-foreground">Max</label>
+                <input type="number" :value="df.sliderMax || 100" placeholder="100" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'sliderMax', Number($event.target.value))" />
+              </div>
+              <div class="flex-1">
+                <label class="block mb-0.5 text-xs text-muted-foreground">Step</label>
+                <input type="number" :value="df.sliderStep || 1" placeholder="1" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'sliderStep', Number($event.target.value))" />
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-3 gap-2 border-t border-border/50 pt-2">
+            <div>
+              <label class="block mb-0.5 text-xs text-muted-foreground">Required</label>
+              <div class="flex rounded border border-border overflow-hidden h-[26px]">
+                <button
+                  class="flex-1 text-xs transition-colors"
+                  :class="df.required ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'"
+                  @click="updateDetailField(i, 'required', true)"
+                >Ya</button>
+                <button
+                  class="flex-1 text-xs transition-colors border-l border-border"
+                  :class="!df.required ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'"
+                  @click="updateDetailField(i, 'required', false)"
+                >Tidak</button>
+              </div>
+            </div>
             <div>
               <label class="block mb-0.5 text-xs text-muted-foreground">Readonly</label>
               <div class="flex rounded border border-border overflow-hidden h-[26px]">
@@ -733,6 +1105,100 @@ function applyDetailTemplate(fieldIndex) {
               />
               <p class="text-[9px] text-muted-foreground/50 mt-0.5">Kosong = default {{ getDetailFieldDefaultWidth(df.type) }}</p>
             </div>
+          </div>
+
+          <!-- ═══ Upload/Multi-Upload config ═══ -->
+          <div v-if="df.type === 'upload' || df.type === 'multi_upload'" class="border-t border-border/50 pt-2 space-y-2">
+            <p class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Pengaturan Upload</p>
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block mb-0.5 text-xs text-muted-foreground">Accept (MIME)</label>
+                <input type="text" :value="df.uploadAccept || 'image/*'" placeholder="image/*" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'uploadAccept', $event.target.value)" />
+              </div>
+              <div>
+                <label class="block mb-0.5 text-xs text-muted-foreground">Max Size (MB)</label>
+                <input type="number" min="1" :value="df.maxSizeMB || 5" placeholder="5" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'maxSizeMB', Number($event.target.value) || 5)" />
+              </div>
+            </div>
+            <div v-if="df.type === 'multi_upload'">
+              <label class="block mb-0.5 text-xs text-muted-foreground">Max Gambar</label>
+              <input type="number" min="1" :value="df.maxImages || 10" placeholder="10" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-xs focus:border-primary focus:ring-1 focus:ring-primary" @input="updateDetailField(i, 'maxImages', Number($event.target.value) || 10)" />
+            </div>
+          </div>
+
+          <!-- ═══ DependsOn (cascading) ═══ -->
+          <div v-if="['select', 'popup'].includes(df.type) && (df.sourceType || 'api') === 'api'" class="border-t border-border/50 pt-2 space-y-1.5">
+            <p class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Cascading (DependsOn)</p>
+            <div>
+              <label class="block mb-0.5 text-[10px] text-muted-foreground">Field Sumber (baris sama)</label>
+              <select
+                :value="df.dependsOn || ''"
+                class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-[10px]"
+                @change="updateDetailField(i, 'dependsOn', $event.target.value)"
+              >
+                <option value="">-- Tidak ada --</option>
+                <option
+                  v-for="odf in (detail.detailFields || []).filter(f => f.key && f.key !== df.key && ['select', 'popup', 'text', 'number', 'fieldnumber', 'fieldnumber_decimal'].includes(f.type))"
+                  :key="odf.key"
+                  :value="odf.key"
+                >{{ odf.label || odf.key }}</option>
+              </select>
+            </div>
+            <div v-if="df.dependsOn">
+              <label class="block mb-0.5 text-[10px] text-muted-foreground">Nama Param API</label>
+              <input type="text" :value="df.dependsOnParam || ''" :placeholder="df.dependsOn + '_id'" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-[10px]" @input="updateDetailField(i, 'dependsOnParam', $event.target.value)" />
+              <p class="text-[8px] text-muted-foreground/50 mt-0.5">Param query yang dikirim ke API (misal: m_kategori_id)</p>
+            </div>
+          </div>
+
+          <!-- ═══ VisibleWhen / ReadonlyWhen (conditional) ═══ -->
+          <div class="border-t border-border/50 pt-2 space-y-2">
+            <details class="group">
+              <summary class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide cursor-pointer select-none">
+                <span>Visible / Readonly Kondisional</span>
+                <span v-if="df.visibleWhen?.field || df.readonlyWhen?.field" class="text-[9px] px-1 py-0.5 bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300 rounded ml-1">Aktif</span>
+              </summary>
+              <div class="mt-1.5 space-y-2">
+                <!-- visibleWhen -->
+                <div class="bg-muted/30 rounded p-2 space-y-1">
+                  <p class="text-[9px] text-muted-foreground/60 font-semibold">Tampilkan hanya jika:</p>
+                  <div class="grid grid-cols-2 gap-1.5">
+                    <select
+                      :value="df.visibleWhen?.field || ''"
+                      class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-[10px]"
+                      @change="updateDetailField(i, 'visibleWhen', { field: $event.target.value, value: df.visibleWhen?.value || '' })"
+                    >
+                      <option value="">-- Selalu tampil --</option>
+                      <option
+                        v-for="odf in (detail.detailFields || []).filter(f => f.key && f.key !== df.key)"
+                        :key="odf.key"
+                        :value="odf.key"
+                      >{{ odf.label || odf.key }}</option>
+                    </select>
+                    <input v-if="df.visibleWhen?.field" type="text" :value="df.visibleWhen?.value || ''" placeholder="= nilai" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-[10px]" @input="updateDetailField(i, 'visibleWhen', { ...df.visibleWhen, value: $event.target.value })" />
+                  </div>
+                </div>
+                <!-- readonlyWhen -->
+                <div class="bg-muted/30 rounded p-2 space-y-1">
+                  <p class="text-[9px] text-muted-foreground/60 font-semibold">Readonly jika:</p>
+                  <div class="grid grid-cols-2 gap-1.5">
+                    <select
+                      :value="df.readonlyWhen?.field || ''"
+                      class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-[10px]"
+                      @change="updateDetailField(i, 'readonlyWhen', { field: $event.target.value, value: df.readonlyWhen?.value || '' })"
+                    >
+                      <option value="">-- Tidak ada --</option>
+                      <option
+                        v-for="odf in (detail.detailFields || []).filter(f => f.key && f.key !== df.key)"
+                        :key="odf.key"
+                        :value="odf.key"
+                      >{{ odf.label || odf.key }}</option>
+                    </select>
+                    <input v-if="df.readonlyWhen?.field" type="text" :value="df.readonlyWhen?.value || ''" placeholder="= nilai" class="w-full rounded bg-muted border border-border text-foreground px-2 py-1 text-[10px]" @input="updateDetailField(i, 'readonlyWhen', { ...df.readonlyWhen, value: $event.target.value })" />
+                  </div>
+                </div>
+              </div>
+            </details>
           </div>
 
           <!-- Type badge + Summary selector -->
