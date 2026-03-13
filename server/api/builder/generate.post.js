@@ -194,9 +194,9 @@ ${watchSources}
 
     let expr = ''
     if (op === 'SUM') {
-      expr = `${varName}.value.reduce((s, d) => s + (Number(d.${field}) || 0), 0)`
+      expr = `${varName}.value.reduce((s, d) => s + (Number(${$p('d', field)}) || 0), 0)`
     } else if (op === 'AVG') {
-      expr = `${varName}.value.length ? (${varName}.value.reduce((s, d) => s + (Number(d.${field}) || 0), 0) / ${varName}.value.length) : 0`
+      expr = `${varName}.value.length ? (${varName}.value.reduce((s, d) => s + (Number(${$p('d', field)}) || 0), 0) / ${varName}.value.length) : 0`
     } else if (op === 'COUNT') {
       expr = `${varName}.value.length`
     }
@@ -265,7 +265,7 @@ function buildFieldTemplate(f, fields, fullClass, details) {
     if (headerTargets.length || detailTargets.length) {
       const fills = []
       headerTargets.forEach(af => fills.push(`values.${af.field} = obj?.${af.defaultValueFrom.property} || ''`))
-      detailTargets.forEach(dt => fills.push(`${dt.varName}.value.forEach(row => { row.${dt.key} = obj?.${dt.property} || '' })`))
+      detailTargets.forEach(dt => fills.push(`${dt.varName}.value.forEach(row => { ${$p('row', dt.key)} = obj?.${dt.property} || '' })`))
       const handler = `@update:valueFull="(obj) => { ${fills.join('; ')} }"`
       if (tpl.includes('@update:valueFull')) {
         tpl = tpl.replace(/@update:valueFull="[^"]*"/, handler)

@@ -64,6 +64,10 @@ export const useAuthStore = defineStore('auth', () => {
   const sessionVerified = ref(false) // apakah sudah verify session ke backend
   const loggedOut = ref(false)     // flag: user baru saja logout (cegah re-verify via stale cookie)
 
+  // Menu caches — harus di-init di scope setup agar useState punya akses Nuxt instance
+  const sidebarMenuCache = useState('menu-cache', () => ({ items: [], loaded: false, loading: false }))
+  const menuLabelCache = useState('menu-label-cache', () => ({ items: [], loaded: false, loading: false }))
+
   const isLoggedIn = computed(() => !!token.value)
 
   // Check if user is SUPER ADMIN (sama seperti fe-mvg-vue)
@@ -397,14 +401,11 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function clearMenuCaches() {
-    const sidebarMenuCache = useState('menu-cache', () => ({ items: [], loaded: false, loading: false }))
     sidebarMenuCache.value = {
       items: [],
       loaded: false,
       loading: false,
     }
-
-    const menuLabelCache = useState('menu-label-cache', () => ({ items: [], loaded: false, loading: false }))
     menuLabelCache.value = {
       items: [],
       loaded: false,
