@@ -625,6 +625,12 @@ export function useBuilder() {
     }
   }
 
+  async function goToDashboard(options = {}) {
+    const { replace = false } = options;
+    const target = builderKey ? `/builder?key=${builderKey}` : "/builder";
+    await navigateTo(target, { replace });
+  }
+
   const detailPanelIndex = ref(-1);
 
   function normalizeDetailTabs(rawTabs, rawDetails) {
@@ -837,7 +843,7 @@ export function useBuilder() {
       });
     } catch {}
     toast.info("Builder di-reset");
-    await navigateTo(`/builder?key=${builderKey}`, { replace: true });
+    await goToDashboard({ replace: true });
   }
 
   const confirmResetForm = ref(false);
@@ -1373,6 +1379,7 @@ export function useBuilder() {
     // Methods
     onPreviewChange, onPreviewValueFull, onDetailPreviewValueFull,
     computeDetailRowFormulas, updateCellAndCompute,
+    goToDashboard,
     isDetailFieldReadonly, getDetailFieldWidth, getDetailFieldCellStyle,
     getDetailFieldHeaderClass, getDetailFieldCellClass, formatDetailPreviewNumber,
     computeAllFormulas,
