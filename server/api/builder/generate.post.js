@@ -3,6 +3,17 @@ import { resolve, dirname } from 'path'
 import { FIELD_REGISTRY, getRegistryEntry, wrapVisibleWhen } from '../../utils/builder/fieldRegistry.js'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
+// Safe JS object literal key: quote if it contains a dot (e.g. "m_item.id")
+function $k(key) {
+  return key.includes('.') ? `"${key}"` : key
+}
+
+// Safe JS property access: bracket notation if key contains a dot
+// Uses single quotes so it works inside Vue template double-quoted attributes
+function $p(obj, key) {
+  return key.includes('.') ? `${obj}['${key}']` : `${obj}.${key}`
+}
+
 function getReadableName(text) {
   const isTransaction = text.startsWith('t_')
   const clean = text.replace(/^[mt]_/, '').split(/[_-]/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')
@@ -542,14 +553,14 @@ function buildDetailComputedWatchers(details) {
     // Build a deep watcher on the detail array that recalculates formula fields
     const computations = formulaFields.map(df => {
       const expr = df.computedFormula.map(t => {
-        if (t.type === 'field') return `(Number(row.${t.value}) || 0)`
+        if (t.type === 'field') return `(Number(${$p('row', t.value)}) || 0)`
         if (t.type === 'op') return ` ${t.value} `
         if (t.type === 'number') return t.value
         if (t.type === 'paren') return t.value
         return ''
       }).join('')
       const formulaDisplay = df.computedFormula.map(t => t.value).join(' ')
-      return `      // ${df.key} = ${formulaDisplay}\n      row.${df.key} = ${expr};`
+      return `      // ${df.key} = ${formulaDisplay}\n      ${$p('row', df.key)} = ${expr};`
     }).join('\n')
 
     blocks.push(`
@@ -594,7 +605,7 @@ function buildDetailSelectedIds(details) {
     const columns = d.columns || []
     const colsJson = JSON.stringify(columns.map(c => ({ key: c.key })))
     if (fkDisplay) {
-      lines.push(`const ${compName} = computed(() => ${varName}.value.map(d => d.${fkDisplay} ? $buildItemKey(d.${fkDisplay}, ${colsJson}) : null).filter(v => v != null));`)
+      lines.push(`const ${compName} = computed(() => ${varName}.value.map(d => ${$p('d', fkDisplay)} ? $buildItemKey(${$p('d', fkDisplay)}, ${colsJson}) : null).filter(v => v != null));`)
     } else {
       lines.push(`const ${compName} = computed(() => ${varName}.value.map(d => $buildItemKey(d, ${colsJson})).filter(v => v != null));`)
     }
@@ -615,9 +626,9 @@ function buildDetailMethods(details) {
       // ── Add To List mode: push empty row ──
       const addName = i === 0 ? 'addDetailRow' : `addDetailRow${i + 1}`
       const fieldDefaults = detailFields.map(df => {
-        if (df.type === 'checkbox' || df.type === 'status') return `    ${df.key}: ${df.default !== false},`
-        if (['number', 'fieldnumber', 'fieldnumber_decimal', 'currency', 'slider'].includes(df.type)) return `    ${df.key}: ${df.default || 0},`
-        return `    ${df.key}: "${df.default || ''}",`
+        if (df.type === 'checkbox' || df.type === 'status') return `    ${$k(df.key)}: ${df.default !== false},`
+        if (['number', 'fieldnumber', 'fieldnumber_decimal', 'currency', 'slider'].includes(df.type)) return `    ${$k(df.key)}: ${df.default || 0},`
+        return `    ${$k(df.key)}: "${df.default || ''}",`
       }).join('\n')
 
       blocks.push(`
@@ -644,11 +655,11 @@ const ${removeName} = (index) => {
       const fieldDefaults = detailFields.map(df => {
         // If this field auto-fills from a displayColumn, use item property
         if (df.defaultValueFrom?.field && df.defaultValueFrom?.property && displayColKeys.has(df.defaultValueFrom.field)) {
-          return `      ${df.key}: item.${df.defaultValueFrom.property} || ${['number', 'fieldnumber', 'fieldnumber_decimal', 'currency', 'slider'].includes(df.type) ? '0' : '""'},`
+          return `      ${$k(df.key)}: item.${df.defaultValueFrom.property} || ${['number', 'fieldnumber', 'fieldnumber_decimal', 'currency', 'slider'].includes(df.type) ? '0' : '""'},`
         }
-        if (df.type === 'checkbox' || df.type === 'status') return `      ${df.key}: ${df.default !== false},`
-        if (['number', 'fieldnumber', 'fieldnumber_decimal', 'currency', 'slider'].includes(df.type)) return `      ${df.key}: ${df.default || 0},`
-        return `      ${df.key}: "${df.default || ''}",`
+        if (df.type === 'checkbox' || df.type === 'status') return `      ${$k(df.key)}: ${df.default !== false},`
+        if (['number', 'fieldnumber', 'fieldnumber_decimal', 'currency', 'slider'].includes(df.type)) return `      ${$k(df.key)}: ${df.default || 0},`
+        return `      ${$k(df.key)}: "${df.default || ''}",`
       }).join('\n')
 
       // Build dedup logic
@@ -658,7 +669,7 @@ const ${removeName} = (index) => {
         dedupCheck = `
     const itemKey = $buildItemKey(item, ${colsJson});
     const exists = ${varName}.value.some((d) => {
-      const raw = ${fkDisplay ? `d.${fkDisplay}` : 'd'};
+      const raw = ${fkDisplay ? $p('d', fkDisplay) : 'd'};
       return raw ? $buildItemKey(raw, ${colsJson}) === itemKey : false;
     });
     if (exists) { skippedCount++; return; }`
@@ -671,7 +682,7 @@ const ${handlerName} = (selectedItems) => {
   let skippedCount = 0;
   selectedItems.forEach((item) => {${dedupCheck}
     ${varName}.value.push({
-      ${fk}: $resolvePath(item, "${fk}") ?? item.id ?? null,${fkDisplay ? `\n      ${fkDisplay}: item,` : ''}
+      ${$k(fk)}: $resolvePath(item, "${fk}") ?? item.id ?? null,${fkDisplay ? `\n      ${$k(fkDisplay)}: item,` : ''}
 ${fieldDefaults}
     });
     addedCount++;
@@ -760,9 +771,9 @@ function buildDetailLoadData(details) {
     if (d.mode === 'add_to_list') {
       // ── Add To List: load all fields directly ──
       const fieldMappings = detailFields.map(df => {
-        if (df.type === 'checkbox' || df.type === 'status') return `        ${df.key}: detail.${df.key} !== undefined ? detail.${df.key} : ${df.default !== false},`
-        if (['number', 'fieldnumber', 'fieldnumber_decimal', 'currency', 'slider'].includes(df.type)) return `        ${df.key}: detail.${df.key} !== undefined ? detail.${df.key} : ${df.default || 0},`
-        return `        ${df.key}: detail.${df.key} || "${df.default || ''}",`
+        if (df.type === 'checkbox' || df.type === 'status') return `        ${$k(df.key)}: ${$p('detail', df.key)} !== undefined ? ${$p('detail', df.key)} : ${df.default !== false},`
+        if (['number', 'fieldnumber', 'fieldnumber_decimal', 'currency', 'slider'].includes(df.type)) return `        ${$k(df.key)}: ${$p('detail', df.key)} !== undefined ? ${$p('detail', df.key)} : ${df.default || 0},`
+        return `        ${$k(df.key)}: ${$p('detail', df.key)} || "${df.default || ''}",`
       }).join('\n')
 
       blocks.push(`
@@ -777,16 +788,16 @@ ${fieldMappings}
       const fk = d.foreignKey || 'id'
       const fkDisplay = d.foreignDisplay || ''
       const fieldMappings = detailFields.map(df => {
-        if (df.type === 'checkbox' || df.type === 'status') return `        ${df.key}: detail.${df.key} !== undefined ? detail.${df.key} : ${df.default !== false},`
-        if (['number', 'fieldnumber', 'fieldnumber_decimal', 'currency', 'slider'].includes(df.type)) return `        ${df.key}: detail.${df.key} !== undefined ? detail.${df.key} : ${df.default || 0},`
-        return `        ${df.key}: detail.${df.key} || "${df.default || ''}",`
+        if (df.type === 'checkbox' || df.type === 'status') return `        ${$k(df.key)}: ${$p('detail', df.key)} !== undefined ? ${$p('detail', df.key)} : ${df.default !== false},`
+        if (['number', 'fieldnumber', 'fieldnumber_decimal', 'currency', 'slider'].includes(df.type)) return `        ${$k(df.key)}: ${$p('detail', df.key)} !== undefined ? ${$p('detail', df.key)} : ${df.default || 0},`
+        return `        ${$k(df.key)}: ${$p('detail', df.key)} || "${df.default || ''}",`
       }).join('\n')
 
       blocks.push(`
     // Load detail: ${rk || varName}
     if (${dataExpr}) {
       ${varName}.value = ${dataExpr}.map((detail) => ({
-        ${fk}: detail.${fk},${fkDisplay ? `\n        ${fkDisplay}: detail.${fkDisplay} || null,` : ''}
+        ${$k(fk)}: ${$p('detail', fk)},${fkDisplay ? `\n        ${$k(fkDisplay)}: ${$p('detail', fkDisplay)} || null,` : ''}
 ${fieldMappings}
       }));
     }`)
@@ -806,9 +817,9 @@ function buildDetailPayload(details) {
     if (d.mode === 'add_to_list') {
       // ── Add To List: only detail fields, no FK ──
       const fieldMappings = detailFields.map(df => {
-        if (df.type === 'checkbox' || df.type === 'status') return `        ${df.key}: d.${df.key} !== undefined ? d.${df.key} : ${df.default !== false},`
-        if (['number', 'fieldnumber', 'fieldnumber_decimal', 'currency', 'slider'].includes(df.type)) return `        ${df.key}: d.${df.key} !== undefined ? d.${df.key} : ${df.default || 0},`
-        return `        ${df.key}: d.${df.key}?.toString().trim() || null,`
+        if (df.type === 'checkbox' || df.type === 'status') return `        ${$k(df.key)}: ${$p('d', df.key)} !== undefined ? ${$p('d', df.key)} : ${df.default !== false},`
+        if (['number', 'fieldnumber', 'fieldnumber_decimal', 'currency', 'slider'].includes(df.type)) return `        ${$k(df.key)}: ${$p('d', df.key)} !== undefined ? ${$p('d', df.key)} : ${df.default || 0},`
+        return `        ${$k(df.key)}: ${$p('d', df.key)}?.toString().trim() || null,`
       }).join('\n')
 
       lines.push(`      ${pk}: ${varName}.value.map((d) => ({
@@ -818,13 +829,13 @@ ${fieldMappings}
       // ── ButtonMultiSelect: FK + detail fields ──
       const fk = d.foreignKey || 'id'
       const fieldMappings = detailFields.map(df => {
-        if (df.type === 'checkbox' || df.type === 'status') return `        ${df.key}: d.${df.key} !== undefined ? d.${df.key} : ${df.default !== false},`
-        if (['number', 'fieldnumber', 'fieldnumber_decimal', 'currency', 'slider'].includes(df.type)) return `        ${df.key}: d.${df.key} !== undefined ? d.${df.key} : ${df.default || 0},`
-        return `        ${df.key}: d.${df.key}?.toString().trim() || null,`
+        if (df.type === 'checkbox' || df.type === 'status') return `        ${$k(df.key)}: ${$p('d', df.key)} !== undefined ? ${$p('d', df.key)} : ${df.default !== false},`
+        if (['number', 'fieldnumber', 'fieldnumber_decimal', 'currency', 'slider'].includes(df.type)) return `        ${$k(df.key)}: ${$p('d', df.key)} !== undefined ? ${$p('d', df.key)} : ${df.default || 0},`
+        return `        ${$k(df.key)}: ${$p('d', df.key)}?.toString().trim() || null,`
       }).join('\n')
 
       lines.push(`      ${pk}: ${varName}.value.map((d) => ({
-        ${fk}: d.${fk},
+        ${$k(fk)}: ${$p('d', fk)},
 ${fieldMappings}
       })),`)
     }
@@ -835,7 +846,7 @@ ${fieldMappings}
 // Helper: wrap <td> with v-if for visibleWhen on detail fields
 function wrapDetailTdVisibility(td, df, hasVisibleWhen, cellStyleAttr) {
   if (!hasVisibleWhen) return td
-  const cond = `detail.${df.visibleWhen.field}?.toString() === '${df.visibleWhen.value}'`
+  const cond = `${$p('detail', df.visibleWhen.field)}?.toString() === '${df.visibleWhen.value}'`
   // Replace the <td with <td v-if, and add an empty fallback td
   td = td.replace(/^(\s*<td )/, `$1v-if="${cond}" `)
   td += `\n                      <td v-else${cellStyleAttr}></td>`
@@ -869,7 +880,7 @@ function buildDetailFieldTd(df, allDetailFields) {
   // Dynamic readonlyWhen: override readonly based on another detail field's value
   const hasReadonlyWhen = df.readonlyWhen?.field && df.readonlyWhen?.value !== undefined && df.readonlyWhen?.value !== ''
   const readonlyExpr = hasReadonlyWhen
-    ? `detail.${df.readonlyWhen.field}?.toString() === '${df.readonlyWhen.value}'`
+    ? `${$p('detail', df.readonlyWhen.field)}?.toString() === '${df.readonlyWhen.value}'`
     : (isReadonlyField ? 'true' : 'false')
   // visibleWhen: conditionally show field
   const hasVisibleWhen = df.visibleWhen?.field && df.visibleWhen?.value !== undefined && df.visibleWhen?.value !== ''
@@ -888,7 +899,7 @@ function buildDetailFieldTd(df, allDetailFields) {
   // If field has a formula, render as readonly computed value
   const hasFormula = Array.isArray(df.computedFormula) && df.computedFormula.length > 0
   if (hasFormula) {
-    const fmt = formatValueExpr(`detail.${df.key}`)
+    const fmt = formatValueExpr($p('detail', df.key))
     let td = `                      <td class="${tdClass}"${cellStyleAttr}>
                         <span class="text-xs sm:text-sm font-medium text-foreground/80">{{ ${fmt} }}</span>
                       </td>`
@@ -899,13 +910,13 @@ function buildDetailFieldTd(df, allDetailFields) {
     let td = `                      <td class="px-2 py-2 text-center"${cellStyleAttr}>
                         <FieldBox
                           v-if="!isReadOnly"
-                          :value="detail.${df.key}"
-                          @input="(v) => (detail.${df.key} = v)"
+                          :value="${$p('detail', df.key)}"
+                          @input="(v) => (${$p('detail', df.key)} = v)"
                           :readonly="${readonlyExpr}"
                           labelTrue="${df.labelTrue || 'Ya'}"
                           labelFalse="${df.labelFalse || 'Tidak'}"
                         />
-                        <span v-else>{{ detail.${df.key} ? '${df.labelTrue || 'Ya'}' : '${df.labelFalse || 'Tidak'}' }}</span>
+                        <span v-else>{{ ${$p('detail', df.key)} ? '${df.labelTrue || 'Ya'}' : '${df.labelFalse || 'Tidak'}' }}</span>
                       </td>`
     return wrapDetailTdVisibility(td, df, hasVisibleWhen, cellStyleAttr)
   }
@@ -915,13 +926,13 @@ function buildDetailFieldTd(df, allDetailFields) {
     let td = `                      <td class="${tdClass}"${cellStyleAttr}>
                         <FieldNumber
                           v-if="!isReadOnly"
-                          :value="detail.${df.key}"
-                          @input="(v) => (detail.${df.key} = v)"
+                          :value="${$p('detail', df.key)}"
+                          @input="(v) => (${$p('detail', df.key)} = v)"
                           type="${fnType}"
                           :readonly="${readonlyExpr}"${decimalPlacesAttr}
                           class="w-full"
                         />
-                        <span v-else>{{ ${formatValueExpr(`detail.${df.key}`)} }}</span>
+                        <span v-else>{{ ${formatValueExpr($p('detail', df.key))} }}</span>
                       </td>`
     return wrapDetailTdVisibility(td, df, hasVisibleWhen, cellStyleAttr)
   }
@@ -929,13 +940,13 @@ function buildDetailFieldTd(df, allDetailFields) {
     let td = `                      <td class="${tdClass}"${cellStyleAttr}>
                         <FieldX
                           v-if="!isReadOnly"
-                          :value="detail.${df.key}"
-                          @input="(v) => (detail.${df.key} = v)"
+                          :value="${$p('detail', df.key)}"
+                          @input="(v) => (${$p('detail', df.key)} = v)"
                           type="number"
                           :readonly="${readonlyExpr}"
                           class="w-full"
                         />
-                        <span v-else>{{ ${formatValueExpr(`detail.${df.key}`)} }}</span>
+                        <span v-else>{{ ${formatValueExpr($p('detail', df.key))} }}</span>
                       </td>`
     return wrapDetailTdVisibility(td, df, hasVisibleWhen, cellStyleAttr)
   }
@@ -943,12 +954,12 @@ function buildDetailFieldTd(df, allDetailFields) {
     let td = `                      <td class="${tdClass}"${cellStyleAttr}>
                         <FieldTextarea
                           v-if="!isReadOnly"
-                          :value="detail.${df.key}"
-                          @input="(v) => (detail.${df.key} = v)"
+                          :value="${$p('detail', df.key)}"
+                          @input="(v) => (${$p('detail', df.key)} = v)"
                           :readonly="${readonlyExpr}"
                           class="w-full"
                         />
-                        <span v-else>{{ detail.${df.key} || '-' }}</span>
+                        <span v-else>{{ ${$p('detail', df.key)} || '-' }}</span>
                       </td>`
     return wrapDetailTdVisibility(td, df, hasVisibleWhen, cellStyleAttr)
   }
@@ -957,10 +968,10 @@ function buildDetailFieldTd(df, allDetailFields) {
     // Check if any other detail field auto-fills from this field
     const detailAutoFills = (allDetailFields || []).filter(af => af.defaultValueFrom?.field === df.key && af.defaultValueFrom?.property)
     const valueFullAttr = detailAutoFills.length > 0
-      ? `\n                          @update:valueFull="(obj) => { ${detailAutoFills.map(af => `detail.${af.key} = obj?.${af.defaultValueFrom.property} || ''`).join('; ')} }"`
+      ? `\n                          @update:valueFull="(obj) => { ${detailAutoFills.map(af => `${$p('detail', af.key)} = obj?.${af.defaultValueFrom.property} || ''`).join('; ')} }"`
       : ''
     // dependsOn: disable until parent field is filled, bind parent value as API param
-    const dependsOnDisabled = hasDependsOn ? `\n                          :disabled="!detail.${df.dependsOn}"` : ''
+    const dependsOnDisabled = hasDependsOn ? `\n                          :disabled="!${$p('detail', df.dependsOn)}"` : ''
     const dependsOnParam = hasDependsOn ? (df.dependsOnParam || df.dependsOn) : ''
     // Cascade clear: find all descendant detail fields that depend on this field
     const descendantKeys = []
@@ -972,21 +983,21 @@ function buildDetailFieldTd(df, allDetailFields) {
     }
     findDescendants(df.key)
     const inputHandler = descendantKeys.length > 0
-      ? `@input="(v) => { detail.${df.key} = v; ${descendantKeys.map(k => `detail.${k} = ''`).join('; ')} }"`
-      : `@input="(v) => (detail.${df.key} = v)"`
+      ? `@input="(v) => { ${$p('detail', df.key)} = v; ${descendantKeys.map(k => `${$p('detail', k)} = ''`).join('; ')} }"`
+      : `@input="(v) => (${$p('detail', df.key)} = v)"`
     if (src === 'api') {
       const paramsArr = Array.isArray(df.apiParams) ? df.apiParams.filter(p => p.key) : []
-      if (hasDependsOn) paramsArr.push({ key: dependsOnParam, value: `__DYNAMIC__detail.${df.dependsOn}` })
+      if (hasDependsOn) paramsArr.push({ key: dependsOnParam, value: `__DYNAMIC__${$p('detail', df.dependsOn)}` })
       const staticQs = paramsArr.filter(p => !p.value?.startsWith('__DYNAMIC__')).map(p => `${p.key}=${p.value || ''}`).join('&')
       const dynamicParams = paramsArr.filter(p => p.value?.startsWith('__DYNAMIC__'))
       const apiUrlWithParams = (df.apiUrl || '') + (staticQs ? `?${staticQs}` : '')
       const dynamicApiParamsAttr = dynamicParams.length
-        ? `\n                          :apiParams="{ ${dynamicParams.map(p => `'${p.key}': detail.${p.value.replace('__DYNAMIC__', '')}`).join(', ')} }"`
+        ? `\n                          :apiParams="{ ${dynamicParams.map(p => `'${p.key}': ${p.value.replace('__DYNAMIC__', '')}`).join(', ')} }"`
         : ''
       let td = `                      <td class="${tdClass}"${cellStyleAttr}>
                         <FieldSelect
                           v-if="!isReadOnly"
-                          :value="detail.${df.key}"
+                          :value="${$p('detail', df.key)}"
                           ${inputHandler}${valueFullAttr}
                           apiUrl="${apiUrlWithParams}"${dynamicApiParamsAttr}
                           displayField="${df.displayField || 'name'}"
@@ -994,7 +1005,7 @@ function buildDetailFieldTd(df, allDetailFields) {
                           :readonly="${readonlyExpr}"${dependsOnDisabled}
                           class="w-full"
                         />
-                        <span v-else>{{ detail.${df.key} || '-' }}</span>
+                        <span v-else>{{ ${$p('detail', df.key)} || '-' }}</span>
                       </td>`
       return wrapDetailTdVisibility(td, df, hasVisibleWhen, cellStyleAttr)
     }
@@ -1002,13 +1013,13 @@ function buildDetailFieldTd(df, allDetailFields) {
     let td = `                      <td class="${tdClass}"${cellStyleAttr}>
                         <FieldSelect
                           v-if="!isReadOnly"
-                          :value="detail.${df.key}"
+                          :value="${$p('detail', df.key)}"
                           ${inputHandler}${valueFullAttr}
                           :options="[${opts}]"
                           :readonly="${readonlyExpr}"
                           class="w-full"
                         />
-                        <span v-else>{{ detail.${df.key} || '-' }}</span>
+                        <span v-else>{{ ${$p('detail', df.key)} || '-' }}</span>
                       </td>`
     return wrapDetailTdVisibility(td, df, hasVisibleWhen, cellStyleAttr)
   }
@@ -1016,10 +1027,10 @@ function buildDetailFieldTd(df, allDetailFields) {
     // Check if any other detail field auto-fills from this field
     const detailAutoFills = (allDetailFields || []).filter(af => af.defaultValueFrom?.field === df.key && af.defaultValueFrom?.property)
     const valueFullAttr = detailAutoFills.length > 0
-      ? `\n                          @update:valueFull="(obj) => { ${detailAutoFills.map(af => `detail.${af.key} = obj?.${af.defaultValueFrom.property} || ''`).join('; ')} }"`
+      ? `\n                          @update:valueFull="(obj) => { ${detailAutoFills.map(af => `${$p('detail', af.key)} = obj?.${af.defaultValueFrom.property} || ''`).join('; ')} }"`
       : ''
     // dependsOn: disable until parent field is filled, bind parent value as API param
-    const dependsOnDisabled = hasDependsOn ? `\n                          :disabled="!detail.${df.dependsOn}"` : ''
+    const dependsOnDisabled = hasDependsOn ? `\n                          :disabled="!${$p('detail', df.dependsOn)}"` : ''
     const dependsOnParam = hasDependsOn ? (df.dependsOnParam || df.dependsOn) : ''
     // Cascade clear: find all descendant detail fields that depend on this field
     const descendantKeys = []
@@ -1031,17 +1042,17 @@ function buildDetailFieldTd(df, allDetailFields) {
     }
     findPopupDescendants(df.key)
     const inputHandler = descendantKeys.length > 0
-      ? `@input="(v) => { detail.${df.key} = v; ${descendantKeys.map(k => `detail.${k} = ''`).join('; ')} }"`
-      : `@input="(v) => (detail.${df.key} = v)"`
+      ? `@input="(v) => { ${$p('detail', df.key)} = v; ${descendantKeys.map(k => `${$p('detail', k)} = ''`).join('; ')} }"`
+      : `@input="(v) => (${$p('detail', df.key)} = v)"`
     // API params → inline in URL
     const paramsArr = Array.isArray(df.apiParams) ? df.apiParams.filter(p => p.key) : []
-    if (hasDependsOn) paramsArr.push({ key: dependsOnParam, value: `__DYNAMIC__detail.${df.dependsOn}` })
+    if (hasDependsOn) paramsArr.push({ key: dependsOnParam, value: `__DYNAMIC__${$p('detail', df.dependsOn)}` })
     const staticParams = paramsArr.filter(p => !p.value?.startsWith('__DYNAMIC__'))
     const dynamicParams = paramsArr.filter(p => p.value?.startsWith('__DYNAMIC__'))
     const qs = staticParams.map(p => `${p.key}=${p.value || ''}`).join('&')
     const apiUrlWithParams = (df.apiUrl || '') + (qs ? `?${qs}` : '')
     const dynamicApiParamsAttr = dynamicParams.length
-      ? `\n                          :apiParams="{ ${dynamicParams.map(p => `'${p.key}': detail.${p.value.replace('__DYNAMIC__', '')}`).join(', ')} }"`
+      ? `\n                          :apiParams="{ ${dynamicParams.map(p => `'${p.key}': ${p.value.replace('__DYNAMIC__', '')}`).join(', ')} }"`
       : ''
     // Popup columns
     const cols = Array.isArray(df.popupColumns) ? df.popupColumns.filter(c => c.field) : []
@@ -1059,7 +1070,7 @@ function buildDetailFieldTd(df, allDetailFields) {
     let td = `                      <td class="${tdClass}"${cellStyleAttr}>
                         <FieldPopUp
                           v-if="!isReadOnly"
-                          :value="detail.${df.key}"
+                          :value="${$p('detail', df.key)}"
                           ${inputHandler}${valueFullAttr}
                           apiUrl="${apiUrlWithParams}"${dynamicApiParamsAttr}
                           displayField="${df.displayField || 'name'}"
@@ -1068,7 +1079,7 @@ function buildDetailFieldTd(df, allDetailFields) {
                           :readonly="${readonlyExpr}"${dependsOnDisabled}
                           class="w-full"
                         />
-                        <span v-else>{{ detail.${df.key} || '-' }}</span>
+                        <span v-else>{{ ${$p('detail', df.key)} || '-' }}</span>
                       </td>`
     return wrapDetailTdVisibility(td, df, hasVisibleWhen, cellStyleAttr)
   }
@@ -1076,12 +1087,12 @@ function buildDetailFieldTd(df, allDetailFields) {
     let td = `                      <td class="px-2 py-2 text-center"${cellStyleAttr}>
                         <FieldStatus
                           v-if="!isReadOnly"
-                          v-model="detail.${df.key}"
+                          v-model="${$p('detail', df.key)}"
                           active-text="${df.labelTrue || 'Aktif'}"
                           inactive-text="${df.labelFalse || 'Tidak Aktif'}"
                           :readonly="${readonlyExpr}"
                         />
-                        <span v-else :class="detail.${df.key} ? 'text-green-600 font-semibold' : 'text-red-500'">{{ detail.${df.key} ? '${df.labelTrue || 'Aktif'}' : '${df.labelFalse || 'Tidak Aktif'}' }}</span>
+                        <span v-else :class="${$p('detail', df.key)} ? 'text-green-600 font-semibold' : 'text-red-500'">{{ ${$p('detail', df.key)} ? '${df.labelTrue || 'Aktif'}' : '${df.labelFalse || 'Tidak Aktif'}' }}</span>
                       </td>`
     return wrapDetailTdVisibility(td, df, hasVisibleWhen, cellStyleAttr)
   }
@@ -1089,13 +1100,13 @@ function buildDetailFieldTd(df, allDetailFields) {
     let td = `                      <td class="${tdClass}"${cellStyleAttr}>
                         <FieldDate
                           v-if="!isReadOnly"
-                          :value="detail.${df.key}"
-                          @input="(v) => (detail.${df.key} = v)"
+                          :value="${$p('detail', df.key)}"
+                          @input="(v) => (${$p('detail', df.key)} = v)"
                           :readonly="${readonlyExpr}"
                           :clearable="true"
                           class="w-full"
                         />
-                        <span v-else>{{ detail.${df.key} || '-' }}</span>
+                        <span v-else>{{ ${$p('detail', df.key)} || '-' }}</span>
                       </td>`
     return wrapDetailTdVisibility(td, df, hasVisibleWhen, cellStyleAttr)
   }
@@ -1103,13 +1114,13 @@ function buildDetailFieldTd(df, allDetailFields) {
     let td = `                      <td class="${tdClass}"${cellStyleAttr}>
                         <FieldDateTime
                           v-if="!isReadOnly"
-                          :value="detail.${df.key}"
-                          @input="(v) => (detail.${df.key} = v)"
+                          :value="${$p('detail', df.key)}"
+                          @input="(v) => (${$p('detail', df.key)} = v)"
                           :readonly="${readonlyExpr}"
                           :clearable="true"
                           class="w-full"
                         />
-                        <span v-else>{{ detail.${df.key} || '-' }}</span>
+                        <span v-else>{{ ${$p('detail', df.key)} || '-' }}</span>
                       </td>`
     return wrapDetailTdVisibility(td, df, hasVisibleWhen, cellStyleAttr)
   }
@@ -1118,13 +1129,13 @@ function buildDetailFieldTd(df, allDetailFields) {
     let td = `                      <td class="${tdClass}"${cellStyleAttr}>
                         <FieldRadio
                           v-if="!isReadOnly"
-                          :value="detail.${df.key}"
-                          @input="(v) => (detail.${df.key} = v)"
+                          :value="${$p('detail', df.key)}"
+                          @input="(v) => (${$p('detail', df.key)} = v)"
                           :options="[${opts}]"
                           :readonly="${readonlyExpr}"
                           class="w-full"
                         />
-                        <span v-else>{{ detail.${df.key} || '-' }}</span>
+                        <span v-else>{{ ${$p('detail', df.key)} || '-' }}</span>
                       </td>`
     return wrapDetailTdVisibility(td, df, hasVisibleWhen, cellStyleAttr)
   }
@@ -1135,14 +1146,14 @@ function buildDetailFieldTd(df, allDetailFields) {
     let td = `                      <td class="${tdClass}"${cellStyleAttr}>
                         <FieldCurrency
                           v-if="!isReadOnly"
-                          :value="detail.${df.key}"
-                          @input="(v) => (detail.${df.key} = v)"
+                          :value="${$p('detail', df.key)}"
+                          @input="(v) => (${$p('detail', df.key)} = v)"
                           :readonly="${readonlyExpr}"
                           prefix="${currPrefix}"
                           :allowDecimal="${currAllowDecimal}"${currDecimalAttr}
                           class="w-full"
                         />
-                        <span v-else>{{ ${formatValueExpr(`detail.${df.key}`)} }}</span>
+                        <span v-else>{{ ${formatValueExpr($p('detail', df.key))} }}</span>
                       </td>`
     return wrapDetailTdVisibility(td, df, hasVisibleWhen, cellStyleAttr)
   }
@@ -1155,15 +1166,15 @@ function buildDetailFieldTd(df, allDetailFields) {
     let td = `                      <td class="${tdClass}"${cellStyleAttr}>
                         <FieldSlider
                           v-if="!isReadOnly"
-                          :value="detail.${df.key}"
-                          @input="(v) => (detail.${df.key} = v)"
+                          :value="${$p('detail', df.key)}"
+                          @input="(v) => (${$p('detail', df.key)} = v)"
                           :readonly="${readonlyExpr}"
                           :min="${slMin}"
                           :max="${slMax}"
                           :step="${slStep}"${unitAttr}
                           class="w-full"
                         />
-                        <span v-else>{{ ${formatValueExpr(`detail.${df.key}`)} }}</span>
+                        <span v-else>{{ ${formatValueExpr($p('detail', df.key))} }}</span>
                       </td>`
     return wrapDetailTdVisibility(td, df, hasVisibleWhen, cellStyleAttr)
   }
@@ -1174,13 +1185,13 @@ function buildDetailFieldTd(df, allDetailFields) {
     let td = `                      <td class="px-2 py-2 text-center"${cellStyleAttr}>
                         <FieldUpload
                           v-if="!isReadOnly"
-                          v-model="detail.${df.key}"
+                          v-model="${$p('detail', df.key)}"
                           accept="${accept}"
                           :maxSizeMB="${maxSize}"
                           :readonly="${readonlyExpr}"
                           class="w-full"
                         />
-                        <a v-else-if="detail.${df.key}" :href="detail.${df.key}" target="_blank" class="text-primary underline text-xs">Lihat File</a>
+                        <a v-else-if="${$p('detail', df.key)}" :href="${$p('detail', df.key)}" target="_blank" class="text-primary underline text-xs">Lihat File</a>
                         <span v-else class="text-muted-foreground text-xs">-</span>
                       </td>`
     return wrapDetailTdVisibility(td, df, hasVisibleWhen, cellStyleAttr)
@@ -1194,14 +1205,14 @@ function buildDetailFieldTd(df, allDetailFields) {
     let td = `                      <td class="px-2 py-2 text-center"${cellStyleAttr}>
                         <FieldMultiUpload
                           v-if="!isReadOnly"
-                          v-model="detail.${df.key}"
+                          v-model="${$p('detail', df.key)}"
                           accept="${accept}"
                           :maxSizeMB="${maxSize}"
                           :maxImages="${maxImages}"
                           :readonly="${readonlyExpr}"
                           class="w-full"
                         />
-                        <span v-else class="text-xs">{{ Array.isArray(detail.${df.key}) ? detail.${df.key}.length + ' file(s)' : '-' }}</span>
+                        <span v-else class="text-xs">{{ Array.isArray(${$p('detail', df.key)}) ? ${$p('detail', df.key)}.length + ' file(s)' : '-' }}</span>
                       </td>`
     return wrapDetailTdVisibility(td, df, hasVisibleWhen, cellStyleAttr)
   }
@@ -1210,13 +1221,13 @@ function buildDetailFieldTd(df, allDetailFields) {
   let td = `                      <td class="${tdClass}"${cellStyleAttr}>
                         <FieldX
                           v-if="!isReadOnly"
-                          :value="detail.${df.key}"
-                          @input="(v) => (detail.${df.key} = v)"
+                          :value="${$p('detail', df.key)}"
+                          @input="(v) => (${$p('detail', df.key)} = v)"
                           placeholder="${df.label || df.key}"
                           :readonly="${readonlyExpr}"
                           class="w-full"
                         />
-                        <span v-else>{{ detail.${df.key} || '-' }}</span>
+                        <span v-else>{{ ${$p('detail', df.key)} || '-' }}</span>
                       </td>`
   return wrapDetailTdVisibility(td, df, hasVisibleWhen, cellStyleAttr)
 }
@@ -1252,7 +1263,7 @@ function buildDetailValidation(details) {
     const requiredFields = detailFields.filter(df => df.required)
     if (requiredFields.length) {
       const checks = requiredFields.map(df => {
-        const val = `row.${df.key}`
+        const val = $p('row', df.key)
         return `        if (!${val} && ${val} !== 0 && ${val} !== false) {
           toast.error("${label} baris " + (idx + 1) + ": ${df.label || df.key} wajib diisi");
           invalid = true;
@@ -1284,13 +1295,13 @@ function buildDetailFooter(detailFields, varName, prefixCols, suffixCols) {
     }
     if (!df.summaryType) return `                      <td class="px-2 py-2"></td>`
     if (df.summaryType === 'SUM') {
-      const sumExpr = `${varName}.reduce((s, d) => s + (Number(d.${df.key}) || 0), 0)`
+      const sumExpr = `${varName}.reduce((s, d) => s + (Number(${$p('d', df.key)}) || 0), 0)`
       return `                      <td class="px-2 py-2 text-right font-semibold text-xs sm:text-sm">
                         {{ ${formatSummaryExpr(sumExpr)} }}
                       </td>`
     }
     if (df.summaryType === 'AVG') {
-      const avgExpr = `${varName}.length ? (${varName}.reduce((s, d) => s + (Number(d.${df.key}) || 0), 0) / ${varName}.length) : 0`
+      const avgExpr = `${varName}.length ? (${varName}.reduce((s, d) => s + (Number(${$p('d', df.key)}) || 0), 0) / ${varName}.length) : 0`
       return `                      <td class="px-2 py-2 text-right font-semibold text-xs sm:text-sm">
                         {{ ${formatSummaryExpr(avgExpr)} }}
                       </td>`
@@ -1486,7 +1497,7 @@ ${fieldTds}
       const displayTds = displayCols.map(dc => {
         const keyParts = dc.key.split('.')
         const accessor = fkDisplay
-          ? `detail.${fkDisplay}?.${keyParts.join('?.')}`
+          ? `${$p('detail', fkDisplay)}?.${keyParts.join('?.')}`
           : `detail.${keyParts.join('?.')}`
         return `                      <td class="px-3 py-2 text-xs sm:text-sm">{{ ${accessor} || '-' }}</td>`
       }).join('\n')
@@ -1660,16 +1671,16 @@ function buildPrintDetailTables(details) {
     tds.push(`              <td class="border border-gray-300 px-2 py-1.5 text-xs">{{ idx + 1 }}</td>`)
     if (d.mode !== 'add_to_list') {
       displayCols.forEach(dc => {
-        const accessor = fkDisplay ? `row.${fkDisplay}?.${dc.key}` : `row.${dc.key}`
+        const accessor = fkDisplay ? `${$p('row', fkDisplay)}?.${dc.key}` : $p('row', dc.key)
         tds.push(`              <td class="border border-gray-300 px-2 py-1.5 text-xs">{{ ${accessor} || '-' }}</td>`)
       })
     }
     detailFields.forEach(df => {
-      let valExpr = `row.${df.key}`
+      let valExpr = $p('row', df.key)
       if (df.type === 'checkbox' || df.type === 'status') {
-        valExpr = `row.${df.key} ? '${df.labelTrue || 'Ya'}' : '${df.labelFalse || 'Tidak'}'`
+        valExpr = `${$p('row', df.key)} ? '${df.labelTrue || 'Ya'}' : '${df.labelFalse || 'Tidak'}'`
       } else if (df.type === 'currency') {
-        valExpr = `Number(row.${df.key} || 0).toLocaleString('id-ID')`
+        valExpr = `Number(${$p('row', df.key)} || 0).toLocaleString('id-ID')`
       }
       tds.push(`              <td class="border border-gray-300 px-2 py-1.5 text-xs">{{ ${valExpr} || '-' }}</td>`)
     })
