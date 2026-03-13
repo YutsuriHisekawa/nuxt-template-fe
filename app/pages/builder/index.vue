@@ -14,6 +14,9 @@ import { toast } from "vue-sonner";
 
 definePageMeta({ layout: false });
 
+const route = useRoute();
+const builderKey = computed(() => route.query.key || "");
+
 const drafts = ref([]);
 const loading = ref(true);
 const creating = ref(false);
@@ -29,7 +32,9 @@ async function loadDrafts() {
   loading.value = true;
   notActive.value = false;
   try {
-    const res = await $fetch("/api/builder/drafts");
+    const res = await $fetch("/api/builder/drafts", {
+      params: { key: builderKey.value },
+    });
     drafts.value = res.drafts || [];
     if (res.expiredCount > 0) {
       toast.info(`${res.expiredCount} draft expired telah dihapus otomatis`);
@@ -56,6 +61,7 @@ async function createDraft() {
     const res = await $fetch("/api/builder/drafts", {
       method: "POST",
       body: {
+        key: builderKey.value,
         modulePath: path,
         apiEndpoint: newApiEndpoint.value.trim() || undefined,
       },
@@ -65,7 +71,7 @@ async function createDraft() {
       newApiEndpoint.value = "";
       showNewForm.value = false;
       navigatingLabel.value = res.config.readableName;
-      await navigateTo(`/builder_file/${res.token}`);
+      await navigateTo(`/builder_file/${res.token}?key=${builderKey.value}`);
     }
   } catch (e) {
     toast.error(e?.data?.statusMessage || e?.message || "Gagal membuat draft");
@@ -78,7 +84,7 @@ async function deleteDraft(token) {
   try {
     await $fetch("/api/builder/cancel", {
       method: "POST",
-      body: { token },
+      body: { key: builderKey.value, token },
     });
     drafts.value = drafts.value.filter((d) => d.token !== token);
     toast.success("Draft dihapus");
@@ -89,7 +95,10 @@ async function deleteDraft(token) {
 
 async function closeBuilder() {
   try {
-    await $fetch("/api/builder/deactivate", { method: "POST" });
+    await $fetch("/api/builder/deactivate", {
+      method: "POST",
+      body: { key: builderKey.value },
+    });
   } catch {}
   toast.info("Builder ditutup");
   await navigateTo("/", { replace: true });
@@ -287,7 +296,7 @@ onMounted(loadDrafts);
                   size="sm"
                   variant="default"
                   class="gap-1.5 h-8"
-                  @click="navigatingLabel = draft.readableName; navigateTo(`/builder_file/${draft.token}`)"
+                  @click="navigatingLabel = draft.readableName; navigateTo(`/builder_file/${draft.token}?key=${builderKey}`)"
                 >
                   <Loader2 v-if="navigatingLabel === draft.readableName" class="h-3.5 w-3.5 animate-spin" />
                   <ExternalLink v-else class="h-3.5 w-3.5" />

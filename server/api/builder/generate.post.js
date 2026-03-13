@@ -1997,6 +1997,7 @@ function buildPrintDetailMeta(details) {
 
 // ── Handler ────────────────────────────────────────────────────────────────
 export default defineEventHandler(async (event) => {
+  await verifyBuilderKey(event)
   const body = await readBody(event)
   const { modulePath, moduleName, apiEndpoint, routePath, pageTitle, fields, details: rawDetails, detailTabs: rawDetailTabs, landingConfig, printConfig, columnLayout, wizardSteps } = body
   const { details, detailTabs } = normalizeDetailTabs(rawDetailTabs, rawDetails)
