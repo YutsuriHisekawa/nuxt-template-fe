@@ -97,7 +97,7 @@ function buildValidation(fields) {
 }
 
 function buildPayload(fields) {
-  return fields.filter(f => {
+  const fieldLines = fields.filter(f => {
     const entry = getRegistryEntry(f.type)
     return !entry?.isSpace && !entry?.isSection && !entry?.isFieldGroup && !entry?.isFieldGroupEnd
   }).map(f => {
@@ -106,6 +106,13 @@ function buildPayload(fields) {
     if (entry?.isSwitch) return `    ${f.field}: values.${f.field},`
     return `    ${f.field}: values.${f.field}?.toString().trim() || null,`
   }).join('\n')
+
+  // Auto audit trail: created_by on create, updated_by always
+  const auditLines = `    // Audit trail
+    ...(!isEditMode.value ? { created_by: authStore.user?.id || null } : {}),
+    updated_by: authStore.user?.id || null,`
+
+  return fieldLines + '\n' + auditLines
 }
 
 function buildResetValues(fields) {
@@ -360,7 +367,7 @@ function buildColumns(fields, landingConfig) {
   return fields
     .filter(f => {
       const entry = getRegistryEntry(f.type)
-      return entry?.isSwitch !== true && !entry?.isSpace
+      return entry?.isSwitch !== true && !entry?.isSpace && !entry?.isMap
     })
     .map(f => `\t\t{ headerName: "${f.label}", field: "${f.field}", minWidth: 140 },`)
     .join('\n')
@@ -412,7 +419,7 @@ function buildMobileInfoRows(fields, landingConfig) {
   } else {
     infoFields = fields.filter(f => {
       const entry = getRegistryEntry(f.type)
-      return entry?.isSwitch !== true && !entry?.isSpace
+      return entry?.isSwitch !== true && !entry?.isSpace && !entry?.isMap
     }).slice(2, 5).map(f => ({ field: f.field, label: f.label }))
   }
   if (infoFields.length === 0) return ''

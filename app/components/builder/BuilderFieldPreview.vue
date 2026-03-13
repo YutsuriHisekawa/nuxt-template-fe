@@ -19,6 +19,9 @@ import FieldCurrency from '~/components/field/FieldCurrency.vue'
 import FieldSlider from '~/components/field/FieldSlider.vue'
 import FieldUpload from '~/components/field/FieldUpload.vue'
 import FieldMultiUpload from '~/components/field/FieldMultiUpload.vue'
+import FieldColor from '~/components/field/FieldColor.vue'
+import FieldTime from '~/components/field/FieldTime.vue'
+import MapPicker from '~/components/field/MapPicker.vue'
 
 const COMPONENT_MAP = {
   FieldX,
@@ -35,6 +38,9 @@ const COMPONENT_MAP = {
   FieldSlider,
   FieldUpload,
   FieldMultiUpload,
+  FieldColor,
+  FieldTime,
+  MapPicker,
 }
 
 const props = defineProps({
@@ -128,6 +134,12 @@ const isSpace = computed(() => entry.value?.isSpace === true)
 const isSection = computed(() => entry.value?.isSection === true)
 const isFieldGroup = computed(() => entry.value?.isFieldGroup === true)
 const isFieldGroupEnd = computed(() => entry.value?.isFieldGroupEnd === true)
+const isMap = computed(() => entry.value?.isMap === true)
+
+// Map preview state
+const mapLat = ref(null)
+const mapLng = ref(null)
+const mapAddress = ref('')
 
 // Interactive switch state
 const switchValue = ref(props.field.defaultValue !== 'false')
@@ -202,6 +214,45 @@ function toggleSwitch(e) {
     @input="handlePreviewInput"
     class="w-full"
   />
+
+  <!-- MapPicker preview (interactive) -->
+  <div v-else-if="isMap" class="w-full space-y-3" draggable="false" @mousedown.stop>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <FieldX
+        :id="(field.mapLatField || 'lokasi_lat')"
+        label="Latitude"
+        :value="mapLat"
+        :readonly="true"
+        placeholder="Akan diisi dari Map Picker"
+        class="w-full"
+      />
+      <FieldX
+        :id="(field.mapLngField || 'lokasi_lng')"
+        label="Longitude"
+        :value="mapLng"
+        :readonly="true"
+        placeholder="Akan diisi dari Map Picker"
+        class="w-full"
+      />
+    </div>
+    <FieldTextarea
+      :id="(field.mapAddressField || 'lokasi_alamat')"
+      label="Alamat"
+      :value="mapAddress"
+      :readonly="true"
+      placeholder="Alamat akan diisi otomatis dari Map Picker"
+      class="w-full"
+    />
+    <MapPicker
+      :latitude="mapLat"
+      :longitude="mapLng"
+      :address="mapAddress"
+      @update:latitude="v => mapLat = v"
+      @update:longitude="v => mapLng = v"
+      @update:address="v => mapAddress = v"
+      buttonText="Pilih Lokasi di Peta"
+    />
+  </div>
 
   <!-- Semua field lain: interactive preview -->
   <component

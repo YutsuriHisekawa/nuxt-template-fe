@@ -245,12 +245,38 @@ const PANEL = {
   computedFormula: {
     key: 'computedFormula', label: 'Formula (Computed)', type: 'computedFormula',
     hint: 'Pilih field & operator untuk auto-hitung. Field ini otomatis disabled.',
-    hideWhen: (f) => ['switch', 'fieldbox', 'upload', 'multi_upload', 'select', 'select_creatable', 'popup', 'radio', 'date', 'datetime', 'slider'].includes(f.type),
+    hideWhen: (f) => ['switch', 'fieldbox', 'upload', 'multi_upload', 'select', 'select_creatable', 'popup', 'radio', 'date', 'datetime', 'slider', 'color', 'time', 'map'].includes(f.type),
   },
   defaultValueFrom: {
     key: 'defaultValueFrom', label: 'Auto-Fill dari Field Lain', type: 'defaultValueFrom',
     hint: 'Isi otomatis dari data field lain (misal: pilih Supplier → isi Alamat dari supplier.alamat)',
-    hideWhen: (f) => ['switch', 'fieldbox', 'upload', 'multi_upload', 'section', 'divider', 'fieldgroup', 'fieldgroup_end'].includes(f.type),
+    hideWhen: (f) => ['switch', 'fieldbox', 'upload', 'multi_upload', 'section', 'divider', 'fieldgroup', 'fieldgroup_end', 'map'].includes(f.type),
+  },
+  // ── Color-specific ──
+  colorDefaultValue: {
+    key: 'defaultValue', label: 'Default Color', type: 'text', placeholder: '#000000',
+    hint: 'Hex color code (contoh: #ff0000)',
+  },
+  // ── Time-specific ──
+  timeDefaultValue: {
+    key: 'defaultValue', label: 'Default Value', type: 'buttongroup',
+    options: [
+      { value: '', label: 'Kosong' },
+      { value: 'NOW', label: 'Jam Sekarang' },
+    ],
+  },
+  // ── Map-specific ──
+  mapLatField: {
+    key: 'mapLatField', label: 'Kolom Latitude (DB)', type: 'text', placeholder: 'lokasi_lat',
+    hint: 'Nama kolom DB untuk menyimpan latitude',
+  },
+  mapLngField: {
+    key: 'mapLngField', label: 'Kolom Longitude (DB)', type: 'text', placeholder: 'lokasi_lng',
+    hint: 'Nama kolom DB untuk menyimpan longitude',
+  },
+  mapAddressField: {
+    key: 'mapAddressField', label: 'Kolom Alamat (DB)', type: 'text', placeholder: 'lokasi_alamat',
+    hint: 'Nama kolom DB untuk menyimpan alamat',
   },
 }
 
@@ -267,6 +293,9 @@ const SLIDER_PANELS = [PANEL.fieldName, PANEL.label, PANEL.defaultValue, PANEL.r
 const SECTION_PANELS = [PANEL.sectionTitle, PANEL.visibleWhen]
 const UPLOAD_PANELS = [PANEL.fieldName, PANEL.label, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.readonlyWhen, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.uploadAccept, PANEL.maxSizeMB]
 const MULTI_UPLOAD_PANELS = [PANEL.fieldName, PANEL.label, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.readonlyWhen, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen, PANEL.uploadAccept, PANEL.maxSizeMB, PANEL.maxImages]
+const COLOR_PANELS = [PANEL.fieldName, PANEL.label, PANEL.colorDefaultValue, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.readonlyWhen, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen]
+const TIME_PANELS = [PANEL.fieldName, PANEL.label, PANEL.placeholder, PANEL.timeDefaultValue, PANEL.required, PANEL.errorMessage, PANEL.requiredWhen, PANEL.readonly, PANEL.readonlyWhen, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen]
+const MAP_PANELS = [PANEL.mapLatField, PANEL.mapLngField, PANEL.mapAddressField, PANEL.label, PANEL.readonly, PANEL.readonlyWhen, PANEL.fullWidth, PANEL.dependsOn, PANEL.visibleWhen]
 
 // ── Static options helpers ────────────────────────────────────────────────
 // Returns a JS array literal string for code generation (from array of {value, label, parentValue?})
@@ -732,6 +761,88 @@ function genFieldMultiUpload(f) {
             />`
 }
 
+function genFieldColor(f) {
+  const readonlyAttr = getReadonlyAttr(f)
+  return `            <FieldColor
+              id="${f.field}"
+              label="${f.label}"
+              :value="values.${f.field}"
+              :errorname="errors.${f.field} ? 'failed' : ''"
+              @input="(v) => (values.${f.field} = v)"
+              :hints="errors.${f.field}"
+              :required="${f.required ? '!isReadOnly' : 'false'}"
+              ${getDisabledAttr(f)}
+              ${readonlyAttr}
+              class="w-full"
+            />`
+}
+
+function genFieldTime(f) {
+  const readonlyAttr = getReadonlyAttr(f)
+  return `            <FieldTime
+              id="${f.field}"
+              label="${f.label}"
+              :value="values.${f.field}"
+              :errorname="errors.${f.field} ? 'failed' : ''"
+              @input="(v) => (values.${f.field} = v)"
+              :hints="errors.${f.field}"
+              :required="${f.required ? '!isReadOnly' : 'false'}"
+              ${getDisabledAttr(f)}
+              ${readonlyAttr}
+              placeholder="${f.placeholder || f.label}"
+              :clearable="true"
+              class="w-full"
+            />`
+}
+
+function genMapPicker(f) {
+  const readonlyAttr = getReadonlyAttr(f)
+  const latField = f.mapLatField || 'lokasi_lat'
+  const lngField = f.mapLngField || 'lokasi_lng'
+  const addrField = f.mapAddressField || 'lokasi_alamat'
+  const addrUpdate = `\n              @update:address="(v) => (values.${addrField} = v)"`
+  const addrBind = `\n              :address="values.${addrField}"`
+  return `            <div class="col-span-full space-y-3">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <FieldX
+                  id="${latField}"
+                  label="Latitude"
+                  :value="values.${latField}"
+                  :readonly="true"
+                  :disabled="loading || isReadOnly"
+                  placeholder="Akan diisi dari Map Picker"
+                  class="w-full"
+                />
+                <FieldX
+                  id="${lngField}"
+                  label="Longitude"
+                  :value="values.${lngField}"
+                  :readonly="true"
+                  :disabled="loading || isReadOnly"
+                  placeholder="Akan diisi dari Map Picker"
+                  class="w-full"
+                />
+              </div>
+              <FieldTextarea
+                id="${addrField}"
+                label="Alamat"
+                :value="values.${addrField}"
+                :readonly="true"
+                :disabled="loading || isReadOnly"
+                placeholder="Alamat akan diisi otomatis dari Map Picker"
+                class="w-full"
+              />
+              <MapPicker
+                :latitude="values.${latField}"
+                :longitude="values.${lngField}"${addrBind}
+                @update:latitude="(v) => (values.${latField} = v)"
+                @update:longitude="(v) => (values.${lngField} = v)"${addrUpdate}
+                ${readonlyAttr === ':readonly="true"' ? ':readonly="true"' : ':readonly="isReadOnly"'}
+                ${getDisabledAttr(f)}
+              />
+            </div>`
+}
+
 // ── Conditional visibility wrapper ─────────────────────────────────────────
 export function wrapVisibleWhen(tpl, f) {
   // New format: separate fields
@@ -1127,6 +1238,67 @@ export const FIELD_REGISTRY = [
     },
     generateTemplate: (f, allFields) => genSelect(f, 'FieldSelectCreatable', allFields),
   },
+
+  // ── FieldColor ─────────────────────────────────────────────
+  {
+    value: 'color', label: 'FieldColor', component: 'FieldColor', category: 'input',
+    searchable: false, showInMobile: false, hasError: true,
+    defaultMeta: { defaultValue: '#000000' },
+    panelFields: COLOR_PANELS,
+    previewProps: (f) => ({ label: f.label || 'Warna', value: f.defaultValue || '#000000' }),
+    generateTemplate: genFieldColor,
+    generateDefault: (f) => `  ${f.field}: '${f.defaultValue || '#000000'}',`,
+    generateReset: (f) => `    ${f.field}: '${f.defaultValue || '#000000'}',`,
+    generatePayload: (f) => `    ${f.field}: values.${f.field} || null,`,
+  },
+
+  // ── FieldTime ──────────────────────────────────────────────
+  {
+    value: 'time', label: 'FieldTime', component: 'FieldTime', category: 'date',
+    searchable: false, showInMobile: true, hasError: true,
+    defaultMeta: { defaultValue: '' },
+    panelFields: TIME_PANELS,
+    previewProps: (f) => ({ label: f.label || 'Waktu', value: '', placeholder: f.placeholder || f.label, required: f.required, clearable: true }),
+    generateTemplate: genFieldTime,
+    generateDefault: (f) => {
+      if (f.defaultValue === 'NOW') return `  ${f.field}: (() => { const d = new Date(); return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0') })(),`
+      return `  ${f.field}: '',`
+    },
+    generateReset: (f) => {
+      if (f.defaultValue === 'NOW') return `    ${f.field}: (() => { const d = new Date(); return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0') })(),`
+      return `    ${f.field}: '',`
+    },
+    generatePayload: (f) => `    ${f.field}: values.${f.field} || null,`,
+  },
+
+  // ── MapPicker (Lokasi / Coordinates) ───────────────────────
+  {
+    value: 'map', label: 'MapPicker (Lokasi)', component: 'MapPicker', category: 'input',
+    searchable: false, showInMobile: false, hasError: false,
+    isMap: true,
+    defaultMeta: { mapLatField: 'lokasi_lat', mapLngField: 'lokasi_lng', mapAddressField: 'lokasi_alamat', fullWidth: true },
+    panelFields: MAP_PANELS,
+    previewProps: (f) => ({ label: f.label || 'Lokasi' }),
+    generateTemplate: genMapPicker,
+    generateDefault: (f) => {
+      const lat = f.mapLatField || 'lokasi_lat'
+      const lng = f.mapLngField || 'lokasi_lng'
+      const addr = f.mapAddressField || 'lokasi_alamat'
+      return `  ${lat}: '',\n  ${lng}: '',\n  ${addr}: '',`
+    },
+    generateReset: (f) => {
+      const lat = f.mapLatField || 'lokasi_lat'
+      const lng = f.mapLngField || 'lokasi_lng'
+      const addr = f.mapAddressField || 'lokasi_alamat'
+      return `    ${lat}: '',\n    ${lng}: '',\n    ${addr}: '',`
+    },
+    generatePayload: (f) => {
+      const lat = f.mapLatField || 'lokasi_lat'
+      const lng = f.mapLngField || 'lokasi_lng'
+      const addr = f.mapAddressField || 'lokasi_alamat'
+      return `    ${lat}: values.${lat} || null,\n    ${lng}: values.${lng} || null,\n    ${addr}: values.${addr} || null,`
+    },
+  },
 ]
 
 // ── Lookup helpers ─────────────────────────────────────────────────────────
@@ -1191,6 +1363,7 @@ export function getComponentBadge(type) {
   if (entry?.isSection) return 'Section'
   if (entry?.isFieldGroup) return 'Group Start'
   if (entry?.isFieldGroupEnd) return 'Group End'
+  if (entry?.isMap) return 'MapPicker'
   return entry?.component || 'FieldX'
 }
 
@@ -1208,9 +1381,11 @@ export const DETAIL_FIELD_TYPES = [
   { value: 'popup', label: 'FieldPopUp', component: 'FieldPopUp', defaultValue: '' },
   { value: 'date', label: 'FieldDate', component: 'FieldDate', defaultValue: '' },
   { value: 'datetime', label: 'FieldDateTime', component: 'FieldDateTime', defaultValue: '' },
+  { value: 'time', label: 'FieldTime', component: 'FieldTime', defaultValue: '' },
   { value: 'radio', label: 'FieldRadio', component: 'FieldRadio', defaultValue: '' },
   { value: 'currency', label: 'FieldCurrency', component: 'FieldCurrency', defaultValue: 0 },
   { value: 'slider', label: 'FieldSlider', component: 'FieldSlider', defaultValue: 0 },
+  { value: 'color', label: 'FieldColor', component: 'FieldColor', defaultValue: '#000000' },
   { value: 'upload', label: 'FieldUpload (File)', component: 'FieldUpload', defaultValue: '' },
   { value: 'multi_upload', label: 'FieldMultiUpload', component: 'FieldMultiUpload', defaultValue: [] },
 ]
@@ -1227,9 +1402,11 @@ const DETAIL_FIELD_DEFAULT_WIDTHS = {
   popup: '180px',
   date: '170px',
   datetime: '190px',
+  time: '140px',
   radio: '220px',
   currency: '170px',
   slider: '200px',
+  color: '130px',
   upload: '200px',
   multi_upload: '260px',
 }
