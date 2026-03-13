@@ -29,10 +29,12 @@ import {
   Footprints,
   ExternalLink,
   Zap,
+  List,
 } from "lucide-vue-next";
 import {
   createBlankField,
   createBlankDetail,
+  createBlankDetailTab,
   getComponentBadge,
   getRegistryEntry,
   getDetailFieldDefaultWidth,
@@ -375,6 +377,7 @@ const MAX_HISTORY = 50;
 function getBuilderSnapshot() {
   return JSON.stringify({
     fields: clonePlain(fields.value, []),
+    detailTabs: clonePlain(detailTabs.value, []),
     details: clonePlain(details.value, []),
     landingConfig: clonePlain(landingConfig.value, []),
     printConfig: clonePlain(
@@ -393,7 +396,12 @@ function getBuilderSnapshot() {
 function restoreBuilderSnapshot(snapshotText) {
   const snapshot = JSON.parse(snapshotText);
   fields.value = Array.isArray(snapshot.fields) ? snapshot.fields : [];
-  details.value = Array.isArray(snapshot.details) ? snapshot.details : [];
+  const normalizedDetails = normalizeDetailTabs(
+    snapshot.detailTabs,
+    snapshot.details,
+  );
+  detailTabs.value = normalizedDetails.tabs;
+  details.value = normalizedDetails.details;
   landingConfig.value = Array.isArray(snapshot.landingConfig)
     ? snapshot.landingConfig
     : [];
@@ -645,6 +653,84 @@ async function autoDetectFields() {
 
 const detailPanelIndex = ref(-1);
 
+function normalizeDetailTabs(rawTabs, rawDetails) {
+  const sourceTabs = Array.isArray(rawTabs)
+    ? JSON.parse(JSON.stringify(rawTabs))
+    : [];
+  const sourceDetails = Array.isArray(rawDetails)
+    ? JSON.parse(JSON.stringify(rawDetails))
+    : [];
+
+  if (sourceTabs.length > 0) {
+    const tabs = sourceTabs.map((tab, index) => ({
+      id: tab?.id || createBlankDetailTab(index + 1).id,
+      label: tab?.label || `Tab ${index + 1}`,
+      layout: tab?.layout === "horizontal" ? "horizontal" : "vertical",
+    }));
+    const validIds = new Set(tabs.map((tab) => tab.id));
+    const fallbackTabId = tabs[0]?.id || "";
+    const details = sourceDetails.map((detail) => ({
+      ...detail,
+      tabId: validIds.has(detail?.tabId) ? detail.tabId : fallbackTabId,
+    }));
+    return { tabs, details };
+  }
+
+  if (!sourceDetails.length) {
+    return { tabs: [], details: [] };
+  }
+
+  const tabs = [];
+  const details = [];
+  const stackedLegacyDetails = [];
+
+  sourceDetails.forEach((detail, index) => {
+    if (detail?.displayMode === "stacked") {
+      stackedLegacyDetails.push(detail);
+      return;
+    }
+
+    const tab = createBlankDetailTab(tabs.length + 1);
+    tab.label = detail?.tabLabel || `Tab ${tabs.length + 1}`;
+    tabs.push(tab);
+    details.push({ ...detail, tabId: tab.id });
+  });
+
+  if (stackedLegacyDetails.length > 0) {
+    const stackedTab = createBlankDetailTab(tabs.length + 1);
+    if (!tabs.length) stackedTab.label = "Tab 1";
+    tabs.push(stackedTab);
+    stackedLegacyDetails.forEach((detail) => {
+      details.push({ ...detail, tabId: stackedTab.id });
+    });
+  }
+
+  if (!tabs.length) {
+    const fallbackTab = createBlankDetailTab(1);
+    tabs.push(fallbackTab);
+    sourceDetails.forEach((detail) => {
+      details.push({ ...detail, tabId: fallbackTab.id });
+    });
+  }
+
+  return { tabs, details };
+}
+
+function orderDetailsByTabs(sourceDetails, sourceTabs) {
+  const tabs = Array.isArray(sourceTabs) ? sourceTabs : [];
+  const details = Array.isArray(sourceDetails) ? sourceDetails : [];
+  const ordered = [];
+  tabs.forEach((tab) => {
+    details.forEach((detail) => {
+      if (detail?.tabId === tab.id) ordered.push(detail);
+    });
+  });
+  details.forEach((detail) => {
+    if (!ordered.includes(detail)) ordered.push(detail);
+  });
+  return ordered;
+}
+
 // ── Cookie-backed state (survives refresh) ─────────────────────────────────
 const DEFAULT_FIELDS = [];
 
@@ -653,6 +739,10 @@ const savedFields = useCookie("builder_fields", {
   maxAge: 60 * 60 * 24,
 });
 const savedDetails = useCookie("builder_details", {
+  default: () => null,
+  maxAge: 60 * 60 * 24,
+});
+const savedDetailTabs = useCookie("builder_detail_tabs", {
   default: () => null,
   maxAge: 60 * 60 * 24,
 });
@@ -674,9 +764,12 @@ const fields = ref(
     ? savedFields.value
     : structuredClone(DEFAULT_FIELDS),
 );
-const details = ref(
-  savedDetails.value && savedDetails.value.length ? savedDetails.value : [],
+const initialDetailState = normalizeDetailTabs(
+  savedDetailTabs.value,
+  savedDetails.value,
 );
+const detailTabs = ref(initialDetailState.tabs);
+const details = ref(initialDetailState.details);
 const landingConfig = ref(savedLandingConfig.value || []);
 const printConfig = ref(
   normalizePrintConfig(
@@ -687,6 +780,9 @@ const printConfig = ref(
   ),
 );
 const columnLayout = ref(savedColumnLayout.value || 2);
+const orderedDetails = computed(() =>
+  orderDetailsByTabs(details.value, detailTabs.value),
+);
 
 // Auto-save to cookies on change
 watch(
@@ -700,6 +796,13 @@ watch(
   details,
   (v) => {
     savedDetails.value = v;
+  },
+  { deep: true },
+);
+watch(
+  detailTabs,
+  (v) => {
+    savedDetailTabs.value = v;
   },
   { deep: true },
 );
@@ -773,6 +876,7 @@ watch(
 function clearBuilderCookies() {
   savedFields.value = null;
   savedDetails.value = null;
+  savedDetailTabs.value = null;
   savedLandingConfig.value = null;
   savedPrintConfig.value = null;
   savedColumnLayout.value = null;
@@ -796,6 +900,7 @@ const colSpanFull = computed(() => {
 async function cancelBuilder() {
   clearBuilderCookies();
   fields.value = structuredClone(DEFAULT_FIELDS);
+  detailTabs.value = [];
   details.value = [];
   landingConfig.value = [];
   printConfig.value = createDefaultPrintConfig(
@@ -826,6 +931,7 @@ function resetFormBuilder() {
   }
   pushUndo()
   fields.value = []
+  detailTabs.value = []
   details.value = []
   confirmResetForm.value = false
   toast.info('Form builder di-reset — Undo tersedia')
@@ -930,7 +1036,8 @@ function cloneField(idx) {
 function exportConfig() {
   const data = {
     fields: fields.value,
-    details: details.value,
+    detailTabs: detailTabs.value,
+    details: orderedDetails.value,
     landingConfig: landingConfig.value,
     printConfig: printConfig.value,
     columnLayout: columnLayout.value,
@@ -960,14 +1067,19 @@ function importConfig() {
       const data = JSON.parse(text);
       pushUndo();
       if (Array.isArray(data.fields)) fields.value = data.fields;
-      if (Array.isArray(data.details)) details.value = data.details;
+      const normalizedDetails = normalizeDetailTabs(
+        data.detailTabs,
+        data.details,
+      );
+      detailTabs.value = normalizedDetails.tabs;
+      details.value = normalizedDetails.details;
       if (Array.isArray(data.landingConfig))
         landingConfig.value = data.landingConfig;
       if (data.printConfig)
         printConfig.value = normalizePrintConfig(
           data.printConfig,
           data.fields || fields.value,
-          data.details || details.value,
+          normalizedDetails.details,
           config.value?.readableName || "Dokumen",
         );
       if (data.columnLayout) columnLayout.value = data.columnLayout;
@@ -1078,14 +1190,106 @@ function copyPath(path) {
 // ============================================================================
 // DETAIL TAB ACTIONS
 // ============================================================================
-function addDetail() {
-  details.value.push(createBlankDetail());
+const activeDetailTab = ref("");
+const activeDetailTabConfig = computed(
+  () =>
+    detailTabs.value.find((tab) => tab.id === activeDetailTab.value) ||
+    detailTabs.value[0] ||
+    null,
+);
+const activeTabDetails = computed(() =>
+  details.value
+    .map((detail, index) => ({ ...detail, _origIdx: index }))
+    .filter((detail) => detail.tabId === activeDetailTab.value),
+);
+const activeDetailLayoutClass = computed(() =>
+  activeDetailTabConfig.value?.layout === "horizontal"
+    ? "grid grid-cols-1 xl:grid-cols-2 gap-4"
+    : "flex flex-col gap-4",
+);
+
+watch(
+  detailTabs,
+  (tabs) => {
+    if (!tabs.length) {
+      activeDetailTab.value = "";
+      if (detailPanelOpen.value) closeDetailPanel();
+      return;
+    }
+    if (!tabs.some((tab) => tab.id === activeDetailTab.value)) {
+      activeDetailTab.value = tabs[0].id;
+    }
+  },
+  { deep: true, immediate: true },
+);
+
+function addDetailTab() {
+  pushUndo();
+  const tab = createBlankDetailTab(detailTabs.value.length + 1);
+  detailTabs.value.push(tab);
+  activeDetailTab.value = tab.id;
+}
+
+function updateActiveDetailTab(key, value) {
+  const idx = detailTabs.value.findIndex((tab) => tab.id === activeDetailTab.value);
+  if (idx < 0) return;
+  detailTabs.value[idx] = {
+    ...detailTabs.value[idx],
+    [key]: value,
+  };
+}
+
+function removeActiveDetailTab() {
+  if (!activeDetailTab.value) return;
+  const removedTabId = activeDetailTab.value;
+  const currentTabIndex = detailTabs.value.findIndex(
+    (tab) => tab.id === removedTabId,
+  );
+  const removedDetailIndexes = details.value
+    .map((detail, index) => (detail.tabId === removedTabId ? index : -1))
+    .filter((index) => index >= 0);
+
+  pushUndo();
+  details.value = details.value.filter((detail) => detail.tabId !== removedTabId);
+  detailTabs.value = detailTabs.value.filter((tab) => tab.id !== removedTabId);
+
+  if (detailPanelIndex.value >= 0) {
+    if (removedDetailIndexes.includes(detailPanelIndex.value)) {
+      closeDetailPanel();
+    } else {
+      const shift = removedDetailIndexes.filter(
+        (index) => index < detailPanelIndex.value,
+      ).length;
+      detailPanelIndex.value -= shift;
+    }
+  }
+
+  if (detailTabs.value.length > 0) {
+    const nextTabIndex = Math.min(currentTabIndex, detailTabs.value.length - 1);
+    activeDetailTab.value = detailTabs.value[nextTabIndex].id;
+  } else {
+    activeDetailTab.value = "";
+  }
+}
+
+function addDetailToActiveTab() {
+  if (!activeDetailTab.value) {
+    toast.info("Tambah tab dulu sebelum menambah detail");
+    return;
+  }
+  pushUndo();
+  details.value.push({
+    ...createBlankDetail(),
+    tabId: activeDetailTab.value,
+  });
   openDetailPanel(details.value.length - 1);
 }
 
 function removeDetail(idx) {
+  pushUndo();
   details.value.splice(idx, 1);
   if (detailPanelIndex.value === idx) closeDetailPanel();
+  else if (detailPanelIndex.value > idx) detailPanelIndex.value -= 1;
 }
 
 function openDetailPanel(idx) {
@@ -1105,7 +1309,12 @@ function closeDetailPanel() {
 }
 
 function updateDetailAtIndex(updated) {
-  details.value[detailPanelIndex.value] = updated;
+  const idx = detailPanelIndex.value;
+  if (idx < 0) return;
+  details.value[idx] = {
+    ...updated,
+    tabId: details.value[idx]?.tabId || activeDetailTab.value || "",
+  };
 }
 
 function updateFieldAtIndex(updated) {
@@ -1206,7 +1415,8 @@ async function generate() {
         routePath: config.value.routePath,
         pageTitle: config.value.readableName,
         fields: fields.value,
-        details: details.value,
+        detailTabs: detailTabs.value,
+        details: orderedDetails.value,
         landingConfig: landingConfig.value,
         printConfig: printConfig.value,
         columnLayout: columnLayout.value,
@@ -2055,15 +2265,116 @@ node add_route.cjs setup/m_supplier</pre
             <!-- ================================================================ -->
             <!-- DETAIL TABS SECTION -->
             <!-- ================================================================ -->
-            <div v-if="details.length > 0" class="space-y-4">
-              <div v-for="(detail, dIdx) in details" :key="dIdx">
+            <div class="space-y-4">
+              <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                <div v-if="detailTabs.length > 0" class="min-w-0 flex-1">
+                  <Tabs v-model="activeDetailTab">
+                    <TabsList class="w-full overflow-x-auto flex justify-start">
+                      <TabsTrigger
+                        v-for="tab in detailTabs"
+                        :key="tab.id"
+                        :value="tab.id"
+                      >
+                        {{ tab.label || "Tab" }}
+                      </TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+                </div>
+                <div
+                  v-else
+                  class="flex-1 border-2 border-dashed border-border rounded-lg p-4 text-sm text-muted-foreground"
+                >
+                  Belum ada tab detail. Tambah tab dulu, lalu isi detail di dalam tab tersebut.
+                </div>
+                <div class="flex items-center gap-3 shrink-0">
+                  <Button variant="outline" class="gap-1.5" @click="addDetailTab">
+                    <Layers class="h-4 w-4" />
+                    Tambah Tab
+                  </Button>
+                  <Button
+                    variant="outline"
+                    class="gap-1.5"
+                    :disabled="!activeDetailTabConfig"
+                    @click="addDetailToActiveTab"
+                  >
+                    <Plus class="h-4 w-4" />
+                    Tambah Detail
+                  </Button>
+                </div>
+              </div>
+
+              <Card v-if="activeDetailTabConfig">
+                <CardHeader class="pb-3">
+                  <div class="flex items-center justify-between gap-3">
+                    <div>
+                      <CardTitle class="text-base">Pengaturan Tab Aktif</CardTitle>
+                      <CardDescription>
+                        Tab tetap ada walau belum punya detail. Tambah detail akan masuk ke tab yang sedang aktif.
+                      </CardDescription>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      class="text-destructive"
+                      @click="removeActiveDetailTab"
+                    >
+                      <Trash2 class="h-4 w-4 mr-1" />
+                      Hapus Tab
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent class="space-y-4">
+                  <div class="grid gap-4 lg:grid-cols-2">
+                    <div>
+                      <label class="block mb-1 text-sm font-medium text-muted-foreground">Label Tab</label>
+                      <input
+                        type="text"
+                        :value="activeDetailTabConfig.label"
+                        class="w-full rounded bg-muted border border-border text-foreground px-3 py-2 text-sm focus:border-primary focus:ring-1 focus:ring-primary"
+                        placeholder="Tab 1"
+                        @input="updateActiveDetailTab('label', $event.target.value)"
+                      />
+                    </div>
+                    <div>
+                      <label class="block mb-1 text-sm font-medium text-muted-foreground">Susunan Detail</label>
+                      <div class="flex rounded-lg border border-border overflow-hidden">
+                        <button
+                          class="flex-1 py-2 px-3 text-xs font-medium transition-colors"
+                          :class="activeDetailTabConfig.layout !== 'horizontal' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-accent'"
+                          @click="updateActiveDetailTab('layout', 'vertical')"
+                        >
+                          Kebawah
+                        </button>
+                        <button
+                          class="flex-1 py-2 px-3 text-xs font-medium transition-colors border-l border-border"
+                          :class="activeDetailTabConfig.layout === 'horizontal' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-accent'"
+                          @click="updateActiveDetailTab('layout', 'horizontal')"
+                        >
+                          Kesamping
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div
+                v-if="activeDetailTabConfig && activeTabDetails.length === 0"
+                class="border-2 border-dashed border-border rounded-lg p-6 text-center text-muted-foreground"
+              >
+                <p class="text-sm font-medium">Tab {{ activeDetailTabConfig.label || "Tab" }} masih kosong</p>
+                <p class="text-xs mt-1">Tambah detail sebanyak yang dibutuhkan ke tab aktif ini.</p>
+              </div>
+
+              <div v-if="activeTabDetails.length > 0" :class="activeDetailLayoutClass">
+                <div v-for="detail in activeTabDetails" :key="detail._origIdx">
                 <Card>
                   <CardHeader>
                     <div class="flex items-center justify-between">
                       <div class="flex items-center gap-2">
                         <Layers class="h-4 w-4 text-primary" />
                         <CardTitle class="text-base">{{
-                          detail.tabLabel || "Detail Tab"
+                          detail.tabLabel || "Detail"
                         }}</CardTitle>
                         <span class="text-xs text-muted-foreground"
                           >{{ detail.responseKey || "?" }} →
@@ -2088,7 +2399,7 @@ node add_route.cjs setup/m_supplier</pre
                         <Button
                           variant="outline"
                           size="sm"
-                          @click="openDetailPanel(dIdx)"
+                          @click="openDetailPanel(detail._origIdx)"
                         >
                           <Settings2 class="h-3.5 w-3.5 mr-1" />
                           Konfigurasi
@@ -2097,7 +2408,7 @@ node add_route.cjs setup/m_supplier</pre
                           variant="ghost"
                           size="icon"
                           class="h-8 w-8 text-destructive"
-                          @click="removeDetail(dIdx)"
+                          @click="removeDetail(detail._origIdx)"
                         >
                           <Trash2 class="h-4 w-4" />
                         </Button>
@@ -2134,9 +2445,9 @@ node add_route.cjs setup/m_supplier</pre
                         "
                         :searchKey="detail.searchKey || 'name'"
                         :antiDuplicate="!!detail.antiDuplicate"
-                        :excludeKeys="getPreviewExcludeKeys(dIdx)"
+                        :excludeKeys="getPreviewExcludeKeys(detail._origIdx)"
                         @add="
-                          (items) => { handlePreviewMultiSelectAdd(dIdx, items); nextTick(() => getPreviewArr(dIdx).forEach((_, rIdx) => computeDetailRowFormulas(dIdx, rIdx))) }
+                          (items) => { handlePreviewMultiSelectAdd(detail._origIdx, items); nextTick(() => getPreviewArr(detail._origIdx).forEach((_, rIdx) => computeDetailRowFormulas(detail._origIdx, rIdx))) }
                         "
                       />
                       <Button
@@ -2144,7 +2455,7 @@ node add_route.cjs setup/m_supplier</pre
                         variant="outline"
                         size="sm"
                         class="gap-1.5"
-                        @click="handlePreviewAddRow(dIdx)"
+                        @click="handlePreviewAddRow(detail._origIdx)"
                       >
                         <Plus class="h-4 w-4" />
                         {{ detail.buttonLabel || "Tambah" }}
@@ -2191,7 +2502,7 @@ node add_route.cjs setup/m_supplier</pre
                           </tr>
                         </thead>
                         <tbody>
-                          <tr v-if="!getPreviewArr(dIdx).length">
+                          <tr v-if="!getPreviewArr(detail._origIdx).length">
                             <td
                               :colspan="
                                 1 +
@@ -2207,7 +2518,7 @@ node add_route.cjs setup/m_supplier</pre
                             </td>
                           </tr>
                           <tr
-                            v-for="(row, rIdx) in getPreviewArr(dIdx)"
+                            v-for="(row, rIdx) in getPreviewArr(detail._origIdx)"
                             :key="rIdx"
                             class="border-t border-border hover:bg-muted/30"
                           >
@@ -2239,7 +2550,7 @@ node add_route.cjs setup/m_supplier</pre
                                 :value="row[df.key]"
                                 @input="
                                   (v) =>
-                                    updateCellAndCompute(dIdx, rIdx, df.key, v)
+                                    updateCellAndCompute(detail._origIdx, rIdx, df.key, v)
                                 "
                                 :readonly="isDetailFieldReadonly(df)"
                                 :labelTrue="df.labelTrue || 'Ya'"
@@ -2250,7 +2561,7 @@ node add_route.cjs setup/m_supplier</pre
                                 :modelValue="row[df.key]"
                                 @update:modelValue="
                                   (v) =>
-                                    updateCellAndCompute(dIdx, rIdx, df.key, v)
+                                    updateCellAndCompute(detail._origIdx, rIdx, df.key, v)
                                 "
                                 :readonly="isDetailFieldReadonly(df)"
                                 :activeText="df.labelTrue || 'Aktif'"
@@ -2261,17 +2572,18 @@ node add_route.cjs setup/m_supplier</pre
                                 :value="row[df.key]"
                                 @input="
                                   (v) =>
-                                    updateCellAndCompute(dIdx, rIdx, df.key, v)
+                                    updateCellAndCompute(detail._origIdx, rIdx, df.key, v)
                                 "
                                 @update:valueFull="
                                   (obj) =>
-                                    onDetailPreviewValueFull(dIdx, rIdx, df.key, obj)
+                                    onDetailPreviewValueFull(detail._origIdx, rIdx, df.key, obj)
                                 "
                                 :sourceType="df.sourceType || 'api'"
                                 :apiUrl="df.apiUrl || ''"
                                 :displayField="df.displayField || 'name'"
                                 :valueField="df.valueField || 'id'"
                                 :staticOptions="df.staticOptions || []"
+                                :apiParams="(df.apiParams || []).filter(p => p.key).reduce((o, p) => { o[p.key] = p.value || ''; return o }, {})"
                                 :readonly="isDetailFieldReadonly(df)"
                                 class="w-full"
                               />
@@ -2280,15 +2592,19 @@ node add_route.cjs setup/m_supplier</pre
                                 :value="row[df.key]"
                                 @input="
                                   (v) =>
-                                    updateCellAndCompute(dIdx, rIdx, df.key, v)
+                                    updateCellAndCompute(detail._origIdx, rIdx, df.key, v)
                                 "
                                 @update:valueFull="
                                   (obj) =>
-                                    onDetailPreviewValueFull(dIdx, rIdx, df.key, obj)
+                                    onDetailPreviewValueFull(detail._origIdx, rIdx, df.key, obj)
                                 "
                                 :apiUrl="df.apiUrl || ''"
                                 :displayField="df.displayField || 'name'"
                                 :valueField="df.valueField || 'id'"
+                                :columns="df.popupColumns || []"
+                                :searchFields="df.searchFields || ''"
+                                :dialogTitle="df.dialogTitle || ''"
+                                :apiParams="(df.apiParams || []).filter(p => p.key).reduce((o, p) => { o[p.key] = p.value || ''; return o }, {})"
                                 :readonly="isDetailFieldReadonly(df)"
                                 class="w-full"
                               />
@@ -2300,7 +2616,7 @@ node add_route.cjs setup/m_supplier</pre
                                 :value="row[df.key]"
                                 @input="
                                   (v) =>
-                                    updateCellAndCompute(dIdx, rIdx, df.key, v)
+                                    updateCellAndCompute(detail._origIdx, rIdx, df.key, v)
                                 "
                                 :type="
                                   df.type === 'fieldnumber_decimal'
@@ -2316,7 +2632,7 @@ node add_route.cjs setup/m_supplier</pre
                                 :value="row[df.key]"
                                 @input="
                                   (v) =>
-                                    updateCellAndCompute(dIdx, rIdx, df.key, v)
+                                    updateCellAndCompute(detail._origIdx, rIdx, df.key, v)
                                 "
                                 type="number"
                                 :readonly="isDetailFieldReadonly(df)"
@@ -2327,7 +2643,7 @@ node add_route.cjs setup/m_supplier</pre
                                 :value="row[df.key]"
                                 @input="
                                   (v) =>
-                                    updateCellAndCompute(dIdx, rIdx, df.key, v)
+                                    updateCellAndCompute(detail._origIdx, rIdx, df.key, v)
                                 "
                                 :readonly="isDetailFieldReadonly(df)"
                                 class="w-full"
@@ -2337,7 +2653,7 @@ node add_route.cjs setup/m_supplier</pre
                                 :value="row[df.key]"
                                 @input="
                                   (v) =>
-                                    updateCellAndCompute(dIdx, rIdx, df.key, v)
+                                    updateCellAndCompute(detail._origIdx, rIdx, df.key, v)
                                 "
                                 :readonly="isDetailFieldReadonly(df)"
                                 class="w-full"
@@ -2347,7 +2663,7 @@ node add_route.cjs setup/m_supplier</pre
                                 :value="row[df.key]"
                                 @input="
                                   (v) =>
-                                    updateCellAndCompute(dIdx, rIdx, df.key, v)
+                                    updateCellAndCompute(detail._origIdx, rIdx, df.key, v)
                                 "
                                 :options="
                                   (df.radioOptions || []).map((o) => ({
@@ -2362,7 +2678,7 @@ node add_route.cjs setup/m_supplier</pre
                                 :value="row[df.key]"
                                 @input="
                                   (v) =>
-                                    updateCellAndCompute(dIdx, rIdx, df.key, v)
+                                    updateCellAndCompute(detail._origIdx, rIdx, df.key, v)
                                 "
                                 :readonly="isDetailFieldReadonly(df)"
                                 :decimalPlaces="df.decimalPlaces ?? 2"
@@ -2373,7 +2689,7 @@ node add_route.cjs setup/m_supplier</pre
                                 :value="row[df.key]"
                                 @input="
                                   (v) =>
-                                    updateCellAndCompute(dIdx, rIdx, df.key, v)
+                                    updateCellAndCompute(detail._origIdx, rIdx, df.key, v)
                                 "
                                 :readonly="isDetailFieldReadonly(df)"
                                 class="w-full"
@@ -2383,7 +2699,7 @@ node add_route.cjs setup/m_supplier</pre
                                 :value="row[df.key]"
                                 @input="
                                   (v) =>
-                                    updateCellAndCompute(dIdx, rIdx, df.key, v)
+                                    updateCellAndCompute(detail._origIdx, rIdx, df.key, v)
                                 "
                                 :readonly="isDetailFieldReadonly(df)"
                                 class="w-full"
@@ -2393,7 +2709,7 @@ node add_route.cjs setup/m_supplier</pre
                                 :value="row[df.key]"
                                 @input="
                                   (v) =>
-                                    updateCellAndCompute(dIdx, rIdx, df.key, v)
+                                    updateCellAndCompute(detail._origIdx, rIdx, df.key, v)
                                 "
                                 :placeholder="df.label || df.key"
                                 :readonly="isDetailFieldReadonly(df)"
@@ -2403,7 +2719,7 @@ node add_route.cjs setup/m_supplier</pre
                             <td class="px-2 py-2 text-center">
                               <button
                                 class="text-destructive hover:text-destructive/80 text-xs font-medium"
-                                @click="removePreviewRow(dIdx, rIdx)"
+                                @click="removePreviewRow(detail._origIdx, rIdx)"
                               >
                                 Hapus
                               </button>
@@ -2429,15 +2745,15 @@ node add_route.cjs setup/m_supplier</pre
                               class="px-2 py-2 text-right"
                             >
                               <template v-if="df.summaryType === 'SUM'">
-                                {{ formatDetailPreviewNumber(getPreviewArr(dIdx).reduce((acc, row) => acc + (Number(row[df.key]) || 0), 0), df) }}
+                                {{ formatDetailPreviewNumber(getPreviewArr(detail._origIdx).reduce((acc, row) => acc + (Number(row[df.key]) || 0), 0), df) }}
                               </template>
                               <template v-else-if="df.summaryType === 'AVG'">
-                                {{ getPreviewArr(dIdx).length
-                                  ? formatDetailPreviewNumber(getPreviewArr(dIdx).reduce((acc, row) => acc + (Number(row[df.key]) || 0), 0) / getPreviewArr(dIdx).length, df)
+                                {{ getPreviewArr(detail._origIdx).length
+                                  ? formatDetailPreviewNumber(getPreviewArr(detail._origIdx).reduce((acc, row) => acc + (Number(row[df.key]) || 0), 0) / getPreviewArr(detail._origIdx).length, df)
                                   : 0 }}
                               </template>
                               <template v-else-if="df.summaryType === 'COUNT'">
-                                {{ getPreviewArr(dIdx).filter(row => row[df.key] !== undefined && row[df.key] !== null && row[df.key] !== '').length }}
+                                {{ getPreviewArr(detail._origIdx).filter(row => row[df.key] !== undefined && row[df.key] !== null && row[df.key] !== '').length }}
                               </template>
                             </td>
                             <td class="px-2 py-2"></td>
@@ -2447,16 +2763,17 @@ node add_route.cjs setup/m_supplier</pre
                     </div>
                   </CardContent>
                 </Card>
+                </div>
               </div>
-            </div>
 
-            <!-- Add Detail Tab button -->
-            <div
-              class="border-2 border-dashed border-border rounded-lg p-4 flex items-center justify-center cursor-pointer text-muted-foreground hover:border-primary hover:text-primary hover:bg-accent/30 transition-all"
-              @click="addDetail"
-            >
-              <Layers class="h-5 w-5 mr-2" />
-              <span class="text-sm font-medium">Tambah Detail Tab</span>
+              <div
+                v-if="activeDetailTabConfig"
+                class="border-2 border-dashed border-border rounded-lg p-4 flex items-center justify-center cursor-pointer text-muted-foreground hover:border-primary hover:text-primary hover:bg-accent/30 transition-all"
+                @click="addDetailToActiveTab"
+              >
+                <List class="h-5 w-5 mr-2" />
+                <span class="text-sm font-medium">Tambah Detail ke Tab Aktif</span>
+              </div>
             </div>
           </TabsContent>
 
@@ -2950,7 +3267,7 @@ node add_route.cjs setup/m_supplier</pre
             >
               <h3 class="text-base font-semibold flex items-center gap-2">
                 <Layers class="h-4 w-4" />
-                Konfigurasi Detail Tab
+                Konfigurasi Detail
               </h3>
               <button
                 class="h-8 w-8 flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground"
