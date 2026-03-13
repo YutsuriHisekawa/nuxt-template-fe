@@ -37,7 +37,14 @@ export default defineNuxtConfig({
   },
 
   alias: {
-    '@': fileURLToPath(new URL('./app', import.meta.url))
+    '@': fileURLToPath(new URL('./app', import.meta.url)),
+    '#shared': fileURLToPath(new URL('./shared', import.meta.url))
+  },
+
+  nitro: {
+    alias: {
+      '#shared': fileURLToPath(new URL('./shared', import.meta.url))
+    }
   },
 
   components: [

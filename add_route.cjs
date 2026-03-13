@@ -3,14 +3,18 @@
 /**
  * Nuxt Route & Module Generator
  *
- * Tulis config -> buka browser ke /builder_file
- * Wizard Nuxt page yang pakai komponen asli akan handle sisanya.
+ * Mode 1 (Dashboard):
+ *   node add_route.cjs
+ *   → Opens Builder Dashboard at /builder
+ *   → Create drafts, resume, configure, generate — all from the UI
  *
- * Usage:
+ * Mode 2 (Direct — backward compatible):
  *   node add_route.cjs <module_path> [api_endpoint]
+ *   → Creates a draft config and opens builder directly
  *
  * Examples:
- *   node add_route.cjs setup/m_supplier
+ *   node add_route.cjs                          # Dashboard mode
+ *   node add_route.cjs setup/m_supplier          # Direct mode
  *   node add_route.cjs purchasing/master/m_vendor m_vendor
  */
 
@@ -20,7 +24,6 @@ const crypto = require('crypto');
 const { exec } = require('child_process');
 
 const projectRoot = __dirname;
-const configPath = path.join(projectRoot, '.builder_config.json');
 
 function getReadableName(text) {
   const isTransaction = text.startsWith('t_');
@@ -28,13 +31,34 @@ function getReadableName(text) {
   return isTransaction ? 'Transaksi ' + clean : 'Master ' + clean;
 }
 
-const args = process.argv.slice(2);
-if (!args[0]) {
-  console.log('\x1b[31mUsage: node add_route.cjs <module_path> [api_endpoint]\x1b[0m');
-  console.log('  Example: node add_route.cjs setup/m_supplier');
-  process.exit(1);
+function openBrowser(url) {
+  if (process.platform === 'win32') {
+    exec(`start "" "${url}"`, { shell: 'cmd.exe' });
+  } else if (process.platform === 'darwin') {
+    exec(`open "${url}"`);
+  } else {
+    exec(`xdg-open "${url}"`);
+  }
 }
 
+const args = process.argv.slice(2);
+
+// ─── Mode 1: Dashboard (no arguments) ───────────────────────────────────
+if (!args[0]) {
+  // Activate builder gate
+  fs.writeFileSync(path.join(projectRoot, '.builder_active'), new Date().toISOString());
+  console.log('\x1b[36m---------------------------------------\x1b[0m');
+  console.log('\x1b[1m  Builder Dashboard\x1b[0m');
+  console.log('\x1b[36m---------------------------------------\x1b[0m');
+  console.log('\x1b[32m+ Builder activated\x1b[0m');
+  console.log('\x1b[32m+ Opening Builder Dashboard...\x1b[0m');
+  console.log('\x1b[90m  (pastikan Nuxt dev server sudah jalan di port 9999)\x1b[0m');
+  console.log('\x1b[36m---------------------------------------\x1b[0m');
+  openBrowser('http://localhost:9999/builder');
+  return setTimeout(() => process.exit(0), 2000);
+}
+
+// ─── Mode 2: Direct (with module_path argument) ────────────────────────
 const modulePath = args[0].replace(/\\/g, '/').replace(/^\/|\/$/g, '');
 const segments = modulePath.split('/');
 const moduleName = segments[segments.length - 1];
@@ -43,11 +67,16 @@ const routePath = '/' + modulePath;
 const readableName = getReadableName(moduleName);
 
 const token = crypto.randomUUID();
+const configDir = path.join(projectRoot, '.builder_configs');
+if (!fs.existsSync(configDir)) fs.mkdirSync(configDir, { recursive: true });
+// Activate builder gate
+fs.writeFileSync(path.join(projectRoot, '.builder_active'), new Date().toISOString());
+const configPath = path.join(configDir, `${token}.json`);
 const config = { modulePath, moduleName, apiEndpoint, routePath, readableName, token, createdAt: new Date().toISOString() };
 fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
 
 console.log('\x1b[36m---------------------------------------\x1b[0m');
-console.log('\x1b[1m  MVG Route Builder\x1b[0m');
+console.log('\x1b[1m  Route Builder\x1b[0m');
 console.log('\x1b[36m---------------------------------------\x1b[0m');
 console.log('  Module : \x1b[33m' + modulePath + '\x1b[0m');
 console.log('  API    : \x1b[33m' + apiEndpoint + '\x1b[0m');
@@ -55,10 +84,8 @@ console.log('  Route  : \x1b[33m' + routePath + '\x1b[0m');
 console.log('  Title  : \x1b[33m' + readableName + '\x1b[0m');
 console.log('  Token  : \x1b[33m' + token + '\x1b[0m');
 console.log('\x1b[36m---------------------------------------\x1b[0m');
-console.log('\x1b[32m+ Config written to .builder_config.json\x1b[0m');
+console.log('\x1b[32m+ Config written to .builder_configs/' + token + '.json\x1b[0m');
 console.log('\x1b[32m+ Opening browser -> http://localhost:9999/builder_file/' + token + '\x1b[0m');
 console.log('\x1b[90m  (pastikan Nuxt dev server sudah jalan)\x1b[0m');
 
-const url = 'http://localhost:9999/builder_file/' + token;
-const cmd = process.platform === 'win32' ? 'start "" "' + url + '"' : process.platform === 'darwin' ? 'open "' + url + '"' : 'xdg-open "' + url + '"';
-exec(cmd);
+openBrowser('http://localhost:9999/builder_file/' + token);
