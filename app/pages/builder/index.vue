@@ -317,13 +317,13 @@ onMounted(loadDrafts);
       leave-to-class="opacity-0"
     >
       <div
-        v-if="creating || (navigatingLabel && !creating)"
+        v-if="creating || navigatingLabel"
         class="fixed inset-0 z-[200] bg-background/80 backdrop-blur-sm flex flex-col items-center justify-center gap-4"
       >
         <Loader2 class="h-10 w-10 animate-spin text-primary" />
         <div class="text-center">
           <p class="text-sm font-semibold">
-            {{ creating ? 'Membuat draft...' : 'Membuka builder...' }}
+            {{ navigatingLabel ? 'Membuka builder...' : 'Membuat draft...' }}
           </p>
           <p v-if="navigatingLabel" class="text-xs text-muted-foreground mt-1">{{ navigatingLabel }}</p>
         </div>
