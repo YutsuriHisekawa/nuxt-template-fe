@@ -18,6 +18,7 @@ const drafts = ref([]);
 const loading = ref(true);
 const creating = ref(false);
 const notActive = ref(false);
+const navigatingLabel = ref("");
 
 // New draft form
 const newModulePath = ref("");
@@ -60,16 +61,16 @@ async function createDraft() {
       },
     });
     if (res.success) {
-      toast.success(`Draft "${res.config.readableName}" dibuat`);
       newModulePath.value = "";
       newApiEndpoint.value = "";
       showNewForm.value = false;
+      navigatingLabel.value = res.config.readableName;
       await navigateTo(`/builder_file/${res.token}`);
     }
   } catch (e) {
     toast.error(e?.data?.statusMessage || e?.message || "Gagal membuat draft");
-  } finally {
     creating.value = false;
+    navigatingLabel.value = "";
   }
 }
 
@@ -286,9 +287,10 @@ onMounted(loadDrafts);
                   size="sm"
                   variant="default"
                   class="gap-1.5 h-8"
-                  @click="navigateTo(`/builder_file/${draft.token}`)"
+                  @click="navigatingLabel = draft.readableName; navigateTo(`/builder_file/${draft.token}`)"
                 >
-                  <ExternalLink class="h-3.5 w-3.5" />
+                  <Loader2 v-if="navigatingLabel === draft.readableName" class="h-3.5 w-3.5 animate-spin" />
+                  <ExternalLink v-else class="h-3.5 w-3.5" />
                   Resume
                 </Button>
                 <Button
@@ -306,5 +308,26 @@ onMounted(loadDrafts);
       </div>
     </div>
     </template>
+
+    <!-- Full-screen loading overlay during navigation -->
+    <Transition
+      enter-active-class="transition-opacity duration-150"
+      enter-from-class="opacity-0"
+      leave-active-class="transition-opacity duration-200"
+      leave-to-class="opacity-0"
+    >
+      <div
+        v-if="creating || navigatingLabel"
+        class="fixed inset-0 z-[200] bg-background/80 backdrop-blur-sm flex flex-col items-center justify-center gap-4"
+      >
+        <Loader2 class="h-10 w-10 animate-spin text-primary" />
+        <div class="text-center">
+          <p class="text-sm font-semibold">
+            {{ navigatingLabel ? 'Membuka builder...' : 'Membuat draft...' }}
+          </p>
+          <p v-if="navigatingLabel" class="text-xs text-muted-foreground mt-1">{{ navigatingLabel }}</p>
+        </div>
+      </div>
+    </Transition>
   </div>
 </template>
