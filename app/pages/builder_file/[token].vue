@@ -62,7 +62,8 @@ const {
           <CardDescription>{{ configError }}</CardDescription>
         </CardHeader>
         <CardContent>
-          <pre class="text-sm bg-muted p-3 rounded-md overflow-x-auto">node add_route.cjs setup/m_supplier</pre>
+          <pre class="text-sm bg-muted p-3 rounded-md overflow-x-auto">node add_route.cjs</pre>
+          <p class="text-xs text-muted-foreground mt-2">Atau buka <NuxtLink to="/builder" class="text-primary underline">Builder Dashboard</NuxtLink></p>
         </CardContent>
       </Card>
     </div>
@@ -86,6 +87,12 @@ const {
           >
             <ExternalLink class="h-4 w-4" />
             Lihat Halaman
+          </NuxtLink>
+          <NuxtLink
+            to="/builder"
+            class="inline-flex items-center gap-2 mt-1 px-4 py-2 rounded-lg bg-muted text-muted-foreground text-sm font-medium hover:bg-muted/80 transition-colors"
+          >
+            Kembali ke Dashboard
           </NuxtLink>
         </CardContent>
       </Card>

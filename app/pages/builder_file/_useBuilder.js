@@ -9,6 +9,7 @@ import {
   getDetailFieldDecimalPlaces,
   isDetailNumericFieldType,
 } from "~/utils/builder/fieldRegistry";
+import { validateBuilderConfig } from "#shared/builder/validateConfig.js";
 import {
   isPrintableField as _isPrintableField,
   normalizePrintConfig,
@@ -26,6 +27,29 @@ export function $resolveDotPath(obj, path) {
 export function useBuilder() {
   const route = useRoute();
   const builderToken = route.params.token;
+
+  // ── Per-token localStorage persistence (replaces global cookies) ───────
+  // Each builder session stores its state under a unique key prefix,
+  // so multiple tabs/tokens never collide.
+  function useBuilderDraft(key, defaultValue) {
+    const fullKey = `builder:${builderToken}:${key}`;
+    let initial = typeof defaultValue === 'function' ? defaultValue() : defaultValue;
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem(fullKey);
+        if (raw !== null) initial = JSON.parse(raw);
+      } catch {}
+    }
+    const data = ref(initial);
+    watch(data, (v) => {
+      if (typeof window === 'undefined') return;
+      try {
+        if (v === null || v === undefined) localStorage.removeItem(fullKey);
+        else localStorage.setItem(fullKey, JSON.stringify(v));
+      } catch {}
+    }, { deep: true });
+    return data;
+  }
 
   // Theme for AG Grid
   const themeCookie = useCookie("theme");
@@ -506,10 +530,7 @@ export function useBuilder() {
   }
 
   // ── Wizard Steps ───────────────────────────────────────────────────────────
-  const savedWizardSteps = useCookie("builder_wizard_steps", {
-    default: () => null,
-    maxAge: 60 * 60 * 24,
-  });
+  const savedWizardSteps = useBuilderDraft("wizard_steps", null);
   const wizardSteps = ref(savedWizardSteps.value || []);
   watch(
     wizardSteps,
@@ -681,33 +702,15 @@ export function useBuilder() {
     return ordered;
   }
 
-  // ── Cookie-backed state (survives refresh) ─────────────────────────────────
+  // ── Per-token state (survives refresh, isolated per builder session) ────
   const DEFAULT_FIELDS = [];
 
-  const savedFields = useCookie("builder_fields", {
-    default: () => null,
-    maxAge: 60 * 60 * 24,
-  });
-  const savedDetails = useCookie("builder_details", {
-    default: () => null,
-    maxAge: 60 * 60 * 24,
-  });
-  const savedDetailTabs = useCookie("builder_detail_tabs", {
-    default: () => null,
-    maxAge: 60 * 60 * 24,
-  });
-  const savedLandingConfig = useCookie("builder_landing", {
-    default: () => null,
-    maxAge: 60 * 60 * 24,
-  });
-  const savedPrintConfig = useCookie("builder_print", {
-    default: () => null,
-    maxAge: 60 * 60 * 24,
-  });
-  const savedColumnLayout = useCookie("builder_col_layout", {
-    default: () => 2,
-    maxAge: 60 * 60 * 24,
-  });
+  const savedFields = useBuilderDraft("fields", null);
+  const savedDetails = useBuilderDraft("details", null);
+  const savedDetailTabs = useBuilderDraft("detail_tabs", null);
+  const savedLandingConfig = useBuilderDraft("landing", null);
+  const savedPrintConfig = useBuilderDraft("print", null);
+  const savedColumnLayout = useBuilderDraft("col_layout", 2);
 
   const fields = ref(
     savedFields.value && savedFields.value.length
@@ -788,7 +791,7 @@ export function useBuilder() {
     { deep: true, immediate: true },
   );
 
-  function clearBuilderCookies() {
+  function clearBuilderDraft() {
     savedFields.value = null;
     savedDetails.value = null;
     savedDetailTabs.value = null;
@@ -813,7 +816,7 @@ export function useBuilder() {
   });
 
   async function cancelBuilder() {
-    clearBuilderCookies();
+    clearBuilderDraft();
     fields.value = structuredClone(DEFAULT_FIELDS);
     detailTabs.value = [];
     details.value = [];
@@ -832,7 +835,7 @@ export function useBuilder() {
       });
     } catch {}
     toast.info("Builder di-reset");
-    await navigateTo("/", { replace: true });
+    await navigateTo("/builder", { replace: true });
   }
 
   const confirmResetForm = ref(false);
@@ -1290,6 +1293,16 @@ export function useBuilder() {
       );
       return;
     }
+    // Pre-generate validation: cross-reference checks
+    const validation = validateBuilderConfig({
+      fields: fields.value,
+      details: orderedDetails.value,
+      detailTabs: detailTabs.value,
+    });
+    if (!validation.valid) {
+      validation.errors.forEach((e) => toast.error(e));
+      return;
+    }
     generating.value = true;
     try {
       const result = await $fetch("/api/builder/generate", {
@@ -1311,7 +1324,7 @@ export function useBuilder() {
         },
       });
       if (result.success) {
-        clearBuilderCookies();
+        clearBuilderDraft();
         generated.value = true;
         generatedMessage.value = result.message;
         toast.success("Files generated!");

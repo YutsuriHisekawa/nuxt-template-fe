@@ -1,13 +1,10 @@
 export default defineNuxtRouteMiddleware(async (to) => {
   const authStore = useAuthStore()
+  const isBuilderRoute = to.path === '/builder' || to.path.startsWith('/builder_file/')
 
   // Halaman yang boleh diakses tanpa login
   const publicPages = ['/login']
   const isPublicPage = publicPages.includes(to.path)
-
-  // Halaman yang skip auth sepenuhnya (boleh diakses siapa saja, login atau tidak)
-  const isGuestPage = to.path.startsWith('/builder_file')
-  if (isGuestPage) return // bypass semua auth check
 
   // Kalau user baru saja logout, langsung redirect ke login (jangan re-verify)
   if (authStore.loggedOut && !isPublicPage) {
@@ -55,7 +52,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
     const currentPath = to.path
 
     // Skip guard untuk halaman yang selalu boleh diakses
-    if (!alwaysAllowed.some(p => currentPath === p)) {
+    if (!(isBuilderRoute || alwaysAllowed.some(p => currentPath === p))) {
       let sr = authStore.getSelectRespo() as any
       if (!sr && authStore.userDefault) {
         authStore.initializeSelectRespo()

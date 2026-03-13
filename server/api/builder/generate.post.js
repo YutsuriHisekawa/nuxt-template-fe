@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync } from 'fs'
 import { resolve, dirname } from 'path'
-import { FIELD_REGISTRY, getRegistryEntry, wrapVisibleWhen } from '../../utils/builder/fieldRegistry.js'
+import { FIELD_REGISTRY, getRegistryEntry, wrapVisibleWhen } from '#shared/builder/fieldRegistry.js'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 // Safe JS object literal key: quote if it contains a dot (e.g. "m_item.id")
@@ -2008,14 +2008,7 @@ export default defineEventHandler(async (event) => {
   const root = process.cwd()
 
   // ── Token validation ───────────────────────────────────────────────────
-  const configPath = resolve(root, '.builder_config.json')
-  if (!existsSync(configPath)) {
-    throw createError({ statusCode: 403, statusMessage: 'Builder session not found' })
-  }
-  const savedConfig = JSON.parse(readFileSync(configPath, 'utf-8'))
-  if (!body.token || body.token !== savedConfig.token) {
-    throw createError({ statusCode: 403, statusMessage: 'Invalid builder token' })
-  }
+  readBuilderConfig(body.token)
   const readableName = pageTitle || getReadableName(moduleName)
 
   // ── Read templates ─────────────────────────────────────────────────────
@@ -2216,9 +2209,7 @@ const companyNameDisplay = computed(() => {
   }
 
   // Clean up config
-  if (existsSync(configPath)) {
-    try { unlinkSync(configPath) } catch {}
-  }
+  removeBuilderConfig(body.token)
 
   return {
     success: true,

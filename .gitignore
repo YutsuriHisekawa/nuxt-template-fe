@@ -19,8 +19,9 @@ logs
 .fleet
 .idea
 
-# Builder temp config
-.builder_config.json
+# Builder temp configs (per-token session files)
+.builder_configs/
+.builder_active
 
 # Local env files
 .env
