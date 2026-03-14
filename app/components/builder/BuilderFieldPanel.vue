@@ -558,6 +558,16 @@ function updateField(key, value) {
   if (key === 'dependsOn' && !value) {
     updated.dependsOnParam = ''
   }
+  // Auto-fill map column names when prefix changes
+  if (key === 'field' && updated.type === 'map' && value) {
+    if (!updated.mapLatField) updated.mapLatField = ''
+    if (!updated.mapLngField) updated.mapLngField = ''
+    if (!updated.mapAddressField) updated.mapAddressField = ''
+  }
+  // Auto-derive internal field ID from mapLatField for map type
+  if (updated.type === 'map' && (key === 'mapLatField' || key === 'mapLngField' || key === 'mapAddressField')) {
+    updated.field = updated.mapLatField || 'map_field'
+  }
   emit('update:field', updated)
 }
 
@@ -1394,6 +1404,16 @@ function addColumnItem(key) {
         <p v-if="pf.hint" class="text-xs text-muted-foreground/70 mt-0.5">{{ pf.hint }}</p>
       </div>
     </template>
+
+    <!-- Map: Preview derived DB columns -->
+    <div v-if="field.type === 'map' && (field.mapLatField || field.mapLngField || field.mapAddressField)" class="p-3 rounded-md bg-primary/5 border border-primary/20 space-y-1">
+      <p class="text-xs font-semibold text-primary">Kolom DB yang akan dibuat:</p>
+      <div class="flex flex-col gap-0.5 text-xs text-muted-foreground font-mono">
+        <span>📍 {{ field.mapLatField || 'lokasi_lat' }} <span class="text-muted-foreground/50">(latitude)</span></span>
+        <span>📍 {{ field.mapLngField || 'lokasi_lng' }} <span class="text-muted-foreground/50">(longitude)</span></span>
+        <span>📍 {{ field.mapAddressField || 'lokasi_alamat' }} <span class="text-muted-foreground/50">(alamat)</span></span>
+      </div>
+    </div>
 
     <!-- Remove Button -->
     <button

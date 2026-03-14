@@ -45,8 +45,10 @@ const args = process.argv.slice(2);
 
 // ─── Mode 1: Dashboard (no arguments) ───────────────────────────────────
 if (!args[0]) {
-  // Activate builder gate
-  fs.writeFileSync(path.join(projectRoot, '.builder_active'), new Date().toISOString());
+  // Activate builder gate with secret key
+  const builderKey = crypto.randomBytes(16).toString('hex');
+  fs.writeFileSync(path.join(projectRoot, '.builder_active'), builderKey);
+  const dashboardUrl = `http://localhost:9999/builder?key=${builderKey}`;
   console.log('\x1b[36m---------------------------------------\x1b[0m');
   console.log('\x1b[1m  Builder Dashboard\x1b[0m');
   console.log('\x1b[36m---------------------------------------\x1b[0m');
@@ -54,7 +56,7 @@ if (!args[0]) {
   console.log('\x1b[32m+ Opening Builder Dashboard...\x1b[0m');
   console.log('\x1b[90m  (pastikan Nuxt dev server sudah jalan di port 9999)\x1b[0m');
   console.log('\x1b[36m---------------------------------------\x1b[0m');
-  openBrowser('http://localhost:9999/builder');
+  openBrowser(dashboardUrl);
   return setTimeout(() => process.exit(0), 2000);
 }
 
@@ -69,8 +71,9 @@ const readableName = getReadableName(moduleName);
 const token = crypto.randomUUID();
 const configDir = path.join(projectRoot, '.builder_configs');
 if (!fs.existsSync(configDir)) fs.mkdirSync(configDir, { recursive: true });
-// Activate builder gate
-fs.writeFileSync(path.join(projectRoot, '.builder_active'), new Date().toISOString());
+// Activate builder gate with secret key
+const builderKey = crypto.randomBytes(16).toString('hex');
+fs.writeFileSync(path.join(projectRoot, '.builder_active'), builderKey);
 const configPath = path.join(configDir, `${token}.json`);
 const config = { modulePath, moduleName, apiEndpoint, routePath, readableName, token, createdAt: new Date().toISOString() };
 fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
@@ -85,7 +88,8 @@ console.log('  Title  : \x1b[33m' + readableName + '\x1b[0m');
 console.log('  Token  : \x1b[33m' + token + '\x1b[0m');
 console.log('\x1b[36m---------------------------------------\x1b[0m');
 console.log('\x1b[32m+ Config written to .builder_configs/' + token + '.json\x1b[0m');
-console.log('\x1b[32m+ Opening browser -> http://localhost:9999/builder_file/' + token + '\x1b[0m');
+const directUrl = `http://localhost:9999/builder_file/${token}?key=${builderKey}`;
+console.log('\x1b[32m+ Opening browser -> ' + directUrl + '\x1b[0m');
 console.log('\x1b[90m  (pastikan Nuxt dev server sudah jalan)\x1b[0m');
 
-openBrowser('http://localhost:9999/builder_file/' + token);
+openBrowser(directUrl);

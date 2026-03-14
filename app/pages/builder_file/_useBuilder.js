@@ -27,6 +27,7 @@ export function $resolveDotPath(obj, path) {
 export function useBuilder() {
   const route = useRoute();
   const builderToken = route.params.token;
+  const builderKey = route.query.key || "";
 
   // ── Per-token localStorage persistence (replaces global cookies) ───────
   // Each builder session stores its state under a unique key prefix,
@@ -589,6 +590,7 @@ export function useBuilder() {
       const result = await $fetch("/api/builder/detect-fields", {
         method: "POST",
         body: {
+          key: builderKey,
           apiEndpoint: config.value.apiEndpoint,
           token: builderToken,
         },
@@ -621,6 +623,12 @@ export function useBuilder() {
     } finally {
       autoDetecting.value = false;
     }
+  }
+
+  async function goToDashboard(options = {}) {
+    const { replace = false } = options;
+    const target = builderKey ? `/builder?key=${builderKey}` : "/builder";
+    await navigateTo(target, { replace });
   }
 
   const detailPanelIndex = ref(-1);
@@ -831,11 +839,11 @@ export function useBuilder() {
     try {
       await $fetch("/api/builder/cancel", {
         method: "POST",
-        body: { token: builderToken },
+        body: { key: builderKey, token: builderToken },
       });
     } catch {}
     toast.info("Builder di-reset");
-    await navigateTo("/builder", { replace: true });
+    await goToDashboard({ replace: true });
   }
 
   const confirmResetForm = ref(false);
@@ -859,7 +867,7 @@ export function useBuilder() {
   onMounted(async () => {
     try {
       const data = await $fetch("/api/builder/config", {
-        params: { token: builderToken },
+        params: { key: builderKey, token: builderToken },
       });
       config.value = data;
       if (!fields.value.length && data.apiEndpoint) {
@@ -1308,6 +1316,7 @@ export function useBuilder() {
       const result = await $fetch("/api/builder/generate", {
         method: "POST",
         body: {
+          key: builderKey,
           token: builderToken,
           modulePath: config.value.modulePath,
           moduleName: config.value.moduleName,
@@ -1340,6 +1349,7 @@ export function useBuilder() {
 
   return {
     builderToken,
+    builderKey,
     isDark,
     // State
     config, configError, generating, generated, generatedMessage,
@@ -1369,6 +1379,7 @@ export function useBuilder() {
     // Methods
     onPreviewChange, onPreviewValueFull, onDetailPreviewValueFull,
     computeDetailRowFormulas, updateCellAndCompute,
+    goToDashboard,
     isDetailFieldReadonly, getDetailFieldWidth, getDetailFieldCellStyle,
     getDetailFieldHeaderClass, getDetailFieldCellClass, formatDetailPreviewNumber,
     computeAllFormulas,

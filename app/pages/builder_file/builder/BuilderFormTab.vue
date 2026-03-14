@@ -23,7 +23,7 @@ const b = inject("builder");
   <TabsContent value="form" class="space-y-6 mt-4">
     <!-- Page header (preview) -->
     <div class="flex items-center gap-4">
-      <Button variant="ghost" size="icon" disabled>
+      <Button variant="ghost" size="icon" @click="b.goToDashboard()">
         <ArrowLeft class="h-5 w-5" />
       </Button>
       <div>

@@ -10,12 +10,9 @@ const DRAFT_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
  * Lists all active builder drafts from .builder_configs/.
  * Requires .builder_active gate file (created by add_route.cjs).
  */
-export default defineEventHandler(async () => {
-  // Check activation gate
-  const gatePath = resolve(process.cwd(), '.builder_active')
-  if (!existsSync(gatePath)) {
-    throw createError({ statusCode: 403, statusMessage: 'Builder tidak aktif. Jalankan: node add_route.cjs' })
-  }
+export default defineEventHandler(async (event) => {
+  // Verify builder key
+  await verifyBuilderKey(event)
 
   const configDir = resolve(process.cwd(), '.builder_configs')
 

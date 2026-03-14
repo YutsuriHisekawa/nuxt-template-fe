@@ -4,6 +4,7 @@
  * with confidence scores.
  */
 export default defineEventHandler(async (event) => {
+  await verifyBuilderKey(event)
   const body = await readBody(event)
   const { apiEndpoint, token } = body
 

@@ -9,6 +9,7 @@ import { randomUUID } from 'crypto'
  * Body: { modulePath: string, apiEndpoint?: string }
  */
 export default defineEventHandler(async (event) => {
+  await verifyBuilderKey(event)
   const body = await readBody(event)
   const { modulePath } = body
 
