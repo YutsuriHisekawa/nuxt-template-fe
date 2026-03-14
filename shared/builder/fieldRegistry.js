@@ -1352,6 +1352,7 @@ export function createBlankField() {
     detailAggregate: { type: '', detailIndex: 0, detailField: '' },
     step: 0,
     ...allMetaKeys,
+    fullWidth: false, // must come AFTER ...allMetaKeys to prevent map's defaultMeta from overriding
     defaultValue: '', // always blank for new fields; boolean fields get their default when type is selected
   }
 }
