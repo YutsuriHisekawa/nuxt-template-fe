@@ -2,7 +2,7 @@
 // @ts-nocheck — Template builder, bukan runtime code
 import { toast } from "vue-sonner";
 import { ArrowLeft, Loader2, Save } from "lucide-vue-next";
-import { Trash2 } from "lucide-vue-next";
+import { Trash2, Plus } from "lucide-vue-next";
 
 // ============================================================================
 // COMPOSABLES & ROUTE
@@ -16,7 +16,7 @@ const authStore = useAuthStore();
 // PERMISSIONS — Cek hak akses user berdasarkan menu
 // ============================================================================
 const currentMenu = computed(() => {
-  return authStore.selectRespo?.menus?.find(m => m.path === '/setup/user_default');
+  return authStore.selectRespo?.menus?.find(m => m.path === '/setup/m_approval');
 });
 const perms = computed(() => {
   if (authStore.isSuperAdmin) return { is_read: true, is_create: true, is_update: true, is_delete: true, is_print: true };
@@ -24,6 +24,7 @@ const perms = computed(() => {
   if (!menuId) return { is_read: true, is_create: true, is_update: true, is_delete: true, is_print: true };
   return authStore.selectRespo?.permissions?.[menuId] || {};
 });
+
 
 // ============================================================================
 // STATE — variabel reaktif yang dipakai di form
@@ -47,37 +48,33 @@ const isReadOnly = computed(() => isViewMode.value);  // View mode = form readon
 
 // Judul & deskripsi halaman dinamis sesuai mode
 const pageTitle = computed(() => {
-  if (isViewMode.value) return "Detail Master User Default";
-  if (isCopyMode.value) return "Salin Master User Default";
-  if (isEditMode.value) return "Edit Master User Default";
-  return "Tambah Master User Default Baru";
+  if (isViewMode.value) return "Detail Master Approval";
+  if (isCopyMode.value) return "Salin Master Approval";
+  if (isEditMode.value) return "Edit Master Approval";
+  return "Tambah Master Approval Baru";
 });
 
 const pageDescription = computed(() => {
-  if (isViewMode.value) return "Lihat detail data master user default";
+  if (isViewMode.value) return "Lihat detail data master approval";
   if (isCopyMode.value) return "Buat data baru dari data yang disalin";
-  if (isEditMode.value) return "Perbarui data master user default";
-  return "Buat data master user default baru";
+  if (isEditMode.value) return "Perbarui data master approval";
+  return "Buat data master approval baru";
 });
 
 // Nilai-nilai form — setiap field punya default kosong
 const values = reactive({
-  name: "",
-  username: "",
-  password: "",
-  tipe_user_id: "",
-  m_kary_id: "",
+  kode_approval: "",
+  nama_approval: "",
+  m_menu_id: "",
   catatan: "",
   is_active: true,
 });
 
 // Error validasi per field (string pesan error, kosong = tidak ada error)
 const errors = reactive({
-  name: "",
-  username: "",
-  password: "",
-  tipe_user_id: "",
-  m_kary_id: "",
+  kode_approval: "",
+  nama_approval: "",
+  m_menu_id: "",
   catatan: "",
 });
 
@@ -85,30 +82,21 @@ const errors = reactive({
 // Detail arrays
 const detailArr = ref([]);
 
-const selectedDetailIds = computed(() => detailArr.value.map(d => d.user_default_id));
 
-const handleDetailAdd = (selectedItems) => {
-  if (!selectedItems || selectedItems.length === 0) return;
-  let addedCount = 0;
-  let skippedCount = 0;
-  let hasPrimary = detailArr.value.some(d => d.is_primary)
-  selectedItems.forEach((item, idx) => {
-    const exists = detailArr.value.some((d) => d.user_default_id === item.id);
-    if (exists) { skippedCount++; return; }
-    console.log(idx)
-    detailArr.value.push({
-      user_default_id: item.id,
-      user_default: item,
-      is_primary: !hasPrimary && idx ===0,
-      is_active: true,
-    });
-    if (!hasPrimary && idx === 0) {
-      hasPrimary = true;
-    }
-    addedCount++;
+const addDetailRow = () => {
+  detailArr.value.push({
+    level: 0,
+    tipe_approval_id: "",
+    user_default_id: "",
+    m_unit_bisnis_id: "",
+    min_val: 0,
+    max_val: 0,
+    max_disc: 0,
+    max_disc_value: 0,
+    top_id: "",
+    is_full: true,
+    is_active: true,
   });
-  if (addedCount > 0) toast.success(`${addedCount} item ditambahkan`);
-  if (skippedCount > 0) toast.warning(`${skippedCount} item sudah ada`);
 };
 
 const removeDetail = (index) => {
@@ -116,21 +104,12 @@ const removeDetail = (index) => {
   toast.info("Item dihapus dari daftar");
 };
 
-const setPrimary = (index, value) => {
-  if (value) {
-    detailArr.value.forEach((item, i) => {
-      item.is_primary = i === index
-    })
-  } else {
-    detailArr.value[index].is_primary = false;
-  }
-}
 
 
 // ============================================================================
 // API ENDPOINT — sesuaikan jika endpoint berubah
 // ============================================================================
-const API_BASE = "/api/dynamic/user_default";
+const API_BASE = "/api/dynamic/m_approval";
 const API_SAVE = API_BASE + "/with-details"; // with-details karena ada detail
 
 // ============================================================================
@@ -177,13 +156,23 @@ onBeforeMount(async () => {
       }
     }
 
-    // Load detail: user_details
-    if (data.user_details) {
-      detailArr.value = data.user_details.map((detail) => ({
-        user_default_id: detail.user_default_id,
-        user_default: detail.user_default || null,
-        nama_respo: detail.m_respo?.nama || "",
-        is_primary: detail.is_primary !== undefined ? detail.is_primary : true,
+    // Load detail: m_approval_ds
+    if (data.m_approval_ds) {
+      detailArr.value = data.m_approval_ds.map((detail) => ({
+        level: detail.level !== undefined ? detail.level : 0,
+        tipe_approval_id: detail.tipe_approval_id || "",
+        tipe_approval_value: detail.tipe_approv?.value1 || "",
+        user_default_id: detail.user_default_id || "",
+        user_default_value: detail.user?.name || "",
+        m_unit_bisnis_id: detail.m_unit_bisnis_id || "",
+        m_unit_bisnis_value: detail.company_approval?.nama_comp || "",
+        min_val: detail.min_val !== undefined ? detail.min_val : 0,
+        max_val: detail.max_val !== undefined ? detail.max_val : 0,
+        max_disc: detail.max_disc !== undefined ? detail.max_disc : 0,
+        max_disc_value: detail.max_disc_value !== undefined ? detail.max_disc_value : 0,
+        top_id: detail.top_id || "",
+        top_value: detail.top_approval?.value1 || "",
+        is_full: detail.is_full !== undefined ? detail.is_full : true,
         is_active: detail.is_active !== undefined ? detail.is_active : true,
       }));
     }
@@ -192,7 +181,7 @@ onBeforeMount(async () => {
     toast.error("Gagal memuat data", {
       description: err?.message || "Terjadi kesalahan",
     });
-    setTimeout(() => router.push("/setup/user_default"), 2000);
+    setTimeout(() => router.push("/setup/m_approval"), 2000);
   }
   loading.value = false;
 });
@@ -202,11 +191,9 @@ onBeforeMount(async () => {
 // ============================================================================
 const onReset = () => {
   Object.assign(values, {
-    name: "",
-    username: "",
-    password: "",
-    tipe_user_id: "",
-    m_kary_id: "",
+    kode_approval: "",
+    nama_approval: "",
+    m_menu_id: "",
     catatan: "",
     is_active: true,
   });
@@ -229,16 +216,12 @@ const onSave = async () => {
 
   // 2. Validasi: cek field yang wajib diisi
   let invalid = false;
-  if (!values.username?.toString().trim()) {
-    errors.username = "Username Wajib Di isi";
+  if (!values.nama_approval?.toString().trim()) {
+    errors.nama_approval = "Nama Approval Wajib Di isi";
     invalid = true;
   }
-  if (!values.password?.toString().trim()) {
-    errors.password = "Password Wajib Di isi";
-    invalid = true;
-  }
-  if (!values.tipe_user_id?.toString().trim()) {
-    errors.tipe_user_id = "Tipe User Wajib Di isi";
+  if (!values.m_menu_id?.toString().trim()) {
+    errors.m_menu_id = "Menu Wajib Di isi";
     invalid = true;
   }
 
@@ -257,17 +240,23 @@ const onSave = async () => {
   try {
     // Siapkan payload (data yang akan dikirim)
     const payload = {
-    name: values.name?.toString().trim() || null,
-    username: values.username?.toString().trim() || null,
-    password: values.password?.toString().trim() || null,
-    tipe_user_id: values.tipe_user_id?.toString().trim() || null,
-    m_kary_id: values.m_kary_id?.toString().trim() || null,
+    kode_approval: values.kode_approval?.toString().trim() || null,
+    nama_approval: values.nama_approval?.toString().trim() || null,
+    m_menu_id: values.m_menu_id?.toString().trim() || null,
     catatan: values.catatan?.toString().trim() || null,
     is_active: values.is_active,
 
-      user_detail: detailArr.value.map((d) => ({
-        user_default_id: d.user_default_id,
-        is_primary: d.is_primary !== undefined ? d.is_primary : true,
+      m_approval_d: detailArr.value.map((d) => ({
+        level: d.level !== undefined ? d.level : 0,
+        tipe_approval_id: d.tipe_approval_id?.toString().trim() || null,
+        user_default_id: d.user_default_id?.toString().trim() || null,
+        m_unit_bisnis_id: d.m_unit_bisnis_id?.toString().trim() || null,
+        min_val: d.min_val !== undefined ? d.min_val : 0,
+        max_val: d.max_val !== undefined ? d.max_val : 0,
+        max_disc: d.max_disc !== undefined ? d.max_disc : 0,
+        max_disc_value: d.max_disc_value !== undefined ? d.max_disc_value : 0,
+        top_id: d.top_id?.toString().trim() || null,
+        is_full: d.is_full !== undefined ? d.is_full : true,
         is_active: d.is_active !== undefined ? d.is_active : true,
       })),
     };
@@ -282,7 +271,7 @@ const onSave = async () => {
     }
 
     // Kembali ke halaman list setelah sukses simpan
-    router.replace("/setup/user_default");
+    router.replace("/setup/m_approval");
   } catch (error) {
     // Tampilkan error dari server
     toast.error(
@@ -297,10 +286,8 @@ const onSave = async () => {
 // CANCEL — Kembali ke halaman list tanpa menyimpan
 // ============================================================================
 const handleCancel = () => {
-  router.push("/setup/user_default");
+  router.push("/setup/m_approval");
 };
-
-
 </script>
 
 <template>
@@ -328,91 +315,59 @@ const handleCancel = () => {
     <form class="space-y-6" @submit.prevent>
       <Card :key="recordId || 'new'">
         <CardHeader>
-          <CardTitle>Informasi Master User Default</CardTitle>
+          <CardTitle>Informasi Master Approval</CardTitle>
           <CardDescription>
-            Isi data master user default dengan lengkap dan benar
+            Isi data master approval dengan lengkap dan benar
           </CardDescription>
         </CardHeader>
         <CardContent class="space-y-6">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <FieldX
-              id="name"
-              label="Name"
-              :value="values.name"
-              :errorname="errors.name ? 'failed' : ''"
-              @input="(v) => (values.name = v)"
-              :hints="errors.name"
+              id="kode_approval"
+              label="Kode Approval"
+              :value="values.kode_approval"
+              :errorname="errors.kode_approval ? 'failed' : ''"
+              @input="(v) => (values.kode_approval = v)"
+              :hints="errors.kode_approval"
               :required="false"
               :disabled="loading || isReadOnly"
-              :readonly="isReadOnly"
+              :readonly="true"
               
-              placeholder="Name"
+              placeholder="Auto-generated"
               class="w-full"
             />
 
             <FieldX
-              id="username"
-              label="Username"
-              :value="values.username"
-              :errorname="errors.username ? 'failed' : ''"
-              @input="(v) => (values.username = v)"
-              :hints="errors.username"
+              id="nama_approval"
+              label="Nama Approval"
+              :value="values.nama_approval"
+              :errorname="errors.nama_approval ? 'failed' : ''"
+              @input="(v) => (values.nama_approval = v)"
+              :hints="errors.nama_approval"
               :required="!isReadOnly"
               :disabled="loading || isReadOnly"
               :readonly="isReadOnly"
               
-              placeholder="Username"
-              class="w-full"
-            />
-
-            <FieldX
-              id="password"
-              label="Password"
-              :value="values.password"
-              :errorname="errors.password ? 'failed' : ''"
-              @input="(v) => (values.password = v)"
-              :hints="errors.password"
-              :required="!isReadOnly"
-              :disabled="loading || isReadOnly"
-              :readonly="isReadOnly"
-              
-              placeholder="Password"
-              class="w-full"
-            />
-
-            <FieldSelect
-              id="tipe_user_id"
-              label="Tipe User"
-              :value="values.tipe_user_id"
-              :errorname="errors.tipe_user_id ? 'failed' : ''"
-              @input="(v) => (values.tipe_user_id = v)"
-              :hints="errors.tipe_user_id"
-              :required="!isReadOnly"
-              :disabled="loading || isReadOnly"
-              :readonly="isReadOnly"
-              apiUrl="/api/dynamic/m_general?filter_column_group=TIPE USER&filter_column_is_active=true"
-              displayField="value1"
-              valueField="id"
-              placeholder="Tipe User"
-              :clearable="true"
+              placeholder="Contoh: Approval Pembelian"
               class="w-full"
             />
 
             <FieldPopUp
-              id="m_kary_id"
-              label="Karyawan"
-              :value="values.m_kary_id"
-              :errorname="errors.m_kary_id ? 'failed' : ''"
-              @input="(v) => (values.m_kary_id = v)"
-              :hints="errors.m_kary_id"
-              :required="false"
+              id="m_menu_id"
+              label="Menu"
+              :value="values.m_menu_id"
+              :errorname="errors.m_menu_id ? 'failed' : ''"
+              @input="(v) => (values.m_menu_id = v)"
+              :hints="errors.m_menu_id"
+              :required="!isReadOnly"
               :disabled="loading || isReadOnly"
               :readonly="isReadOnly"
-              apiUrl="/api/dynamic/m_kary?join=true"
-              displayField="nama_kary"
+              apiUrl="/api/dynamic/m_menu"
+              displayField="name"
               valueField="id"
-              :columns="[{ field: 'm_unit_bisni.nama_comp', headerName: 'Company' }, { field: 'kode_kary', headerName: 'Kode' }, { field: 'nama_kary', headerName: 'Nama' }]"
-              placeholder="Karyawan"
+              :columns="[{ field: 'name', headerName: 'Nama Menu' }, { field: 'modul', headerName: 'Modul' }, { field: 'sub_modul', headerName: 'Sub Modul' }, { field: 'path', headerName: 'Path Menu' }]"
+              searchFields="name,modul,submodul,path"
+              placeholder="Pilih Menu"
               :clearable="true"
               class="w-full"
             />
@@ -430,14 +385,14 @@ const handleCancel = () => {
               :required="false"
               :disabled="loading || isReadOnly"
               :readonly="isReadOnly"
-              placeholder="Catatan"
+              placeholder="Masukkan catatan atau deskripsi"
               class="w-full"
             />
             </div>
 
             <FieldStatus
               v-model="values.is_active"
-              label="Is Active"
+              label="Status Aktif"
               :disabled="loading || isReadOnly"
               :readonly="isReadOnly"
               active-text="Aktif"
@@ -450,7 +405,7 @@ const handleCancel = () => {
       <!-- DETAIL TABS -->
       <Tabs default-value="detail-0" class="w-full">
         <TabsList class="w-full overflow-x-auto flex justify-start">
-          <TabsTrigger value="detail-0">Detail Respo</TabsTrigger>
+          <TabsTrigger value="detail-0">Detail Approval Workflows</TabsTrigger>
         </TabsList>
 
         <TabsContent value="detail-0" class="space-y-4 mt-4">
@@ -458,22 +413,19 @@ const handleCancel = () => {
             <CardHeader>
               <div class="flex items-center justify-between">
                 <div>
-                  <CardTitle>Detail Respo</CardTitle>
+                  <CardTitle>Detail Approval Workflows</CardTitle>
                   <CardDescription>Kelola data detail</CardDescription>
                 </div>
-                <ButtonMultiSelect
+                <Button
                   v-if="!isReadOnly"
-                  title="Pilih Respo"
-                  :api="{ url: '/api/dynamic/m_respo' }"
-                  :columns="[
-                    { key: 'nama', label: 'Nama', sortable: true, width: '200px' }
-                  ]"
-                  searchKey="nama"
-                  displayKey="nama"
-                  uniqueKey="id"
-                  :excludeIds="selectedDetailIds"
-                  @add="handleDetailAdd"
-                />
+                  variant="outline"
+                  size="sm"
+                  class="gap-1.5"
+                  @click="addDetailRow"
+                >
+                  <Plus class="h-4 w-4" />
+                  Pilih Item
+                </Button>
               </div>
             </CardHeader>
             <CardContent>
@@ -482,31 +434,149 @@ const handleCancel = () => {
                   <thead class="bg-muted">
                     <tr>
                       <th class="px-3 py-2 text-left font-medium text-xs sm:text-sm">No</th>
-                      <th class="px-3 py-2 text-left font-medium text-xs sm:text-sm">Nama</th>
-                      <th class="px-2 py-2 text-center font-medium text-xs sm:text-sm" style="width: 110px; min-width: 110px;">Primary</th>
-                      <th class="px-2 py-2 text-center font-medium text-xs sm:text-sm" style="width: 110px; min-width: 110px;">Active</th>
+                      <th class="px-2 py-2 text-right font-medium text-xs sm:text-sm" style="width: 140px; min-width: 140px;">Level</th>
+                      <th class="px-2 py-2 text-center font-medium text-xs sm:text-sm" style="width: 180px; min-width: 180px;">Tipe</th>
+                      <th class="px-2 py-2 text-center font-medium text-xs sm:text-sm" style="width: 180px; min-width: 180px;">User</th>
+                      <th class="px-2 py-2 text-center font-medium text-xs sm:text-sm" style="width: 180px; min-width: 180px;">Unit Bisnis</th>
+                      <th class="px-2 py-2 text-right font-medium text-xs sm:text-sm" style="width: 150px; min-width: 150px;">Min Val</th>
+                      <th class="px-2 py-2 text-right font-medium text-xs sm:text-sm" style="width: 150px; min-width: 150px;">Max Val</th>
+                      <th class="px-2 py-2 text-right font-medium text-xs sm:text-sm" style="width: 150px; min-width: 150px;">Max Disc. (%)</th>
+                      <th class="px-2 py-2 text-right font-medium text-xs sm:text-sm" style="width: 150px; min-width: 150px;">Max Disc. (Rp)</th>
+                      <th class="px-2 py-2 text-center font-medium text-xs sm:text-sm" style="width: 180px; min-width: 180px;">TOP</th>
+                      <th class="px-2 py-2 text-center font-medium text-xs sm:text-sm" style="width: 110px; min-width: 110px;">Full</th>
+                      <th class="px-2 py-2 text-center font-medium text-xs sm:text-sm" style="width: 110px; min-width: 110px;">Aktif</th>
                       <th v-if="!isReadOnly" class="px-2 py-2 text-center font-medium text-xs sm:text-sm">Aksi</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr v-if="detailArr.length === 0">
-                      <td colspan="5" class="text-center py-8 text-muted-foreground text-xs sm:text-sm">
+                      <td colspan="13" class="text-center py-8 text-muted-foreground text-xs sm:text-sm">
                         Belum ada item ditambahkan
                       </td>
                     </tr>
                     <tr v-for="(detail, index) in detailArr" :key="index" class="border-t hover:bg-muted/50">
                       <td class="px-3 py-2 text-xs sm:text-sm whitespace-nowrap">{{ index + 1 }}</td>
-                      <td class="px-3 py-2 text-xs sm:text-sm">{{ detail.nama_respo || '-' }}</td>
+                      <td class="px-2 py-2 text-right" style="width: 140px; min-width: 140px;">
+                        <FieldNumber
+                          v-if="!isReadOnly"
+                          :value="detail.level"
+                          @input="(v) => (detail.level = v)"
+                          type="integer"
+                          :readonly="false"
+                          class="w-full"
+                        />
+                        <span v-else>{{ Number(detail.level || 0).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }}</span>
+                      </td>
+                      <td class="px-2 py-2" style="width: 180px; min-width: 180px;">
+                        <FieldSelect
+                          v-if="!isReadOnly"
+                          :value="detail.tipe_approval_id"
+                          @input="(v) => (detail.tipe_approval_id = v)"
+                          apiUrl="/api/dynamic/m_general?filter_column_group=TIPE APPROVAL&filter_column_is_active=true"
+                          displayField="value1"
+                          valueField="id"
+                          :readonly="false"
+                          class="w-full"
+                        />
+                        <span v-else>{{ detail.tipe_approval_value || '-' }}</span>
+                      </td>
+                      <td class="px-2 py-2" style="width: 180px; min-width: 180px;">
+                        <FieldSelect
+                          v-if="!isReadOnly"
+                          :value="detail.user_default_id"
+                          @input="(v) => (detail.user_default_id = v)"
+                          apiUrl="/api/dynamic/user_default?filter_column_is_active=true"
+                          displayField="name"
+                          valueField="id"
+                          :readonly="false"
+                          class="w-full"
+                        />
+                        <span v-else>{{ detail.user_default_value || '-' }}</span>
+                      </td>
+                      <td class="px-2 py-2" style="width: 180px; min-width: 180px;">
+                        <FieldSelect
+                          v-if="!isReadOnly"
+                          :value="detail.m_unit_bisnis_id"
+                          @input="(v) => (detail.m_unit_bisnis_id = v)"
+                          apiUrl="/api/dynamic/m_unit_bisnis?filter_column_is_active=true"
+                          displayField="nama_comp"
+                          valueField="id"
+                          :readonly="false"
+                          class="w-full"
+                        />
+                        <span v-else>{{ detail.m_unit_bisnis_value || '-' }}</span>
+                      </td>
+                      <td class="px-2 py-2 text-right" style="width: 150px; min-width: 150px;">
+                        <FieldNumber
+                          v-if="!isReadOnly"
+                          :value="detail.min_val"
+                          @input="(v) => (detail.min_val = v)"
+                          type="decimal"
+                          :readonly="false"
+                          :decimalPlaces="2"
+                          class="w-full"
+                        />
+                        <span v-else>{{ Number(detail.min_val || 0).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) }}</span>
+                      </td>
+                      <td class="px-2 py-2 text-right" style="width: 150px; min-width: 150px;">
+                        <FieldNumber
+                          v-if="!isReadOnly"
+                          :value="detail.max_val"
+                          @input="(v) => (detail.max_val = v)"
+                          type="decimal"
+                          :readonly="false"
+                          :decimalPlaces="2"
+                          class="w-full"
+                        />
+                        <span v-else>{{ Number(detail.max_val || 0).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) }}</span>
+                      </td>
+                      <td class="px-2 py-2 text-right" style="width: 150px; min-width: 150px;">
+                        <FieldNumber
+                          v-if="!isReadOnly"
+                          :value="detail.max_disc"
+                          @input="(v) => (detail.max_disc = v)"
+                          type="decimal"
+                          :readonly="false"
+                          :decimalPlaces="2"
+                          class="w-full"
+                        />
+                        <span v-else>{{ Number(detail.max_disc || 0).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) }}</span>
+                      </td>
+                      <td class="px-2 py-2 text-right" style="width: 150px; min-width: 150px;">
+                        <FieldNumber
+                          v-if="!isReadOnly"
+                          :value="detail.max_disc_value"
+                          @input="(v) => (detail.max_disc_value = v)"
+                          type="decimal"
+                          :readonly="false"
+                          :decimalPlaces="2"
+                          class="w-full"
+                        />
+                        <span v-else>{{ Number(detail.max_disc_value || 0).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) }}</span>
+                      </td>
+                      <td class="px-2 py-2" style="width: 180px; min-width: 180px;">
+                        <FieldSelect
+                          v-if="!isReadOnly"
+                          :value="detail.top_id"
+                          @input="(v) => (detail.top_id = v)"
+                          apiUrl="/api/dynamic/m_general?filter_column_group=TERMIN&filter_column_is_active=true"
+                          displayField="value1"
+                          valueField="id"
+                          :readonly="false"
+                          class="w-full"
+                        />
+                        <span v-else>{{ detail.top_value || '-' }}</span>
+                      </td>
                       <td class="px-2 py-2 text-center" style="width: 110px; min-width: 110px;">
                         <FieldBox
                           v-if="!isReadOnly"
-                          :value="detail.is_primary"
-                          @input="(v) => setPrimary(index, v)"
+                          :value="detail.is_full"
+                          @input="(v) => (detail.is_full = v)"
                           :readonly="false"
                           labelTrue="Ya"
                           labelFalse="Tidak"
                         />
-                        <span v-else>{{ detail.is_primary ? 'Ya' : 'Tidak' }}</span>
+                        <span v-else>{{ detail.is_full ? 'Ya' : 'Tidak' }}</span>
                       </td>
                       <td class="px-2 py-2 text-center" style="width: 110px; min-width: 110px;">
                         <FieldBox
