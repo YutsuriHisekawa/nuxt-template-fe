@@ -136,9 +136,9 @@ const landing = reactive({
 	columns: [
 		{ headerName: "Kode Currency", field: "kode_currency", minWidth: 140 },
 		{ headerName: "Nama Currency", field: "nama_currency", minWidth: 140 },
-		{ headerName: "Simbol", field: "money.value2", minWidth: 140 },
-		{ headerName: "Code", field: "money.code", minWidth: 140 },
-		{ headerName: "Mata Uang", field: "money.value1", minWidth: 140 },
+		{ headerName: "Simbol", valueGetter: (p) => p.data?.money?.value2, minWidth: 140 },
+		{ headerName: "Code", valueGetter: (p) => p.data?.money?.code, minWidth: 140 },
+		{ headerName: "Mata Uang", valueGetter: (p) => p.data?.money?.value1, minWidth: 140 },
 		{
 			headerName: "Aktif",
 			field: "is_active",
@@ -279,7 +279,7 @@ const actionIcons = { trash: Trash2, eye: Eye, edit: Edit, copy: Copy }
 
 						<!-- Info rows -->
 						<div class="grid grid-cols-1 gap-y-0.5 text-xs">
-							<div v-if="row.simbol_id"><span class="text-muted-foreground">Simbol:</span> <span class="font-medium">{{ row.simbol_id }}</span></div>
+							<div v-if="row.money.value2"><span class="text-muted-foreground">Simbol:</span> <span class="font-medium">{{ row.money.value2 }}</span></div>
 						</div>
 
 						<!-- Action buttons -->

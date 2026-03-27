@@ -173,6 +173,10 @@ const onSave = async () => {
     errors.nama_currency = "Nama Currency Wajib Di isi";
     invalid = true;
   }
+  if (!values.simbol_id?.toString().trim()) {
+    errors.simbol_id = "Simbol wajib dipilih";
+    invalid = true;
+  }
 
 
   if (invalid) {
@@ -293,15 +297,15 @@ const handleCancel = () => {
 
             <FieldPopUp
               id="simbol_id"
-              label="Simbol"
+              label="Simbol Mata Uang"
               :value="values.simbol_id"
               :errorname="errors.simbol_id ? 'failed' : ''"
               @input="(v) => (values.simbol_id = v)"
               :hints="errors.simbol_id"
-              :required="false"
+              :required="!isReadOnly"
               :disabled="loading || isReadOnly"
               :readonly="isReadOnly"
-              apiUrl="/api/dynamic/money?is_active=true"
+              apiUrl="/api/dynamic/money?filter_column_is_active=true"
               displayField="value1"
               valueField="id"
               :columns="[{ field: 'code', headerName: 'Kode' }, { field: 'value3', headerName: 'Nama Mata Uang' }, { field: 'value2', headerName: 'Simbol' }, { field: 'value4', headerName: 'Negara' }]"
